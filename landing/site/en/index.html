@@ -18,7 +18,7 @@
 <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#00E58A">
 <link rel="manifest" href="/site.webmanifest">
 <meta name="theme-color" content="#0D111A">
-<link rel="stylesheet" href="/style.css?v=2">
+<link rel="stylesheet" href="/style.css?v=3">
 </head>
 <body>
 
@@ -27,8 +27,8 @@
     <a class="brand" href="/en/"><img src="/mark.svg" alt="">NodeRoost</a>
     <nav>
       <a class="hide-sm" href="#why">Why</a>
-      <a class="hide-sm" href="#model">Model</a>
       <a class="hide-sm" href="#cases">Use cases</a>
+      <a class="hide-sm" href="#model">Model</a>
       <a class="hide-sm" href="#ui">Interface</a>
       <a class="hide-sm" href="#arch">Architecture</a>
       <a href="#install">Install</a>
@@ -101,65 +101,6 @@
         </tbody>
       </table>
     </div>
-  </div>
-</section>
-
-<section id="model">
-  <div class="wrap">
-    <p class="eyebrow-s">Model</p>
-    <h2>What makes something a server and something else a device</h2>
-    <p class="sub">
-      headscale knows nothing about this: to it every machine is just a node,
-      all alike. The split into servers and devices is ours, and it lives in the
-      panel&#39;s database. The idea is simple — <b>a server is what you connect to,
-      a device is what you connect from</b>. And which one the panel thinks a
-      machine is decides what rules you can write for it.
-    </p>
-
-    <div class="pair">
-      <div class="kind srv">
-        <p class="role">Server</p>
-        <h3>You connect to it</h3>
-        <ul>
-          <li>This is what access gets opened to: a database, a hypervisor, the
-              office router, a build machine.</li>
-          <li>Servers can be grouped into roles, so you grant the role instead of
-              every machine one by one.</li>
-          <li>A server can hand out its local network or work as a gateway out
-              to the internet.</li>
-          <li>The agent goes on servers — it picks up the routes you set in the
-              panel.</li>
-        </ul>
-      </div>
-
-      <div class="kind dev">
-        <p class="role">Device</p>
-        <h3>You connect from it</h3>
-        <ul>
-          <li>A laptop, a phone, a work computer — anything with a person
-              sitting at it.</li>
-          <li>A device is given access to servers. <b>Giving access to the device
-              itself is not possible</b> — that rule cannot be written.</li>
-          <li>Devices don&#39;t see each other: a colleague&#39;s laptop won&#39;t appear in
-              the list, and typing its address by hand won&#39;t work either.</li>
-          <li>This is also where you allow exit gateways — which ones the person
-              can switch on.</li>
-        </ul>
-      </div>
-    </div>
-
-    <ul class="facts">
-      <li><b>The type is derived automatically.</b> Roles, an approved subnet or
-        gateway mode mean a server. None of that means a device.</li>
-      <li><b>The type can be set by hand.</b> On the node&#39;s card: server, device,
-        or back to automatic.</li>
-      <li><b>Only what an administrator confirmed is taken into account.</b> A node
-        can announce “I route 192.168.0.0/24”. If that counted, one command on
-        someone else&#39;s laptop would be enough to make it a “server” — joining
-        “all servers”, no longer hidden from other devices, inheriting
-        everything granted to servers. So only the roles you assigned and the
-        subnets you approved are used.</li>
-    </ul>
   </div>
 </section>
 
@@ -276,6 +217,65 @@
            everyone else.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="model">
+  <div class="wrap">
+    <p class="eyebrow-s">Model</p>
+    <h2>What makes something a server and something else a device</h2>
+    <p class="sub">
+      headscale knows nothing about this: to it every machine is just a node,
+      all alike. The split into servers and devices is ours, and it lives in the
+      panel&#39;s database. The idea is simple — <b>a server is what you connect to,
+      a device is what you connect from</b>. And which one the panel thinks a
+      machine is decides what rules you can write for it.
+    </p>
+
+    <div class="pair">
+      <div class="kind srv">
+        <p class="role">Server</p>
+        <h3>You connect to it</h3>
+        <ul>
+          <li>This is what access gets opened to: a database, a hypervisor, the
+              office router, a build machine.</li>
+          <li>Servers can be grouped into roles, so you grant the role instead of
+              every machine one by one.</li>
+          <li>A server can hand out its local network or work as a gateway out
+              to the internet.</li>
+          <li>The agent goes on servers — it picks up the routes you set in the
+              panel.</li>
+        </ul>
+      </div>
+
+      <div class="kind dev">
+        <p class="role">Device</p>
+        <h3>You connect from it</h3>
+        <ul>
+          <li>A laptop, a phone, a work computer — anything with a person
+              sitting at it.</li>
+          <li>A device is given access to servers. <b>Giving access to the device
+              itself is not possible</b> — that rule cannot be written.</li>
+          <li>Devices don&#39;t see each other: a colleague&#39;s laptop won&#39;t appear in
+              the list, and typing its address by hand won&#39;t work either.</li>
+          <li>This is also where you allow exit gateways — which ones the person
+              can switch on.</li>
+        </ul>
+      </div>
+    </div>
+
+    <ul class="facts">
+      <li><b>The type is derived automatically.</b> Roles, an approved subnet or
+        gateway mode mean a server. None of that means a device.</li>
+      <li><b>The type can be set by hand.</b> On the node&#39;s card: server, device,
+        or back to automatic.</li>
+      <li><b>Only what an administrator confirmed is taken into account.</b> A node
+        can announce “I route 192.168.0.0/24”. If that counted, one command on
+        someone else&#39;s laptop would be enough to make it a “server” — joining
+        “all servers”, no longer hidden from other devices, inheriting
+        everything granted to servers. So only the roles you assigned and the
+        subnets you approved are used.</li>
+    </ul>
   </div>
 </section>
 
@@ -399,7 +399,8 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
       None of the following has to be enabled, installed or tuned — the panel
       works this way from the moment it comes up.
     </p>
-    <ul class="facts">
+    <div class="sec-split">
+      <ul class="facts">
       <li><b>Two-factor sign-in and an audit log.</b> A password plus TOTP,
         brute-force limits, and a record of who changed what. With a default
         admin password the panel will not start at all.</li>
@@ -421,7 +422,16 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
       <li><b>The build can be verified.</b> Dependencies pinned with hashes, base
         images pinned by digest, tests and a dependency audit on every commit.
         The code is BSD-3 licensed — everything claimed here can be read.</li>
-    </ul>
+      </ul>
+
+      <figure class="shot-side">
+        <a class="frame" href="/shots/en/login@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com</span><em>zoom</em></div>
+          <img src="/shots/en/login.webp" alt="The NodeRoost sign-in screen" loading="lazy" width="1000" height="1170">
+        </a>
+        <figcaption>Signing in: a password, a second factor, nothing else.</figcaption>
+      </figure>
+    </div>
   </div>
 </section>
 
@@ -436,7 +446,7 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
   </div>
 </footer>
 
-<script src="/lb.js?v=2" defer></script>
+<script src="/lb.js?v=3" defer></script>
 
 </body>
 </html>

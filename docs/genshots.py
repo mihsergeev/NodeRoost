@@ -24,7 +24,7 @@ SHELL = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
   /* анимации выключены: иначе кадр ловится на opacity:0 у модалок и карточек */
   *,*::before,*::after{{animation:none!important;transition:none!important}}
   body{{margin:0}}
-  .shot{{width:1360px;padding:28px 0 34px}}
+  .shot{{width:{width}px;padding:28px 0 34px}}
 </style></head><body class="theme-dark"><div class="shot"><div class="page">{body}</div></div></body></html>"""
 
 HEADER = """
@@ -276,7 +276,44 @@ def node_page(lang):
       </div></div>"""
 
 
-PAGES = {"servers": servers_page, "access": access_page, "routing": routing_page, "node": node_page}
+ASSETS = ROOT / "frontend" / "src" / "assets"
+
+
+def login_page(lang):
+    """Экран входа. Разметка повторяет LoginPage.tsx, знак и вордмарк — из тех же
+    файлов, что собирает BrandLockup (готовый локап-SVG не берём: в нём зашит
+    свой отступ между знаком и надписью)."""
+    L = dict(
+        ru=dict(title="Вход в панель", user="Логин", pw="Пароль",
+                otp="Код из приложения (2FA)", submit="Войти"),
+        en=dict(title="Sign in", user="Login", pw="Password",
+                otp="Code from the app (2FA)", submit="Log in"),
+    )[lang]
+    mark = str(ASSETS / "noderoost-mark-on-dark.svg").replace("\\", "/")
+    word = str(ASSETS / "noderoost-wordmark-on-dark.svg").replace("\\", "/")
+    return f"""
+      <style>.login-wrap{{padding-top:0}}</style>
+      <div class="login-wrap">
+        <form class="card login-card">
+          <span class="brand-img brand-v login-logo">
+            <span class="brand-line"><img src="file:///{mark}" style="height:96px;display:block"></span>
+            <span class="brand-line"><img src="file:///{word}" style="height:26px;display:block;margin-top:14px"></span>
+          </span>
+          <h2>{L['title']}</h2>
+          <label>{L['user']}<input value="admin"></label>
+          <label>{L['pw']}<input type="password" value="Ei8shaeR1quohGh"></label>
+          <label>{L['otp']}<input placeholder="123456" style="border-color:#00E58A"></label>
+          <button type="submit">{L['submit']}</button>
+        </form>
+      </div>"""
+
+
+PAGES = {"servers": servers_page, "access": access_page,
+         "routing": routing_page, "node": node_page, "login": login_page}
+# экран входа — узкая карточка, широкий кадр оставил бы её в пустом поле
+WIDTHS = {"login": 460}
+# высота кадра: у экрана входа контента на пол-экрана
+HEIGHTS = {"login": 700}
 
 
 def render(lang):
@@ -286,23 +323,30 @@ def render(lang):
     from PIL import Image
 
     for name, fn in PAGES.items():
-        html = SHELL.format(lang=lang, css=CSS.replace("\\", "/"), body=fn(lang))
+        width = WIDTHS.get(name, 1360)
+        html = SHELL.format(lang=lang, css=CSS.replace("\\", "/"),
+                            body=fn(lang), width=width)
         src = TMP / f"{name}-{lang}.html"
         src.write_text(html, encoding="utf-8")
         png = TMP / f"{name}-{lang}.png"
         subprocess.run([
             CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars",
-            "--force-device-scale-factor=2", "--window-size=1400,1600",
+            "--force-device-scale-factor=2", f"--window-size={width + 40},{HEIGHTS.get(name, 1600)}",
             "--default-background-color=0D111A",
             f"--screenshot={png}", str(src.as_uri()),
         ], check=True, capture_output=True, timeout=120)
         im = Image.open(png).convert("RGB")
-        # обрезка по контенту: всё, что темнее фона страницы, — пустое поле снизу
-        bg = im.getpixel((5, 5))
+        # Обрезка по контенту. Фон страницы — градиент, поэтому сравниваем не
+        # с углом кадра, а с началом ТОЙ ЖЕ строки: иначе «отличается от фона»
+        # верно для каждой строки и обрезать нечего.
         px = im.load()
         bottom = im.height
         for y in range(im.height - 1, 0, -1):
-            if any(px[x, y] != bg for x in range(0, im.width, 7)):
+            row_bg = px[5, y]
+            # порог, а не строгое неравенство: фон — градиент, и «не равен началу
+            # строки» верно почти для каждого пикселя
+            if any(sum(abs(a - b) for a, b in zip(px[x, y], row_bg)) > 24
+                   for x in range(0, im.width, 5)):
                 bottom = min(im.height, y + 40)
                 break
         im.crop((0, 0, im.width, bottom)).save(outdir / f"{name}.png", optimize=True)
