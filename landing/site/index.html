@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NodeRoost — панель управления headscale</title>
+<meta name="description" content="Self-hosted веб-панель для headscale: ноды, доступы, роли, маршрутизация и выход в интернет через выбранные шлюзы. Open source, BSD-3-Clause.">
+<meta property="og:title" content="NodeRoost — панель управления headscale">
+<meta property="og:description" content="Self-hosted панель для headscale: доступы вместо HuJSON, изоляция устройств, маршрутизация и шлюзы выхода.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://noderoost.ru/">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+  :root{
+    --bg:#0D111A; --surface:#151A24; --surface-2:#1A2130; --border:#262D3B;
+    --text:#F4F7FA; --muted:#9AA6B8; --accent:#00E58A; --accent-dim:#00B86B;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+
+  header{padding:24px 0; position:relative; z-index:2}
+  .bar{display:flex; align-items:center; justify-content:flex-end; gap:16px}
+  .lang{font-size:14px; color:var(--muted); border:1px solid var(--border);
+        padding:5px 12px; border-radius:8px}
+  .lang:hover{color:var(--text); border-color:var(--accent); text-decoration:none}
+
+  .hero{position:relative; padding:72px 0 64px; overflow:hidden}
+  .hero::before{
+    content:""; position:absolute; inset:-40% 0 auto 50%; width:900px; height:900px;
+    transform:translateX(-50%);
+    background:radial-gradient(circle, rgba(0,229,138,.13), transparent 62%);
+    pointer-events:none;
+  }
+  .hero-inner{position:relative; text-align:center}
+  /* лого — главный элемент первого экрана, а не значок в углу */
+  .hero-logo{width:min(560px,86vw); height:auto; display:block; margin:0 auto 38px}
+  h1{font-size:clamp(32px,5.2vw,52px); line-height:1.12; margin:0 0 18px; letter-spacing:-.02em}
+  h1 .hl{color:var(--accent)}
+  .lead{font-size:clamp(17px,2.2vw,20px); color:var(--muted); max-width:660px; margin:0 auto 30px}
+  .cta{display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:center}
+  .btn{
+    display:inline-block; padding:12px 22px; border-radius:10px; font-weight:650;
+    background:linear-gradient(180deg,var(--accent),var(--accent-dim)); color:#04140C;
+  }
+  .btn:hover{filter:brightness(1.07); text-decoration:none}
+  .btn-ghost{background:none; color:var(--text); border:1px solid var(--border)}
+  .btn-ghost:hover{border-color:var(--accent); color:var(--accent)}
+  .note{color:var(--muted); font-size:14px; margin-top:14px}
+
+  section{padding:56px 0}
+  h2{font-size:clamp(24px,3.4vw,32px); margin:0 0 10px; letter-spacing:-.01em}
+  .sub{color:var(--muted); margin:0 0 30px; max-width:680px}
+
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:22px;
+  }
+  .card h3{margin:0 0 8px; font-size:17px; display:flex; align-items:center; gap:9px}
+  .card p{margin:0; color:var(--muted); font-size:15px}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); flex:0 0 auto}
+
+  .steps{counter-reset:s; display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .step{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px}
+  .step::before{
+    counter-increment:s; content:counter(s);
+    display:inline-grid; place-items:center; width:28px; height:28px; margin-bottom:10px;
+    border-radius:8px; background:rgba(0,229,138,.12); color:var(--accent); font-weight:700; font-size:14px;
+  }
+  .step h3{margin:0 0 6px; font-size:16px}
+  .step p{margin:0; color:var(--muted); font-size:15px}
+  code, pre{font-family:Consolas,"Cascadia Mono",ui-monospace,monospace}
+  pre{
+    background:#0B0F17; border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; overflow-x:auto; font-size:13.5px; color:#CDE7D8; margin:14px 0 0;
+  }
+
+  .sec{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:26px}
+  .sec ul{margin:0; padding-left:20px; color:var(--muted)}
+  .sec li{margin:9px 0}
+  .sec li b{color:var(--text); font-weight:600}
+
+  footer{border-top:1px solid var(--border); padding:32px 0 46px; color:var(--muted); font-size:14px}
+  .foot{display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between}
+  @media (max-width:640px){ .hero{padding:48px 0 40px} section{padding:42px 0} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="lang" href="/en/">English</a>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-inner">
+    <img class="hero-logo" src="/logo.svg" alt="NodeRoost">
+    <h1>Своя панель для <span class="hl">headscale</span></h1>
+    <p class="lead">
+      NodeRoost управляет вашим тайлнетом на self-hosted control-сервере: кто с кем
+      соединяется, через какой узел идёт трафик и куда открыт выход в интернет.
+      Без правки HuJSON руками.
+    </p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/mihsergeev/NodeRoost">Смотреть на GitHub</a>
+      <a class="btn btn-ghost" href="#how">Как это работает</a>
+    </div>
+    <p class="note">Open source, BSD-3-Clause. Ставится в Docker рядом с headscale.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Что она делает</h2>
+    <p class="sub">
+      headscale умеет управлять тайлнетом, но общается с вами языком политики в
+      HuJSON. NodeRoost переводит это в понятия, которыми вы и так мыслите:
+      серверы, устройства, доступы, маршруты.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="dot"></span>Серверы и устройства</h3>
+        <p>Ноды разделены на серверы (куда ходят) и личные устройства. Устройства
+           изолированы друг от друга и никогда не бывают целью правила — это
+           держится в движке политики, а не в интерфейсе.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Доступы, а не ACL-файл</h3>
+        <p>Правило — это «кто → куда → по какому порту». Выдаётся мышью, в том
+           числе сразу нескольким. Итоговый HuJSON панель собирает сама.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Роли</h3>
+        <p>Роль — группа серверов (тег headscale). Доступ выдаётся на роль: добавили
+           сервер в роль — правила менять не нужно.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Маршрутизация</h3>
+        <p>Направления «кто ходит на этот адрес через эту ноду». Домен панель
+           резолвит сама и обновляет маршрут, если сайт переехал.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Выход в интернет через шлюзы</h3>
+        <p>Пометьте сервер шлюзом и укажите, каким устройствам он разрешён.
+           В трее Tailscale пользователь увидит только разрешённые ему выходы —
+           выбор за ним, набор за вами.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Агент на ноде</h3>
+        <p>Маршруты и exit задаются в панели, нода применяет их сама: у headscale
+           нет канала «панель → нода», поэтому он сделан отдельно.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Бэкапы и восстановление</h3>
+        <p>Консистентный снимок базы headscale и настроек панели, самопроверка
+           архива, автобэкап и проверенный сценарий восстановления.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Мониторинг и алерты</h3>
+        <p>История онлайна, алерты в Telegram или вебхук при падении сервера и
+           истечении ключа. Плюс независимый хостовый watchdog на случай, если
+           замолчит сама панель.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>Как это работает</h2>
+    <p class="sub">Панель ходит в headscale по внутренней сети; наружу торчит только
+       узловой контур control-сервера.</p>
+    <div class="steps">
+      <div class="step">
+        <h3>Поднимаете</h3>
+        <p>Docker Compose: headscale, панель и Postgres. Обратный прокси выдаёт
+           TLS и держит панель за списком доверенных адресов.</p>
+      </div>
+      <div class="step">
+        <h3>Подключаете ноды</h3>
+        <p>Панель выдаёт одноразовый ключ и готовую команду под нужную ОС —
+           Linux, Windows, macOS, Android.</p>
+      </div>
+      <div class="step">
+        <h3>Раздаёте доступ</h3>
+        <p>Отмечаете, кто куда ходит. Политика пересобирается и уезжает в
+           headscale сама, при отказе — откатывается.</p>
+      </div>
+    </div>
+    <pre>curl -fsSL https://ваш-control-сервер/agent/&lt;токен&gt;/setup | sh</pre>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Про безопасность честно</h2>
+    <p class="sub">Панель управляет VPN-сетью, поэтому инварианты держатся в коде, а
+       не в интерфейсе — правило может прийти и через API.</p>
+    <div class="sec">
+      <ul>
+        <li><b>Устройства не видят друг друга.</b> Устройство не может стать целью
+            правила ни выбором в списке, ни вписыванием его адреса руками.</li>
+        <li><b>Нода не повышает себе права.</b> Класс ноды и её теги определяет
+            только то, что подтвердил администратор.</li>
+        <li><b>Вход:</b> JWT и TOTP, ограничение попыток, журнал действий; панель не
+            стартует со слабым секретом или дефолтным паролем.</li>
+        <li><b>Каждый релиз</b> собирается из зафиксированных зависимостей с
+            проверкой хешей, базовые образы прибиты по дайджестам.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>NodeRoost — лицензия BSD-3-Clause</div>
+    <div>
+      <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a> ·
+      <a href="https://github.com/juanfont/headscale">headscale</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

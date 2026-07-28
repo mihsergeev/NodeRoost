@@ -1,0 +1,14 @@
+# systemd path-юнит: по флагу-запросу панели собирает логи headscale в файл.
+# Установка (на хосте, root):
+#   cp ops/hs-logs.sh /lib65/noderoost/ && chmod +x /lib65/noderoost/hs-logs.sh
+#   cp ops/noderoost-hs-logs.{path,service} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now noderoost-hs-logs.path
+[Unit]
+Description=NodeRoost: watch headscale logs request flag
+
+[Path]
+PathExists=/app/noderoost/data/.hslogs-request
+Unit=noderoost-hs-logs.service
+
+[Install]
+WantedBy=multi-user.target

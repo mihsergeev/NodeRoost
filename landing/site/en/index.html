@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NodeRoost — a control panel for headscale</title>
+<meta name="description" content="A self-hosted web panel for headscale: nodes, access grants, roles, routing and internet egress through the gateways you allow. Open source, BSD-3-Clause.">
+<meta property="og:title" content="NodeRoost — a control panel for headscale">
+<meta property="og:description" content="A self-hosted panel for headscale: grants instead of HuJSON, device isolation, routing and exit gateways.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://noderoost.ru/en/">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+  :root{
+    --bg:#0D111A; --surface:#151A24; --surface-2:#1A2130; --border:#262D3B;
+    --text:#F4F7FA; --muted:#9AA6B8; --accent:#00E58A; --accent-dim:#00B86B;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+
+  header{padding:24px 0; position:relative; z-index:2}
+  .bar{display:flex; align-items:center; justify-content:flex-end; gap:16px}
+  .lang{font-size:14px; color:var(--muted); border:1px solid var(--border);
+        padding:5px 12px; border-radius:8px}
+  .lang:hover{color:var(--text); border-color:var(--accent); text-decoration:none}
+
+  .hero{position:relative; padding:72px 0 64px; overflow:hidden}
+  .hero::before{
+    content:""; position:absolute; inset:-40% 0 auto 50%; width:900px; height:900px;
+    transform:translateX(-50%);
+    background:radial-gradient(circle, rgba(0,229,138,.13), transparent 62%);
+    pointer-events:none;
+  }
+  .hero-inner{position:relative; text-align:center}
+  /* лого — главный элемент первого экрана, а не значок в углу */
+  .hero-logo{width:min(560px,86vw); height:auto; display:block; margin:0 auto 38px}
+  h1{font-size:clamp(32px,5.2vw,52px); line-height:1.12; margin:0 0 18px; letter-spacing:-.02em}
+  h1 .hl{color:var(--accent)}
+  .lead{font-size:clamp(17px,2.2vw,20px); color:var(--muted); max-width:660px; margin:0 auto 30px}
+  .cta{display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:center}
+  .btn{
+    display:inline-block; padding:12px 22px; border-radius:10px; font-weight:650;
+    background:linear-gradient(180deg,var(--accent),var(--accent-dim)); color:#04140C;
+  }
+  .btn:hover{filter:brightness(1.07); text-decoration:none}
+  .btn-ghost{background:none; color:var(--text); border:1px solid var(--border)}
+  .btn-ghost:hover{border-color:var(--accent); color:var(--accent)}
+  .note{color:var(--muted); font-size:14px; margin-top:14px}
+
+  section{padding:56px 0}
+  h2{font-size:clamp(24px,3.4vw,32px); margin:0 0 10px; letter-spacing:-.01em}
+  .sub{color:var(--muted); margin:0 0 30px; max-width:680px}
+
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:22px;
+  }
+  .card h3{margin:0 0 8px; font-size:17px; display:flex; align-items:center; gap:9px}
+  .card p{margin:0; color:var(--muted); font-size:15px}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); flex:0 0 auto}
+
+  .steps{counter-reset:s; display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .step{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px}
+  .step::before{
+    counter-increment:s; content:counter(s);
+    display:inline-grid; place-items:center; width:28px; height:28px; margin-bottom:10px;
+    border-radius:8px; background:rgba(0,229,138,.12); color:var(--accent); font-weight:700; font-size:14px;
+  }
+  .step h3{margin:0 0 6px; font-size:16px}
+  .step p{margin:0; color:var(--muted); font-size:15px}
+  code, pre{font-family:Consolas,"Cascadia Mono",ui-monospace,monospace}
+  pre{
+    background:#0B0F17; border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; overflow-x:auto; font-size:13.5px; color:#CDE7D8; margin:14px 0 0;
+  }
+
+  .sec{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:26px}
+  .sec ul{margin:0; padding-left:20px; color:var(--muted)}
+  .sec li{margin:9px 0}
+  .sec li b{color:var(--text); font-weight:600}
+
+  footer{border-top:1px solid var(--border); padding:32px 0 46px; color:var(--muted); font-size:14px}
+  .foot{display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between}
+  @media (max-width:640px){ .hero{padding:48px 0 40px} section{padding:42px 0} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="lang" href="/">Русский</a>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-inner">
+    <img class="hero-logo" src="/logo.svg" alt="NodeRoost">
+    <h1>Your own panel for <span class="hl">headscale</span></h1>
+    <p class="lead">
+      NodeRoost runs the tailnet on your own control server: who may reach whom,
+      which node the traffic goes through, and where the way out to the internet
+      is open. No hand-editing of HuJSON.
+    </p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/mihsergeev/NodeRoost">View on GitHub</a>
+      <a class="btn btn-ghost" href="#how">How it works</a>
+    </div>
+    <p class="note">Open source, BSD-3-Clause. Runs in Docker next to headscale.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="sub">
+      headscale runs the tailnet, but talks to you in HuJSON policy. NodeRoost
+      restates it in the terms you already think in: servers, devices, grants,
+      routes.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="dot"></span>Servers and devices</h3>
+        <p>Nodes split into servers (things you connect to) and personal devices.
+           Devices are isolated from each other and are never a rule&rsquo;s target —
+           enforced in the policy engine, not in the UI.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Grants, not an ACL file</h3>
+        <p>A rule is &laquo;who → where → on which port&raquo;, granted by clicking, to
+           several at once if you like. The panel assembles the HuJSON itself.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Roles</h3>
+        <p>A role is a group of servers (a headscale tag). Grant access to the role,
+           and adding a server to it needs no rule changes.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Routing</h3>
+        <p>Directions: &laquo;these nodes reach that address through this node&raquo;.
+           The panel resolves the name itself and updates the route if the site moves.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Internet egress through gateways</h3>
+        <p>Mark a server as a gateway and pick which devices may use it. In the
+           Tailscale tray the user sees only the exits you allowed — the choice is
+           theirs, the set is yours.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Agent on the node</h3>
+        <p>Routes and exit are set in the panel and applied by the node itself:
+           headscale has no panel-to-node channel, so this one is ours.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Backups and restore</h3>
+        <p>A consistent snapshot of the headscale database and panel settings, a
+           self-test of the archive, scheduled backups and a rehearsed restore.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Monitoring and alerts</h3>
+        <p>Uptime history, Telegram or webhook alerts when a server drops or a key
+           is about to expire, plus an independent host watchdog for when the panel
+           itself goes quiet.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">The panel reaches headscale over the internal network; only the
+       node-facing side of the control server is exposed.</p>
+    <div class="steps">
+      <div class="step">
+        <h3>Bring it up</h3>
+        <p>Docker Compose: headscale, the panel and Postgres. A reverse proxy
+           terminates TLS and keeps the panel behind an allow-list.</p>
+      </div>
+      <div class="step">
+        <h3>Join the nodes</h3>
+        <p>The panel issues a one-time key and a ready command for the OS at hand —
+           Linux, Windows, macOS, Android.</p>
+      </div>
+      <div class="step">
+        <h3>Hand out access</h3>
+        <p>Tick who goes where. The policy is rebuilt and pushed to headscale
+           automatically, and rolled back if it is refused.</p>
+      </div>
+    </div>
+    <pre>curl -fsSL https://your-control-server/agent/&lt;token&gt;/setup | sh</pre>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Straight talk about security</h2>
+    <p class="sub">The panel runs a VPN network, so the invariants live in the code
+       rather than the interface — a rule can arrive through the API too.</p>
+    <div class="sec">
+      <ul>
+        <li><b>Devices cannot reach each other.</b> A device cannot become a
+            rule&rsquo;s target by picking it from a list or by typing its address
+            by hand.</li>
+        <li><b>A node cannot promote itself.</b> A node&rsquo;s class and its tags
+            follow only what the administrator approved.</li>
+        <li><b>Sign-in:</b> JWT and TOTP, attempt limits, an audit log; the panel
+            refuses to start with a weak secret or the default password.</li>
+        <li><b>Every release</b> builds from a hash-verified dependency lock, with
+            base images pinned by digest.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>NodeRoost — BSD-3-Clause licensed</div>
+    <div>
+      <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a> ·
+      <a href="https://github.com/juanfont/headscale">headscale</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

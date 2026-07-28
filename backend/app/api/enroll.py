@@ -1,0 +1,85 @@
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Request
+
+from app import audit, enroll, settings_store
+from app.config import get_settings
+from app.deps import CurrentUser, SessionDep
+from app.api.nodes import _map_node
+from app.hs_client import get_client
+from app.hs_util import hs_call, require_hs
+from app.schemas import EnrollIn, EnrollOut, EnrollStatusOut
+
+router = APIRouter(prefix="/enroll", tags=["enroll"])
+
+
+@router.post("", response_model=EnrollOut)
+async def enroll_node(
+    body: EnrollIn, request: Request, user: CurrentUser, session: SessionDep
+) -> EnrollOut:
+    settings = get_settings()
+    require_hs(settings)
+    client = get_client(settings)
+
+    # Сущность «пользователь» из панели убрана: субъект доступа — сама нода
+    # (устройство), доступ выдаётся ей напрямую. headscale обязан привязать ноду
+    # к какому-то владельцу, поэтому все ноды живут под одним техническим
+    # пользователем default. Ключ БЕЗ тегов → владельцем станет именно он.
+    hs_user = await hs_call(client.ensure_user(settings.default_user))
+    user_id = str(hs_user.get("id", ""))
+
+    exp = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.enroll_key_ttl_minutes
+    )
+    exp_iso = exp.isoformat().replace("+00:00", "Z")
+    key = await hs_call(
+        client.create_preauthkey(
+            user_id,
+            reusable=False,  # одноразовый
+            ephemeral=False,
+            expiration=exp_iso,
+        )
+    )
+    key_str = key.get("key", "")
+    key_id = str(key.get("id", ""))
+
+    version = await settings_store.get_tailscale_version(session, settings)
+    script = enroll.build_script(
+        body.os, settings, key_str, body.name, version=version, exit_node=body.exit_node
+    )
+    await audit.record(session, user.username, "node_enroll", body.name)
+    return EnrollOut(
+        os=body.os,
+        hostname=body.name,
+        login_server=settings.headscale_server_url,
+        script=script,
+        key_id=key_id,
+        expires_at=exp_iso,
+    )
+
+
+@router.get("/status", response_model=EnrollStatusOut)
+async def enroll_status(
+    key_id: str, hostname: str, _: CurrentUser
+) -> EnrollStatusOut:
+    """Поллинг: появилась ли нода, зарегистрированная выданным ключом."""
+    settings = get_settings()
+    require_hs(settings)
+    client = get_client(settings)
+    nodes = await hs_call(client.get_nodes())
+
+    # ТОЛЬКО точное совпадение по выданному pre-auth-ключу: ключ — единственная
+    # привязка, которую контролирует панель.
+    #
+    # Раньше был запасной матч по имени (givenName/name). Оба поля выбирает САМА
+    # нода (`tailscale up --hostname=…`), а вызывающий — «Переподключить» —
+    # переносит на найденный id мету и теги, включая флаг «админ». Отсюда прямой
+    # захват прав: нода назвалась именем админского устройства, админ нажал
+    # «Переподключить» на настоящем (его запись при этом удаляется, имя
+    # освобождается), поллинг не нашёл ноду по новому ключу, откатился на имя и
+    # вернул ноду атакующего — которой фронт и проставил admin=true.
+    for n in nodes:
+        pak = n.get("preAuthKey") or {}
+        if key_id and str(pak.get("id", "")) == key_id:
+            return EnrollStatusOut(connected=True, node=_map_node(n))
+    return EnrollStatusOut(connected=False)

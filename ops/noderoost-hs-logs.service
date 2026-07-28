@@ -1,0 +1,10 @@
+# systemd oneshot: собирает свежие логи контейнера headscale в data/_hslogs.txt.
+# Триггерится noderoost-hs-logs.path при появлении флага-запроса от панели.
+[Unit]
+Description=NodeRoost: collect headscale container logs
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/lib65/noderoost/hs-logs.sh

@@ -1,0 +1,27 @@
+# Реконструирован из работающего контейнера (docker inspect): исходный файл был
+# утерян, а без него прокси нечем пересоздать. Значения — ровно те, с которыми
+# контейнер работает сейчас; добавлена только вторая ingress-сеть.
+services:
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:2.13.1
+    restart: always
+    environment:
+      # Прокси видит контейнеры ТОЛЬКО в перечисленных сетях. Отдельная сеть под
+      # NodeRoost нужна, чтобы соседи по общей сети не доставали API панели в
+      # обход IP-вайтлиста (см. SECURITY.md, «Изоляция сети»).
+      CADDY_INGRESS_NETWORKS: caddy,noderoost-edge
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - caddy
+      - noderoost-edge
+
+networks:
+  caddy:
+    external: true
+  noderoost-edge:
+    external: true
