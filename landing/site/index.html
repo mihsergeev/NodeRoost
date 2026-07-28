@@ -358,82 +358,33 @@
 <section id="arch">
   <div class="wrap">
     <p class="eyebrow-s">Как устроено</p>
-    <h2>Панель управляет, но не стоит в тракте данных</h2>
+    <h2>Панель управляет сетью, но трафик через неё не идёт</h2>
     <p class="sub">
-      Управляющий API headscale не выставлен наружу вообще: панель ходит в него
-      по внутренней сети Docker. Наружу публикуется только узловой контур
-      control-сервера — то, что нужно самим клиентам Tailscale.
+      Панель и headscale разговаривают по внутренней сети Docker — управляющий
+      API наружу не выставлен вообще. Снаружи открыто только то, что нужно самим
+      клиентам Tailscale: подключиться и получить карту сети. Данные при этом
+      ходят между машинами напрямую.
     </p>
 
-    <div class="arch">
-      <svg viewBox="0 0 980 336" role="img" aria-label="Схема: браузер через прокси в панель, панель по внутренней сети в headscale, ноды подключаются к публичному контуру; трафик между нодами идёт напрямую">
-        <defs>
-          <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
-            <path d="M0 0 L9 4.5 L0 9 z" fill="#3C4658"/>
-          </marker>
-        </defs>
-        <text x="0" y="16" fill="#6B778C" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.6">CONTROL PLANE</text>
-        <line x1="122" y1="11" x2="980" y2="11" stroke="#1B212C"/>
-
-        <g font-family="system-ui,sans-serif">
-          <rect x="0" y="40" width="150" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
-          <text x="75" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Браузер</text>
-          <text x="75" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">администратор</text>
-
-          <rect x="204" y="40" width="176" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
-          <text x="292" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Обратный прокси</text>
-          <text x="292" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">TLS · доверенные адреса</text>
-
-          <rect x="434" y="40" width="150" height="58" rx="10" fill="#101A16" stroke="#00E58A"/>
-          <text x="509" y="66" fill="#00E58A" font-size="13.5" text-anchor="middle">NodeRoost</text>
-          <text x="509" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">панель + Postgres</text>
-
-          <rect x="638" y="40" width="150" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
-          <text x="713" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">headscale</text>
-          <text x="713" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">control-сервер</text>
-
-          <rect x="842" y="40" width="138" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
-          <text x="911" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Ноды</text>
-          <text x="911" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">клиенты Tailscale</text>
-
-          <line x1="150" y1="69" x2="196" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
-          <line x1="380" y1="69" x2="426" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
-          <line x1="584" y1="69" x2="630" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
-          <line x1="788" y1="69" x2="834" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
-
-          <text x="600" y="118" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">внутренняя сеть · /api/v1 закрыт</text>
-          <text x="815" y="118" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">публично · регистрация, netmap</text>
-
-          <path d="M911 100 L911 148 Q911 156 903 156 L478 156 Q470 156 470 148 L470 108" fill="none" stroke="#2C3444" stroke-dasharray="4 4" marker-end="url(#a)"/>
-          <text x="690" y="176" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">агент: конфигурация по токену</text>
-
-          <text x="0" y="222" fill="#6B778C" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.6">DATA PLANE</text>
-          <line x1="104" y1="217" x2="980" y2="217" stroke="#1B212C"/>
-
-          <rect x="228" y="246" width="176" height="52" rx="10" fill="#161B26" stroke="#232A38"/>
-          <text x="316" y="277" fill="#EEF2F7" font-size="13.5" text-anchor="middle">нода A</text>
-
-          <rect x="576" y="246" width="176" height="52" rx="10" fill="#161B26" stroke="#232A38"/>
-          <text x="664" y="277" fill="#EEF2F7" font-size="13.5" text-anchor="middle">нода B</text>
-
-          <line x1="404" y1="272" x2="576" y2="272" stroke="#00E58A" stroke-width="2"/>
-          <text x="490" y="262" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">WireGuard, напрямую</text>
-          <text x="490" y="320" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">DERP только как запасной путь</text>
-        </g>
-      </svg>
+    <div class="arch" data-lb-svg data-caption="Как устроено">
+      <svg viewBox="0 0 980 356" role="img" aria-label="Схема: браузер через обратный прокси в панель, панель в headscale по внутренней сети, ноды подключаются к публичной части; трафик между нодами идёт напрямую"><text x="0" y="16" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.8">CONTROL PLANE</text><line x1="132" y1="12" x2="980" y2="12" stroke="#1F2632"/><rect x="0" y="44" width="150" height="60" rx="10" fill="#141922" stroke="#2A3242"/><text x="75.0" y="70" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Браузер</text><text x="75.0" y="88" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">администратор</text><rect x="196" y="44" width="176" height="60" rx="10" fill="#141922" stroke="#2A3242"/><text x="284.0" y="70" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Обратный прокси</text><text x="284.0" y="88" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">TLS · доверенные адреса</text><rect x="418" y="44" width="160" height="60" rx="10" fill="#0C1A15" stroke="#00E58A"/><text x="498.0" y="70" fill="#00E58A" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">NodeRoost</text><text x="498.0" y="88" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">панель + Postgres</text><rect x="624" y="44" width="150" height="60" rx="10" fill="#141922" stroke="#2A3242"/><text x="699.0" y="70" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">headscale</text><text x="699.0" y="88" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">control-сервер</text><rect x="820" y="44" width="160" height="60" rx="10" fill="#141922" stroke="#2A3242"/><text x="900.0" y="70" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Ноды</text><text x="900.0" y="88" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">клиенты Tailscale</text><line x1="150" y1="74" x2="189" y2="74" stroke="#3E4A5E" stroke-width="1.5"/><path d="M189 69.5 L196 74 L189 78.5 Z" fill="#3E4A5E"/><line x1="372" y1="74" x2="411" y2="74" stroke="#3E4A5E" stroke-width="1.5"/><path d="M411 69.5 L418 74 L411 78.5 Z" fill="#3E4A5E"/><line x1="578" y1="74" x2="617" y2="74" stroke="#3E4A5E" stroke-width="1.5"/><path d="M617 69.5 L624 74 L617 78.5 Z" fill="#3E4A5E"/><line x1="774" y1="74" x2="813" y2="74" stroke="#3E4A5E" stroke-width="1.5"/><path d="M813 69.5 L820 74 L813 78.5 Z" fill="#3E4A5E"/><text x="601" y="126" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">внутренняя сеть</text><text x="797" y="126" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">публично</text><path d="M900 104 L900 166 Q900 172 894 172 L476 172 Q470 172 470 166 L470 112" fill="none" stroke="#3E4A5E" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M465.5 118 L470 108 L474.5 118 Z" fill="#3E4A5E"/><text x="685" y="192" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">агент забирает конфигурацию по токену</text><text x="0" y="232" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.8">DATA PLANE</text><line x1="114" y1="228" x2="980" y2="228" stroke="#1F2632"/><rect x="0" y="258" width="250" height="56" rx="10" fill="#141922" stroke="#2A3242"/><text x="125.0" y="284" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">нода A</text><text x="125.0" y="302" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">например, ноутбук</text><rect x="730" y="258" width="250" height="56" rx="10" fill="#141922" stroke="#2A3242"/><text x="855.0" y="284" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">нода B</text><text x="855.0" y="302" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">например, сервер</text><line x1="250" y1="286" x2="730" y2="286" stroke="#00E58A" stroke-width="2"/><text x="490" y="272" fill="#00E58A" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">WireGuard, напрямую</text><text x="490" y="326" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">ни панель, ни control-сервер в этом не участвуют · DERP — запасной путь</text></svg>
+      <em>увеличить</em>
     </div>
 
     <ul class="facts">
-      <li><b>Панель не видит пользовательский трафик.</b> Она раздаёт политику и
-        конфигурацию; пакеты идут между узлами напрямую по WireGuard.</li>
-      <li><b>Агент — отдельный канал.</b> У headscale нет пути «панель → нода»,
-        поэтому маршруты и режим выхода нода забирает сама по токену и
-        применяет локально, подтверждая хешем.</li>
-      <li><b>Политика собирается целиком.</b> Правила, роли, шлюзы и направления
-        превращаются в один HuJSON; он проверяется, применяется и откатывается
-        к предыдущей рабочей версии, если headscale его не принял.</li>
-      <li><b>Своя база — только для панели.</b> Состояние тайлнета остаётся в
-        headscale, панель не дублирует его у себя.</li>
+      <li><b>Через панель ничего не течёт.</b> Она раздаёт правила и настройки,
+        а пакеты идут между машинами сами, по WireGuard. Упади она — уже
+        установленные соединения продолжат работать.</li>
+      <li><b>Агент есть потому, что у headscale нет обратного канала.</b> Послать
+        что-то на ноду control-сервер не умеет. Поэтому нода сама забирает свою
+        конфигурацию по токену, применяет её и сообщает, что именно применила.</li>
+      <li><b>Политика пересобирается целиком.</b> Правила, роли, шлюзы
+        и направления превращаются в один файл HuJSON. Панель его проверяет
+        и отправляет, а если headscale не принял — возвращает предыдущую
+        рабочую версию.</li>
+      <li><b>Панель не дублирует состояние сети.</b> Кто где и с каким адресом —
+        это остаётся в headscale. В своей базе панель держит только собственные
+        настройки: доступы, роли, направления, историю.</li>
     </ul>
   </div>
 </section>

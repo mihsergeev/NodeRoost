@@ -173,10 +173,19 @@ code{font-family:var(--mono); font-size:.92em; color:#BFD8CC}
 
 /* ── архитектура ─────────────────────────────────────── */
 .arch{
-  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-  padding:26px; overflow-x:auto;
+  position:relative; background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:26px 26px 34px; overflow-x:auto;
+  cursor:zoom-in; transition:border-color .15s;
+}
+.arch:hover{border-color:#334052}
+.arch:hover em{color:var(--accent); border-color:rgba(0,229,138,.4)}
+.arch em{
+  position:absolute; right:18px; bottom:14px; font-style:normal;
+  font:500 11px/1 var(--mono); color:var(--dim);
+  border:1px solid var(--border); border-radius:6px; padding:5px 9px;
 }
 .arch svg{display:block; width:100%; min-width:620px; height:auto}
+.lb svg{width:min(1700px,95vw); height:auto}
 .facts{margin:26px 0 0; padding:0; list-style:none; display:grid; gap:12px}
 .facts li{color:var(--muted); font-size:15px; padding-left:26px; position:relative}
 .facts li::before{
