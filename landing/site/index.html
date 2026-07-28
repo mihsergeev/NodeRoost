@@ -10,7 +10,14 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://noderoost.ru/">
 <meta property="og:image" content="https://noderoost.ru/shots/ru/servers.webp">
-<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/noderoost-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#00E58A">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#0D111A">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -55,10 +62,9 @@
   </div>
 
   <div class="wrap hero-shot">
-    <div class="frame">
-      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
-      <img src="/shots/ru/servers.webp" alt="Список серверов и устройств в NodeRoost" width="1600" height="711">
-    </div>
+    <a class="frame" href="/shots/ru/servers@2x.webp" data-lb>
+      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span><em>увеличить</em></div>
+      <img src="/shots/ru/servers.webp" alt="Список серверов и устройств в NodeRoost" width="1600" height="711"></a>
   </div>
 </div>
 
@@ -220,37 +226,33 @@
 
     <div class="shots">
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span></div>
-          <img src="/shots/ru/node.webp" alt="Карточка сервера" loading="lazy" width="1600" height="865">
-        </div>
+        <a class="frame" href="/shots/ru/node@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span><em>увеличить</em></div>
+          <img src="/shots/ru/node.webp" alt="Карточка сервера" loading="lazy" width="1600" height="865"></a>
         <figcaption><b>Карточка сервера.</b> Роли, объявленные подсети, режим
           шлюза выхода и список устройств, которым он разрешён, состояние агента.</figcaption>
       </figure>
 
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span></div>
-          <img src="/shots/ru/access.webp" alt="Раздел доступов" loading="lazy" width="1600" height="584">
-        </div>
+        <a class="frame" href="/shots/ru/access@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span><em>увеличить</em></div>
+          <img src="/shots/ru/access.webp" alt="Раздел доступов" loading="lazy" width="1600" height="584"></a>
         <figcaption><b>Доступы.</b> Правило — «кто → куда → по какому порту».
           Выдаётся сразу нескольким источникам; итоговый HuJSON собирает панель.</figcaption>
       </figure>
 
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span></div>
-          <img src="/shots/ru/routing.webp" alt="Раздел маршрутизации" loading="lazy" width="1600" height="860">
-        </div>
+        <a class="frame" href="/shots/ru/routing@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span><em>увеличить</em></div>
+          <img src="/shots/ru/routing.webp" alt="Раздел маршрутизации" loading="lazy" width="1600" height="860"></a>
         <figcaption><b>Маршрутизация.</b> Направления «источник → адрес → через
           какую ноду», с резолвом домена и автообновлением маршрута.</figcaption>
       </figure>
 
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
-          <img src="/shots/ru/servers.webp" alt="Список серверов" loading="lazy" width="1600" height="711">
-        </div>
+        <a class="frame" href="/shots/ru/servers@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span><em>увеличить</em></div>
+          <img src="/shots/ru/servers.webp" alt="Список серверов" loading="lazy" width="1600" height="711"></a>
         <figcaption><b>Серверы и устройства.</b> Онлайн, адреса, роли, маршруты
           и срок ключа — одним экраном, без переключения контекста.</figcaption>
       </figure>
@@ -407,6 +409,8 @@ curl -fsSL https://control.example.com/agent/&lt;токен&gt;/setup | sh</pre>
     </div>
   </div>
 </footer>
+
+<script src="/lb.js" defer></script>
 
 </body>
 </html>
