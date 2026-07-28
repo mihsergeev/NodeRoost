@@ -98,6 +98,26 @@ h2{font-size:clamp(23px,3vw,30px); margin:0 0 12px; letter-spacing:-.018em}
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .frame img{display:block; width:100%; height:auto}
+a.frame{display:block; color:inherit; cursor:zoom-in; transition:border-color .15s}
+a.frame:hover{text-decoration:none; border-color:#334052}
+a.frame:hover .frame-bar em{color:var(--accent); border-color:rgba(0,229,138,.4)}
+.frame-bar em{
+  margin-left:auto; flex:0 0 auto; font:500 11px/1 var(--mono); font-style:normal;
+  color:var(--dim); border:1px solid var(--border); border-radius:6px; padding:5px 9px;
+}
+
+/* ── просмотр скриншота в полном размере ─────────────── */
+.lb{
+  position:fixed; inset:0; z-index:100; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:14px; padding:24px;
+  background:rgba(6,8,12,.95); cursor:zoom-out;
+}
+.lb img{
+  max-width:min(1900px,97vw); max-height:87vh; width:auto; height:auto;
+  border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 30px 80px -30px #000;
+}
+.lb p{margin:0; color:var(--dim); font:500 12.5px/1 var(--mono); text-align:center}
 .hero-shot{position:relative; margin-top:46px}
 .shots{display:grid; gap:40px}
 .shot{display:grid; grid-template-columns:300px 1fr; gap:30px; align-items:center}
