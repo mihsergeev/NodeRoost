@@ -10,7 +10,14 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://noderoost.ru/en/">
 <meta property="og:image" content="https://noderoost.ru/shots/en/servers.webp">
-<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/noderoost-mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#00E58A">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#0D111A">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -55,10 +62,9 @@
   </div>
 
   <div class="wrap hero-shot">
-    <div class="frame">
-      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
-      <img src="/shots/en/servers.webp" alt="Servers and devices in NodeRoost" width="1600" height="711">
-    </div>
+    <a class="frame" href="/shots/en/servers@2x.webp" data-lb>
+      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span><em>zoom</em></div>
+      <img src="/shots/en/servers.webp" alt="Servers and devices in NodeRoost" width="1600" height="711"></a>
   </div>
 </div>
 
@@ -222,37 +228,33 @@
 
     <div class="shots">
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span></div>
-          <img src="/shots/en/node.webp" alt="Server detail page" loading="lazy" width="1600" height="865">
-        </div>
+        <a class="frame" href="/shots/en/node@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span><em>zoom</em></div>
+          <img src="/shots/en/node.webp" alt="Server detail page" loading="lazy" width="1600" height="865"></a>
         <figcaption><b>Server detail.</b> Roles, advertised subnets, exit-gateway
           mode with the list of devices allowed to use it, and agent state.</figcaption>
       </figure>
 
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span></div>
-          <img src="/shots/en/access.webp" alt="Access section" loading="lazy" width="1600" height="584">
-        </div>
+        <a class="frame" href="/shots/en/access@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span><em>zoom</em></div>
+          <img src="/shots/en/access.webp" alt="Access section" loading="lazy" width="1600" height="584"></a>
         <figcaption><b>Access.</b> A rule is “who → where → which port”, granted
           to several sources at once; the panel assembles the resulting HuJSON.</figcaption>
       </figure>
 
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span></div>
-          <img src="/shots/en/routing.webp" alt="Routing section" loading="lazy" width="1600" height="860">
-        </div>
+        <a class="frame" href="/shots/en/routing@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span><em>zoom</em></div>
+          <img src="/shots/en/routing.webp" alt="Routing section" loading="lazy" width="1600" height="860"></a>
         <figcaption><b>Routing.</b> Directions “source → destination → via which
           node”, with domain resolution and automatic route updates.</figcaption>
       </figure>
 
       <figure class="shot">
-        <div class="frame">
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
-          <img src="/shots/en/servers.webp" alt="Server list" loading="lazy" width="1600" height="711">
-        </div>
+        <a class="frame" href="/shots/en/servers@2x.webp" data-lb>
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span><em>zoom</em></div>
+          <img src="/shots/en/servers.webp" alt="Server list" loading="lazy" width="1600" height="711"></a>
         <figcaption><b>Servers and devices.</b> Online state, addresses, roles,
           routes and key expiry on one screen.</figcaption>
       </figure>
@@ -409,6 +411,8 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
     </div>
   </div>
 </footer>
+
+<script src="/lb.js" defer></script>
 
 </body>
 </html>
