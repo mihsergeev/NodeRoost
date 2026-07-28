@@ -157,6 +157,24 @@ code{font-family:var(--mono); font-size:.92em; color:#BFD8CC}
 }
 .case p{margin:0; color:var(--muted); font-size:14.5px}
 
+/* ── серверы против устройств ────────────────────────── */
+.pair{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); margin:0 0 28px}
+.kind{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px}
+.kind .role{
+  margin:0 0 10px; font:600 11.5px/1 var(--mono); letter-spacing:.13em;
+  text-transform:uppercase; color:var(--accent);
+}
+.kind.dev .role{color:var(--dim)}
+.kind h3{margin:0 0 16px; font-size:17px; letter-spacing:-.01em}
+.kind ul{margin:0; padding:0; list-style:none; display:grid; gap:11px}
+.kind li{position:relative; padding-left:21px; color:var(--muted); font-size:14.5px}
+.kind li::before{
+  content:""; position:absolute; left:4px; top:8px; width:6px; height:6px;
+  border-radius:50%; background:#39455A;
+}
+.kind.srv li::before{background:var(--accent-dim)}
+.kind li b{color:var(--text); font-weight:600}
+
 /* ── архитектура ─────────────────────────────────────── */
 .arch{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
