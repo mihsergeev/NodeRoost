@@ -130,17 +130,22 @@ figure{margin:0}
 /* ── таблица сравнения ───────────────────────────────── */
 .tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius)}
 table{border-collapse:collapse; width:100%; min-width:760px; font-size:14.5px}
-th,td{text-align:left; padding:15px 18px; vertical-align:top; border-bottom:1px solid var(--border-soft)}
+th,td{text-align:left; padding:13px 18px; vertical-align:top; border-bottom:1px solid var(--border-soft)}
 tr:last-child td{border-bottom:0}
 thead th{
   background:var(--surface-2); color:var(--dim); font:600 11.5px/1.4 var(--mono);
   letter-spacing:.1em; text-transform:uppercase; white-space:nowrap;
 }
-thead th:last-child{color:var(--accent)}
-td:first-child{color:var(--text); font-weight:600; width:22%}
-td:nth-child(2){color:var(--dim); width:39%}
-td:last-child{color:var(--muted); width:39%}
-tbody tr:hover{background:rgba(255,255,255,.014)}
+thead th:last-child{color:var(--accent); padding-left:36px}
+td:first-child{color:var(--text); font-weight:600; width:24%}
+td:nth-child(2){color:var(--dim); width:34%}
+td:last-child{color:#D7DFEA; width:42%; position:relative; padding-left:36px}
+td:last-child::before{
+  content:"✓"; position:absolute; left:16px; top:13px;
+  color:var(--accent); font-weight:700; font-size:13px;
+}
+tbody tr:nth-child(even){background:rgba(255,255,255,.016)}
+tbody tr:hover{background:rgba(0,229,138,.05)}
 code{font-family:var(--mono); font-size:.92em; color:#BFD8CC}
 
 /* ── сценарии ────────────────────────────────────────── */
