@@ -142,51 +142,58 @@
 <section id="model">
   <div class="wrap">
     <p class="eyebrow-s">Model</p>
-    <h2>Nodes, servers and devices</h2>
+    <h2>What makes something a server and something else a device</h2>
     <p class="sub">
-      To headscale every machine is the same thing — a node. Splitting them into
-      servers and devices is the panel&#39;s own doing: <b>headscale has no such
-      field</b>, it lives in the panel&#39;s database. And it is not a decorative
-      label — it decides which rules can exist at all.
+      headscale knows nothing about this: to it every machine is just a node,
+      all alike. The split into servers and devices is ours, and it lives in the
+      panel&#39;s database. The idea is simple — <b>a server is what you connect to,
+      a device is what you connect from</b>. And which one the panel thinks a
+      machine is decides what rules you can write for it.
     </p>
 
     <div class="pair">
       <div class="kind srv">
         <p class="role">Server</p>
-        <h3>What you reach</h3>
+        <h3>You connect to it</h3>
         <ul>
-          <li>Can be the <b>target</b> of a rule — this is what access is opened to.</li>
-          <li>Groups into roles (headscale tags) and into “all servers”.</li>
-          <li>May advertise its subnet and act as an internet exit gateway.</li>
-          <li>Runs the agent that applies routes coming from the panel.</li>
+          <li>This is what access gets opened to: a database, a hypervisor, the
+              office router, a build machine.</li>
+          <li>Servers can be grouped into roles, so you grant the role instead of
+              every machine one by one.</li>
+          <li>A server can hand out its local network or work as a gateway out
+              to the internet.</li>
+          <li>The agent goes on servers — it picks up the routes you set in the
+              panel.</li>
         </ul>
       </div>
 
       <div class="kind dev">
         <p class="role">Device</p>
-        <h3>What you reach from</h3>
+        <h3>You connect from it</h3>
         <ul>
-          <li>Is <b>only ever a source</b> of a rule, never a target.</li>
-          <li>Invisible to other devices: not by picking it from a list, not by
-              typing its address into a rule by hand.</li>
-          <li>Receives grants to servers and permission to use exit gateways.</li>
-          <li>A laptop, a phone, a work machine — whatever a person sits at.</li>
+          <li>A laptop, a phone, a work computer — anything with a person
+              sitting at it.</li>
+          <li>A device is given access to servers. <b>Giving access to the device
+              itself is not possible</b> — that rule cannot be written.</li>
+          <li>Devices don&#39;t see each other: a colleague&#39;s laptop won&#39;t appear in
+              the list, and typing its address by hand won&#39;t work either.</li>
+          <li>This is also where you allow exit gateways — which ones the person
+              can switch on.</li>
         </ul>
       </div>
     </div>
 
     <ul class="facts">
-      <li><b>By default the panel decides.</b> Tags, an approved subnet or exit
-        mode mean a server. None of that means a device.</li>
-      <li><b>You can override it by hand</b> on the node&#39;s card: server, device,
-        or back to automatic.</li>
-      <li><b>The panel ignores what a node says about itself.</b> Deliberately:
-        otherwise a single <code>tailscale set
-        --advertise-routes=192.168.0.0/24</code> on a compromised laptop would
-        make it a “server” — joining “all servers”, no longer filtered out by
-        device isolation, inheriting every grant given to servers. The class is
-        derived only from what an administrator confirmed: the panel sets the
-        tags, the administrator approves the routes.</li>
+      <li><b>The panel works out which is which.</b> Roles, an approved subnet or
+        gateway mode mean a server. None of that means a device.</li>
+      <li><b>Got it wrong? Set it by hand.</b> On the node&#39;s card you can pin the
+        type or hand it back to the automatic choice.</li>
+      <li><b>The panel trusts you, not the node.</b> A node can announce “I route
+        192.168.0.0/24”. If the panel took that at face value, anyone who got
+        onto someone&#39;s laptop would need one command to make it a “server” — and
+        that laptop would join “all servers”, stop hiding from other devices and
+        inherit everything granted to servers. So only what you confirmed
+        counts: you assign the roles, you approve the subnets.</li>
     </ul>
   </div>
 </section>
