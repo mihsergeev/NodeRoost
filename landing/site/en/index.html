@@ -27,6 +27,7 @@
     <a class="brand" href="/en/"><img src="/mark.svg" alt="">NodeRoost</a>
     <nav>
       <a class="hide-sm" href="#why">Why</a>
+      <a class="hide-sm" href="#model">Model</a>
       <a class="hide-sm" href="#cases">Use cases</a>
       <a class="hide-sm" href="#ui">Interface</a>
       <a class="hide-sm" href="#arch">Architecture</a>
@@ -135,6 +136,58 @@
         </tbody>
       </table>
     </div>
+  </div>
+</section>
+
+<section id="model">
+  <div class="wrap">
+    <p class="eyebrow-s">Model</p>
+    <h2>Nodes, servers and devices</h2>
+    <p class="sub">
+      To headscale every machine is the same thing — a node. Splitting them into
+      servers and devices is the panel&#39;s own doing: <b>headscale has no such
+      field</b>, it lives in the panel&#39;s database. And it is not a decorative
+      label — it decides which rules can exist at all.
+    </p>
+
+    <div class="pair">
+      <div class="kind srv">
+        <p class="role">Server</p>
+        <h3>What you reach</h3>
+        <ul>
+          <li>Can be the <b>target</b> of a rule — this is what access is opened to.</li>
+          <li>Groups into roles (headscale tags) and into “all servers”.</li>
+          <li>May advertise its subnet and act as an internet exit gateway.</li>
+          <li>Runs the agent that applies routes coming from the panel.</li>
+        </ul>
+      </div>
+
+      <div class="kind dev">
+        <p class="role">Device</p>
+        <h3>What you reach from</h3>
+        <ul>
+          <li>Is <b>only ever a source</b> of a rule, never a target.</li>
+          <li>Invisible to other devices: not by picking it from a list, not by
+              typing its address into a rule by hand.</li>
+          <li>Receives grants to servers and permission to use exit gateways.</li>
+          <li>A laptop, a phone, a work machine — whatever a person sits at.</li>
+        </ul>
+      </div>
+    </div>
+
+    <ul class="facts">
+      <li><b>By default the panel decides.</b> Tags, an approved subnet or exit
+        mode mean a server. None of that means a device.</li>
+      <li><b>You can override it by hand</b> on the node&#39;s card: server, device,
+        or back to automatic.</li>
+      <li><b>The panel ignores what a node says about itself.</b> Deliberately:
+        otherwise a single <code>tailscale set
+        --advertise-routes=192.168.0.0/24</code> on a compromised laptop would
+        make it a “server” — joining “all servers”, no longer filtered out by
+        device isolation, inheriting every grant given to servers. The class is
+        derived only from what an administrator confirmed: the panel sets the
+        tags, the administrator approves the routes.</li>
+    </ul>
   </div>
 </section>
 
