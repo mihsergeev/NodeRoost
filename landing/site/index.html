@@ -211,7 +211,7 @@
     <div class="cases">
       <div class="case">
         <h3>Две локалки без белых IP</h3>
-        <p class="topo">192.168.10.0/24 ─ node-a ══ node-b ─ 192.168.50.0/24</p>
+        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="2" y="22" width="130" height="40" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="67.0" y="39.0" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">node-a</text><text x="67.0" y="52.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">192.168.10.0/24</text><rect x="168" y="22" width="130" height="40" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="233.0" y="39.0" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">node-b</text><text x="233.0" y="52.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">192.168.50.0/24</text><line x1="132" y1="42" x2="168" y2="42" stroke="#00E58A" stroke-width="2"/></svg>
         <p>Офис и склад начинают видеть сети друг друга. На каждой стороне
            ставите по ноде, она объявляет свою подсеть, вы её одобряете —
            дальше правилами решаете, кто куда ходит. Белый адрес не нужен
@@ -220,7 +220,7 @@
 
       <div class="case">
         <h3>Рабочий компьютер за чужим NAT</h3>
-        <p class="topo">ноутбук ══ work-pc : 3389</p>
+        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="24" width="96" height="36" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="150" y1="10" x2="150" y2="74" stroke="#3A4557" stroke-dasharray="3 4"/><text x="150" y="82" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">NAT</text><rect x="196" y="24" width="104" height="36" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="248.0" y="39.0" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">work-pc</text><text x="248.0" y="52.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:3389</text><line x1="96" y1="42" x2="196" y2="42" stroke="#00E58A" stroke-width="2"/></svg>
         <p>Серый адрес, роутер не ваш, попросить о пробросе порта некого.
            Ставите ноду на этот компьютер — и он появляется в сети. Доступ
            открываете только своему ноутбуку и только на нужный порт.
@@ -229,7 +229,7 @@
 
       <div class="case">
         <h3>Админки и базы без открытых портов</h3>
-        <p class="topo">postgres · kube-apiserver · ipmi · веб-админки</p>
+        <svg class="dia" viewBox="0 0 300 96" aria-hidden="true"><rect x="0" y="8" width="96" height="30" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="48.0" y="26.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><line x1="96" y1="23" x2="132" y2="30" stroke="#3A4557" stroke-width="1.5"/><path d="M110 20 l8 8 M118 20 l-8 8" stroke="#78859A" stroke-width="1.6"/><rect x="0" y="58" width="96" height="30" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="76.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">устройство</text><line x1="96" y1="73" x2="150" y2="62" stroke="#00E58A" stroke-width="2"/><rect x="150" y="4" width="150" height="88" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="225.0" y="51.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="225" y="22" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">сервер</text><rect x="162" y="32" width="126" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="225.0" y="45.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">postgres:5432</text><rect x="162" y="56" width="126" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="225.0" y="69.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">kube:6443</text></svg>
         <p>База, IPMI, API кластера, морда роутера живут на адресах тайлнета.
            Наружу не открыт ни один порт, отдельный бастион не нужен. Доступ
            даёте на конкретный порт, а не на сервер целиком.</p>
@@ -237,7 +237,7 @@
 
       <div class="case">
         <h3>Подрядчику — только то, что нужно</h3>
-        <p class="topo">подрядчик → роль prod-db → 5432</p>
+        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">подрядчик</text><line x1="92" y1="46" x2="119" y2="46" stroke="#00E58A" stroke-width="1.5"/><path d="M118 42 L124 46 L118 50 Z" fill="#00E58A"/><rect x="124" y="4" width="176" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="136" y="20" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9.5" text-anchor="start">prod-db</text><rect x="136" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="172.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-1</text><rect x="216" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-2</text><rect x="136" y="58" width="152" height="22" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="72.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">+ новый сервер</text></svg>
         <p>Доступ выдаёте на роль, а не на конкретную машину. Добавили в эту
            роль ещё один сервер — подрядчик получил его сам. Работа кончилась —
            удаляете устройство, и доступ пропадает везде сразу.</p>
@@ -245,7 +245,7 @@
 
       <div class="case">
         <h3>Интернет через тот узел, который выберете</h3>
-        <p class="topo">устройство → gw-de → интернет</p>
+        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">устройство</text><line x1="92" y1="42" x2="116" y2="42" stroke="#00E58A" stroke-width="2"/><rect x="116" y="26" width="80" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="156.0" y="45.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-de</text><line x1="196" y1="42" x2="211" y2="42" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M210 38 L216 42 L210 46 Z" fill="#3A4557"/><rect x="216" y="26" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="258.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text></svg>
         <p>Отмечаете сервер шлюзом и говорите, кому им можно пользоваться.
            Человек включает его сам в Tailscale, но в списке у него только то,
            что вы разрешили.</p>
@@ -253,7 +253,7 @@
 
       <div class="case">
         <h3>Весь трафик сервера — через другой сервер</h3>
-        <p class="topo">app-01 ══ gw-nl → интернет + вход по своему IP</p>
+        <svg class="dia" viewBox="0 0 300 104" aria-hidden="true"><rect x="0" y="22" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="41.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text><line x1="88" y1="38" x2="110" y2="38" stroke="#00E58A" stroke-width="2"/><rect x="110" y="22" width="80" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="150.0" y="41.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-nl</text><line x1="190" y1="38" x2="207" y2="38" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M206 34 L212 38 L206 42 Z" fill="#3A4557"/><rect x="212" y="22" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="256.0" y="41.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><line x1="34" y1="92" x2="34" y2="60" stroke="#00E58A" stroke-width="2"/><path d="M30 60 L34 54 L38 60 Z" fill="#00E58A"/><text x="48" y="90" fill="#78859A" font-family="system-ui,sans-serif" font-size="9" text-anchor="start">вход по своему IP</text></svg>
         <p>Иногда надо на время увести исходящий трафик машины в другую страну.
            Включается кнопкой, и сервер при этом никуда не пропадает: SSH и сайт
            на его белом адресе работают как работали. Панель сама следит, чтобы
@@ -262,7 +262,7 @@
 
       <div class="case">
         <h3>Сервис пускает только с одного адреса</h3>
-        <p class="topo">ноутбук → api.example через edge-1</p>
+        <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="28" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="47.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="84" y1="44" x2="106" y2="44" stroke="#00E58A" stroke-width="2"/><rect x="106" y="28" width="76" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="144.0" y="47.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">edge-1</text><line x1="182" y1="44" x2="199" y2="44" stroke="#3A4557" stroke-width="1.5"/><path d="M198 40 L204 44 L198 48 Z" fill="#3A4557"/><rect x="204" y="18" width="96" height="52" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="47.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">api.example</text><text x="252" y="58" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">белый список IP</text></svg>
         <p>Партнёрский API, платёжка или админка с белым списком IP. Говорите:
            на этот адрес ходить через такой-то сервер — и запросы приходят туда
            с его адреса. Остальной трафик идёт как шёл.</p>
@@ -270,7 +270,7 @@
 
       <div class="case">
         <h3>Домашний NAS, камеры, Home Assistant</h3>
-        <p class="topo">телефон ══ nas · camera · homeassistant</p>
+        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">телефон</text><line x1="84" y1="46" x2="112" y2="46" stroke="#00E58A" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="206.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="124" y="20" fill="#78859A" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">дом</text><rect x="124" y="26" width="164" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="206.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">nas</text><rect x="124" y="50" width="78" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="163.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="210" y="50" width="78" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="249.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">hass</text></svg>
         <p>Ни белого IP, ни DDNS, ни проброса портов на роутере. Ставите ноду
            на домашний сервер и заходите к нему с телефона из любой точки
            так же, как заходили бы из дома.</p>
@@ -278,7 +278,7 @@
 
       <div class="case">
         <h3>Сервер ходит к серверу</h3>
-        <p class="topo">ci-runner → db-fra-1 : 5432</p>
+        <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="20" width="96" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ci-runner</text><line x1="96" y1="36" x2="180" y2="36" stroke="#00E58A" stroke-width="2"/><text x="138" y="30" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:5432</text><rect x="180" y="20" width="120" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="240.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-fra-1</text><text x="150" y="76" fill="#78859A" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">белые списки на файрволе</text><line x1="78" y1="72" x2="222" y2="72" stroke="#78859A" stroke-width="1.2"/></svg>
         <p>Раннер льёт в базу, бэкап уезжает в хранилище, приложение стучится
            в соседний дата-центр. Раньше это был белый список адресов на
            файрволе, который ломался при каждом переезде. Теперь это одно
@@ -287,7 +287,7 @@
 
       <div class="case">
         <h3>В туннель уходит не весь трафик</h3>
-        <p class="topo">рабочие адреса → через сеть · остальное → напрямую</p>
+        <svg class="dia" viewBox="0 0 300 96" aria-hidden="true"><rect x="0" y="32" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="51.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><path d="M88 44 C120 44, 130 22, 162 22" fill="none" stroke="#00E58A" stroke-width="2"/><path d="M88 52 C120 52, 130 74, 162 74" fill="none" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M162 70 L168 74 L162 78 Z" fill="#3A4557"/><rect x="170" y="6" width="130" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="235.0" y="25.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">рабочие адреса</text><rect x="170" y="58" width="130" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="235.0" y="77.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><text x="126" y="16" fill="#00E58A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">через сеть</text><text x="126" y="92" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">напрямую</text></svg>
         <p>Обычный VPN заворачивает в себя всё подряд. Здесь ноутбук выходит
            в интернет напрямую и быстро, а через сеть идёт только то, что вы
            указали: подсети офиса, нужные сервисы, отдельные адреса.</p>
@@ -295,7 +295,7 @@
 
       <div class="case">
         <h3>Сменился провайдер — ничего не сломалось</h3>
-        <p class="topo">100.64.0.7 — адрес не меняется</p>
+        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="6" width="132" height="30" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="66.0" y="24.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">203.0.113.7</text><line x1="14" y1="21" x2="118" y2="21" stroke="#78859A" stroke-width="1.2"/><line x1="132" y1="21" x2="163" y2="21" stroke="#3A4557" stroke-width="1.5"/><path d="M162 17 L168 21 L162 25 Z" fill="#3A4557"/><rect x="168" y="6" width="132" height="30" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="234.0" y="24.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">198.51.100.9</text><rect x="0" y="50" width="300" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="150.0" y="63.0" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">100.64.0.7</text><text x="150.0" y="76.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">в тайлнете — не меняется</text></svg>
         <p>Переехали в другой дата-центр, провайдер выдал новый адрес, машину
            увезли из офиса домой. В тайлнете у неё прежний адрес и прежнее имя,
            так что правила, скрипты и закладки переписывать не нужно.</p>
@@ -303,7 +303,7 @@
 
       <div class="case">
         <h3>Вместо рассылки VPN-конфигов</h3>
-        <p class="topo">ключ → одна команда → нода в списке</p>
+        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="72" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="36.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ключ</text><line x1="72" y1="42" x2="91" y2="42" stroke="#3A4557" stroke-width="1.5"/><path d="M90 38 L96 42 L90 46 Z" fill="#3A4557"/><rect x="96" y="26" width="108" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="150.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">одна команда</text><line x1="204" y1="42" x2="223" y2="42" stroke="#00E58A" stroke-width="1.5"/><path d="M222 38 L228 42 L222 46 Z" fill="#00E58A"/><rect x="228" y="26" width="72" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="264.0" y="45.5" fill="#00E58A" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">в сети</text></svg>
         <p>Никаких <code>.ovpn</code> по почте. Человек получает одноразовый
            ключ и одну команду под свою систему — через минуту он в сети.
            Отобрать доступ — удалить устройство, а не перевыпускать конфиги
