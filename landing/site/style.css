@@ -183,7 +183,7 @@ code{font-family:var(--mono); font-size:.92em; color:#BFD8CC}
   content:""; position:absolute; left:6px; top:9px; width:7px; height:7px;
   border-radius:2px; background:var(--accent);
 }
-.facts li b{color:var(--text); font-weight:600}
+.facts li b{display:block; color:var(--text); font-weight:600; margin-bottom:3px}
 
 /* ── установка ───────────────────────────────────────── */
 pre{

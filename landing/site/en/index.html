@@ -184,16 +184,16 @@
     </div>
 
     <ul class="facts">
-      <li><b>The panel works out which is which.</b> Roles, an approved subnet or
+      <li><b>The type is derived automatically.</b> Roles, an approved subnet or
         gateway mode mean a server. None of that means a device.</li>
-      <li><b>Got it wrong? Set it by hand.</b> On the node&#39;s card you can pin the
-        type or hand it back to the automatic choice.</li>
-      <li><b>The panel trusts you, not the node.</b> A node can announce “I route
-        192.168.0.0/24”. If the panel took that at face value, anyone who got
-        onto someone&#39;s laptop would need one command to make it a “server” — and
-        that laptop would join “all servers”, stop hiding from other devices and
-        inherit everything granted to servers. So only what you confirmed
-        counts: you assign the roles, you approve the subnets.</li>
+      <li><b>The type can be set by hand.</b> On the node&#39;s card: server, device,
+        or back to automatic.</li>
+      <li><b>Only what an administrator confirmed is taken into account.</b> A node
+        can announce “I route 192.168.0.0/24”. If that counted, one command on
+        someone else&#39;s laptop would be enough to make it a “server” — joining
+        “all servers”, no longer hidden from other devices, inheriting
+        everything granted to servers. So only the roles you assigned and the
+        subnets you approved are used.</li>
     </ul>
   </div>
 </section>
