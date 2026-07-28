@@ -3,8 +3,11 @@
 // ошибка, а предупреждение. Используется в CI как мягкий линт переводов.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const SRC = new URL('../src', import.meta.url).pathname
+// fileURLToPath, а не .pathname: на Windows тот отдаёт «/Z:/…», и путь склеивался
+// в «Z:\Z:\…» — скрипт падал ещё до проверок, локально его так и не запускали
+const SRC = fileURLToPath(new URL('../src', import.meta.url))
 
 function walk(dir) {
   const out = []
@@ -17,11 +20,20 @@ function walk(dir) {
 }
 
 const i18nSrc = readFileSync(join(SRC, 'i18n.tsx'), 'utf8')
-const enKeys = new Set(
-  [...i18nSrc.matchAll(/^\s*'((?:[^'\\]|\\.)*)':/gm)].map((m) =>
-    m[1].replace(/\\'/g, "'"),
-  ),
+const enList = [...i18nSrc.matchAll(/^\s*'((?:[^'\\]|\\.)*)':/gm)].map((m) =>
+  m[1].replace(/\\'/g, "'"),
 )
+const enKeys = new Set(enList)
+
+// Дубль ключа — это молча потерянный перевод: второй литерал затирает первый, а
+// TypeScript ругается (TS1117) только когда строки совпадают буквально до символа.
+// Ошибка, а не предупреждение: правится за секунду, а ищется потом долго.
+const dup = [...new Set(enList.filter((k, i) => enList.indexOf(k) !== i))]
+if (dup.length) {
+  console.error(`i18n: ${dup.length} дублей ключей — второй затирает первый:`)
+  for (const k of dup) console.error('  •', k)
+  process.exit(1)
+}
 
 const used = new Set()
 for (const file of walk(SRC)) {
