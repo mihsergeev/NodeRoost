@@ -85,54 +85,19 @@
     <div class="tablewrap">
       <table>
         <thead>
-          <tr><th>Task</th><th>Plain headscale</th><th>With NodeRoost</th></tr>
+          <tr><th>Task</th><th>Without the panel</th><th>With NodeRoost</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td>An access rule</td>
-            <td>edit <code>policy.hujson</code>: HuJSON syntax, tags and groups kept in your head</td>
-            <td>“who → where → which port”, granted by clicking, to several sources at once; the HuJSON is generated, and rolled back to the last working version if it fails to apply</td>
-          </tr>
-          <tr>
-            <td>Personal devices</td>
-            <td>isolated exactly as far as your ACL is free of mistakes</td>
-            <td>a device can never be the target of a rule — not by picking it, not by typing its address; the invariant lives in the policy engine</td>
-          </tr>
-          <tr>
-            <td>A subnet behind a node</td>
-            <td><code>headscale nodes approve-routes</code> by numeric ID</td>
-            <td>subnets are shown on the server card, approved in one click, and withdrawn routes are cleaned up automatically</td>
-          </tr>
-          <tr>
-            <td>Traffic to a specific destination</td>
-            <td>by hand: pick the CIDR, approve the route, watch for the site moving</td>
-            <td>a direction “source → destination → via node”; the panel resolves the domain and updates the route when the address changes</td>
-          </tr>
-          <tr>
-            <td>Applying a route on the node itself</td>
-            <td>SSH into every node, run <code>tailscale set</code></td>
-            <td>the agent applies what the panel defines and confirms it with a hash of the applied configuration</td>
-          </tr>
-          <tr>
-            <td>Internet egress</td>
-            <td>an exit node is available to anyone the ACL lets through</td>
-            <td>a gateway plus an explicit device list: in the Tailscale client a user only sees the exits granted to them</td>
-          </tr>
-          <tr>
-            <td>Fleet state</td>
-            <td><code>headscale nodes list</code> — a snapshot of right now</td>
-            <td>uptime history, Telegram or webhook alerts on a node going down and on key expiry, plus a host watchdog in case the panel itself goes quiet</td>
-          </tr>
-          <tr>
-            <td>Onboarding a machine</td>
-            <td>create a key in the CLI and dictate the command</td>
-            <td>a single-use key and a ready command for Linux, Windows, macOS or Android, with live connection status</td>
-          </tr>
-          <tr>
-            <td>Backups</td>
-            <td>copy the sqlite file and hope</td>
-            <td>a consistent snapshot of the headscale database and panel settings, archive self-check, scheduled backups and a rehearsed restore</td>
-          </tr>
+          <tr><td>Granting access</td><td>edit <code>policy.hujson</code> by hand</td><td>a “who → where → port” rule, by clicking</td></tr>
+          <tr><td>Isolating personal devices</td><td>yours to get right in the ACL</td><td>devices never see each other</td></tr>
+          <tr><td>A subnet behind a node</td><td><code>approve-routes</code> by node ID in the CLI</td><td>a button on the server card</td></tr>
+          <tr><td>Traffic to one destination</td><td>pick the CIDR, watch for the IP changing</td><td>name the domain — the panel tracks it</td></tr>
+          <tr><td>Applying a route on the node</td><td>SSH into every machine</td><td>the agent applies it</td></tr>
+          <tr><td>Internet egress</td><td>the exit node is open to anyone the ACL allows</td><td>every device gets its own list of gateways</td></tr>
+          <tr><td>Who is online</td><td><code>nodes list</code> — this moment only</td><td>history and Telegram alerts</td></tr>
+          <tr><td>Onboarding a machine</td><td>make a key in the CLI, dictate the command</td><td>a key and a ready command for the OS</td></tr>
+          <tr><td>Backups</td><td>copy the sqlite file yourself</td><td>a scheduled snapshot, verified</td></tr>
+          <tr><td>A mistake in the rules</td><td>edit the file and apply it again</td><td>rollback to the last working version</td></tr>
         </tbody>
       </table>
     </div>
