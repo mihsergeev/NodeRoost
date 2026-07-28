@@ -216,6 +216,16 @@ pre .p{color:var(--accent)}
 .side dt{color:var(--dim); font-family:var(--mono); font-size:12.5px; padding-top:2px; white-space:nowrap}
 .side dd{margin:0; color:var(--muted)}
 
+/* ── скриншот сбоку от списка ─────────────────────────── */
+.sec-split{display:grid; grid-template-columns:1fr 300px; gap:44px; align-items:start}
+.sec-split .facts{margin:0}
+.shot-side .frame{box-shadow:0 20px 50px -28px rgba(0,0,0,.9)}
+.shot-side figcaption{color:var(--muted); font-size:14px; margin:12px 2px 0}
+@media(max-width:900px){
+  .sec-split{grid-template-columns:1fr; gap:28px}
+  .shot-side{max-width:340px}
+}
+
 footer{border-top:1px solid var(--border); padding:34px 0 52px; color:var(--dim); font-size:14px}
 .foot{display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between; align-items:center}
 .foot a{color:var(--muted)}
