@@ -4,230 +4,408 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NodeRoost — a control panel for headscale</title>
-<meta name="description" content="A self-hosted web panel for headscale: nodes, access grants, roles, routing and internet egress through the gateways you allow. Open source, BSD-3-Clause.">
+<meta name="description" content="Self-hosted panel for headscale: access rules instead of policy.hujson, device isolation, subnets, per-destination routing and internet exit gateways. Open source, BSD-3-Clause.">
 <meta property="og:title" content="NodeRoost — a control panel for headscale">
-<meta property="og:description" content="A self-hosted panel for headscale: grants instead of HuJSON, device isolation, routing and exit gateways.">
+<meta property="og:description" content="Access rules instead of policy.hujson, device isolation, subnets, routing and exit gateways. Self-hosted, BSD-3-Clause.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://noderoost.ru/en/">
+<meta property="og:image" content="https://noderoost.ru/shots/en/servers.webp">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
-<style>
-  :root{
-    --bg:#0D111A; --surface:#151A24; --surface-2:#1A2130; --border:#262D3B;
-    --text:#F4F7FA; --muted:#9AA6B8; --accent:#00E58A; --accent-dim:#00B86B;
-    --radius:14px;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0}
-  body{
-    background:var(--bg); color:var(--text);
-    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  a{color:var(--accent); text-decoration:none}
-  a:hover{text-decoration:underline}
-  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
-
-  header{padding:24px 0; position:relative; z-index:2}
-  .bar{display:flex; align-items:center; justify-content:flex-end; gap:16px}
-  .lang{font-size:14px; color:var(--muted); border:1px solid var(--border);
-        padding:5px 12px; border-radius:8px}
-  .lang:hover{color:var(--text); border-color:var(--accent); text-decoration:none}
-
-  .hero{position:relative; padding:72px 0 64px; overflow:hidden}
-  .hero::before{
-    content:""; position:absolute; inset:-40% 0 auto 50%; width:900px; height:900px;
-    transform:translateX(-50%);
-    background:radial-gradient(circle, rgba(0,229,138,.13), transparent 62%);
-    pointer-events:none;
-  }
-  .hero-inner{position:relative; text-align:center}
-  /* лого — главный элемент первого экрана, а не значок в углу */
-  .hero-logo{width:min(560px,86vw); height:auto; display:block; margin:0 auto 38px}
-  h1{font-size:clamp(32px,5.2vw,52px); line-height:1.12; margin:0 0 18px; letter-spacing:-.02em}
-  h1 .hl{color:var(--accent)}
-  .lead{font-size:clamp(17px,2.2vw,20px); color:var(--muted); max-width:660px; margin:0 auto 30px}
-  .cta{display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:center}
-  .btn{
-    display:inline-block; padding:12px 22px; border-radius:10px; font-weight:650;
-    background:linear-gradient(180deg,var(--accent),var(--accent-dim)); color:#04140C;
-  }
-  .btn:hover{filter:brightness(1.07); text-decoration:none}
-  .btn-ghost{background:none; color:var(--text); border:1px solid var(--border)}
-  .btn-ghost:hover{border-color:var(--accent); color:var(--accent)}
-  .note{color:var(--muted); font-size:14px; margin-top:14px}
-
-  section{padding:56px 0}
-  h2{font-size:clamp(24px,3.4vw,32px); margin:0 0 10px; letter-spacing:-.01em}
-  .sub{color:var(--muted); margin:0 0 30px; max-width:680px}
-
-  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  .card{
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius); padding:22px;
-  }
-  .card h3{margin:0 0 8px; font-size:17px; display:flex; align-items:center; gap:9px}
-  .card p{margin:0; color:var(--muted); font-size:15px}
-  .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); flex:0 0 auto}
-
-  .steps{counter-reset:s; display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-  .step{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px}
-  .step::before{
-    counter-increment:s; content:counter(s);
-    display:inline-grid; place-items:center; width:28px; height:28px; margin-bottom:10px;
-    border-radius:8px; background:rgba(0,229,138,.12); color:var(--accent); font-weight:700; font-size:14px;
-  }
-  .step h3{margin:0 0 6px; font-size:16px}
-  .step p{margin:0; color:var(--muted); font-size:15px}
-  code, pre{font-family:Consolas,"Cascadia Mono",ui-monospace,monospace}
-  pre{
-    background:#0B0F17; border:1px solid var(--border); border-radius:10px;
-    padding:14px 16px; overflow-x:auto; font-size:13.5px; color:#CDE7D8; margin:14px 0 0;
-  }
-
-  .sec{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:26px}
-  .sec ul{margin:0; padding-left:20px; color:var(--muted)}
-  .sec li{margin:9px 0}
-  .sec li b{color:var(--text); font-weight:600}
-
-  footer{border-top:1px solid var(--border); padding:32px 0 46px; color:var(--muted); font-size:14px}
-  .foot{display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between}
-  @media (max-width:640px){ .hero{padding:48px 0 40px} section{padding:42px 0} }
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
-<header>
-  <div class="wrap bar">
-    <a class="lang" href="/">Русский</a>
+<div class="top">
+  <div class="wrap">
+    <a class="brand" href="/en/"><img src="/mark.svg" alt="">NodeRoost</a>
+    <nav>
+      <a class="hide-sm" href="#why">Why</a>
+      <a class="hide-sm" href="#cases">Use cases</a>
+      <a class="hide-sm" href="#ui">Interface</a>
+      <a class="hide-sm" href="#arch">Architecture</a>
+      <a href="#install">Install</a>
+      <span class="sep hide-sm"></span>
+      <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a>
+      <a class="lang" href="/">RU</a>
+    </nav>
   </div>
-</header>
+</div>
 
 <div class="hero">
   <div class="wrap hero-inner">
     <img class="hero-logo" src="/logo.svg" alt="NodeRoost">
-    <h1>Your own panel for <span class="hl">headscale</span></h1>
+    <p class="eyebrow">Open source · BSD-3-Clause · self-hosted</p>
+    <h1>A control panel for headscale</h1>
     <p class="lead">
-      NodeRoost runs the tailnet on your own control server: who may reach whom,
-      which node the traffic goes through, and where the way out to the internet
-      is open. No hand-editing of HuJSON.
+      Your own Tailscale control server — with a UI. Access rules, roles,
+      subnets, routes and exit gateways are set by clicking, not by editing
+      <code>policy.hujson</code> and SSH-ing into every node.
     </p>
     <div class="cta">
       <a class="btn" href="https://github.com/mihsergeev/NodeRoost">View on GitHub</a>
-      <a class="btn btn-ghost" href="#how">How it works</a>
+      <a class="btn btn-ghost" href="#install">Install</a>
     </div>
-    <p class="note">Open source, BSD-3-Clause. Runs in Docker next to headscale.</p>
+    <div class="chips">
+      <span class="chip">headscale 0.29+</span>
+      <span class="chip">Docker Compose</span>
+      <span class="chip">FastAPI + React</span>
+      <span class="chip">Linux agent</span>
+      <span class="chip">EN / RU</span>
+    </div>
+  </div>
+
+  <div class="wrap hero-shot">
+    <div class="frame">
+      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
+      <img src="/shots/en/servers.webp" alt="Servers and devices in NodeRoost" width="1600" height="711">
+    </div>
   </div>
 </div>
 
-<section>
+<section id="why">
   <div class="wrap">
-    <h2>What it does</h2>
+    <p class="eyebrow-s">Why</p>
+    <h2>headscale gives you the network. The rest is manual</h2>
     <p class="sub">
-      headscale runs the tailnet, but talks to you in HuJSON policy. NodeRoost
-      restates it in the terms you already think in: servers, devices, grants,
-      routes.
+      headscale issues keys, keeps the netmap and enforces the policy. Managing
+      it means the CLI and a <code>policy.hujson</code> file. That is fine for
+      five nodes; past that you memorise tags, hope you got the ACL right, SSH
+      into every node for a single route, and hear about a node being down from
+      its user. <b>NodeRoost is a management layer on top of the same
+      headscale</b> — it does not replace it and it does not proxy traffic.
     </p>
-    <div class="grid">
-      <div class="card">
-        <h3><span class="dot"></span>Servers and devices</h3>
-        <p>Nodes split into servers (things you connect to) and personal devices.
-           Devices are isolated from each other and are never a rule&rsquo;s target —
-           enforced in the policy engine, not in the UI.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Task</th><th>Plain headscale</th><th>With NodeRoost</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>An access rule</td>
+            <td>edit <code>policy.hujson</code>: HuJSON syntax, tags and groups kept in your head</td>
+            <td>“who → where → which port”, granted by clicking, to several sources at once; the HuJSON is generated, and rolled back to the last working version if it fails to apply</td>
+          </tr>
+          <tr>
+            <td>Personal devices</td>
+            <td>isolated exactly as far as your ACL is free of mistakes</td>
+            <td>a device can never be the target of a rule — not by picking it, not by typing its address; the invariant lives in the policy engine</td>
+          </tr>
+          <tr>
+            <td>A subnet behind a node</td>
+            <td><code>headscale nodes approve-routes</code> by numeric ID</td>
+            <td>subnets are shown on the server card, approved in one click, and withdrawn routes are cleaned up automatically</td>
+          </tr>
+          <tr>
+            <td>Traffic to a specific destination</td>
+            <td>by hand: pick the CIDR, approve the route, watch for the site moving</td>
+            <td>a direction “source → destination → via node”; the panel resolves the domain and updates the route when the address changes</td>
+          </tr>
+          <tr>
+            <td>Applying a route on the node itself</td>
+            <td>SSH into every node, run <code>tailscale set</code></td>
+            <td>the agent applies what the panel defines and confirms it with a hash of the applied configuration</td>
+          </tr>
+          <tr>
+            <td>Internet egress</td>
+            <td>an exit node is available to anyone the ACL lets through</td>
+            <td>a gateway plus an explicit device list: in the Tailscale client a user only sees the exits granted to them</td>
+          </tr>
+          <tr>
+            <td>Fleet state</td>
+            <td><code>headscale nodes list</code> — a snapshot of right now</td>
+            <td>uptime history, Telegram or webhook alerts on a node going down and on key expiry, plus a host watchdog in case the panel itself goes quiet</td>
+          </tr>
+          <tr>
+            <td>Onboarding a machine</td>
+            <td>create a key in the CLI and dictate the command</td>
+            <td>a single-use key and a ready command for Linux, Windows, macOS or Android, with live connection status</td>
+          </tr>
+          <tr>
+            <td>Backups</td>
+            <td>copy the sqlite file and hope</td>
+            <td>a consistent snapshot of the headscale database and panel settings, archive self-check, scheduled backups and a rehearsed restore</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="cases">
+  <div class="wrap">
+    <p class="eyebrow-s">Use cases</p>
+    <h2>What people build with it</h2>
+    <p class="sub">
+      Everything below works without public IPs on the clients, without port
+      forwarding and without reverse tunnels: the node keeps the connection to
+      the control server itself.
+    </p>
+
+    <div class="cases">
+      <div class="case">
+        <h3>Two LANs with no public addresses</h3>
+        <p class="topo">192.168.10.0/24 ─ node-a ══ node-b ─ 192.168.50.0/24</p>
+        <p>An office and a warehouse reach each other's networks directly. One
+           node per site advertises its subnet, you approve it in the panel and
+           rules decide who may cross. Neither side needs a static address from
+           its ISP.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Grants, not an ACL file</h3>
-        <p>A rule is &laquo;who → where → on which port&raquo;, granted by clicking, to
-           several at once if you like. The panel assembles the HuJSON itself.</p>
+
+      <div class="case">
+        <h3>A workstation behind someone else's NAT</h3>
+        <p class="topo">laptop ══ work-pc : 3389</p>
+        <p>Carrier-grade NAT, a router you don't control, no way to forward a
+           port. No TeamViewer and no reverse tunnel: install a node on the
+           machine and grant access to exactly your device, on exactly one port.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Roles</h3>
-        <p>A role is a group of servers (a headscale tag). Grant access to the role,
-           and adding a server to it needs no rule changes.</p>
+
+      <div class="case">
+        <h3>Internal services with no exposed ports</h3>
+        <p class="topo">postgres · kube-apiserver · ipmi · admin UIs</p>
+        <p>The database, the hypervisor console and the cluster API stay on
+           tailnet addresses. Nothing is published to the internet, no separate
+           bastion is needed, and the rule is scoped to a port rather than to
+           the whole host.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Routing</h3>
-        <p>Directions: &laquo;these nodes reach that address through this node&raquo;.
-           The panel resolves the name itself and updates the route if the site moves.</p>
+
+      <div class="case">
+        <h3>Contractor access — narrow and revocable</h3>
+        <p class="topo">contractor → role prod-db → 5432</p>
+        <p>Access is granted to a role, not to one machine: add a server to the
+           role and everyone holding that role gets it. Remove the device and
+           the access disappears everywhere at once — no rule editing.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Internet egress through gateways</h3>
-        <p>Mark a server as a gateway and pick which devices may use it. In the
-           Tailscale tray the user sees only the exits you allowed — the choice is
-           theirs, the set is yours.</p>
+
+      <div class="case">
+        <h3>Internet egress through a chosen node</h3>
+        <p class="topo">device → gw-de → internet</p>
+        <p>Mark a server as a gateway and list the devices allowed to use it.
+           The user switches it on themselves in the Tailscale client, but only
+           ever sees the exits you granted.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Agent on the node</h3>
-        <p>Routes and exit are set in the panel and applied by the node itself:
-           headscale has no panel-to-node channel, so this one is ours.</p>
+
+      <div class="case">
+        <h3>All of a server's traffic through another server</h3>
+        <p class="topo">app-01 ══ gw-nl → internet + inbound on its own IP</p>
+        <p>Temporarily move a machine's outbound traffic to another country or
+           through a trusted node — one switch. Inbound connections on its
+           public address keep working: the panel sets up connection marking and
+           a dedicated routing rule, so neither SSH nor 443 drops.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Backups and restore</h3>
-        <p>A consistent snapshot of the headscale database and panel settings, a
-           self-test of the archive, scheduled backups and a rehearsed restore.</p>
+
+      <div class="case">
+        <h3>A service that only allows one address</h3>
+        <p class="topo">laptop → api.example via edge-1</p>
+        <p>A partner API, a payment gateway or an admin panel with an IP
+           allowlist. Declare the direction and traffic to that destination goes
+           through the chosen node and leaves with its address. Nothing else is
+           affected.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Monitoring and alerts</h3>
-        <p>Uptime history, Telegram or webhook alerts when a server drops or a key
-           is about to expire, plus an independent host watchdog for when the panel
-           itself goes quiet.</p>
+
+      <div class="case">
+        <h3>Instead of handing out VPN configs</h3>
+        <p class="topo">key → one command → node in the list</p>
+        <p>No <code>.ovpn</code> or <code>.conf</code> files over email. A
+           single-use key with an expiry and a ready command for the right OS;
+           revoking means removing a device, not reissuing configs for everyone.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section id="how">
+<section id="ui">
   <div class="wrap">
-    <h2>How it works</h2>
-    <p class="sub">The panel reaches headscale over the internal network; only the
-       node-facing side of the control server is exposed.</p>
-    <div class="steps">
-      <div class="step">
-        <h3>Bring it up</h3>
-        <p>Docker Compose: headscale, the panel and Postgres. A reverse proxy
-           terminates TLS and keeps the panel behind an allow-list.</p>
-      </div>
-      <div class="step">
-        <h3>Join the nodes</h3>
-        <p>The panel issues a one-time key and a ready command for the OS at hand —
-           Linux, Windows, macOS, Android.</p>
-      </div>
-      <div class="step">
-        <h3>Hand out access</h3>
-        <p>Tick who goes where. The policy is rebuilt and pushed to headscale
-           automatically, and rolled back if it is refused.</p>
+    <p class="eyebrow-s">Interface</p>
+    <h2>What it looks like</h2>
+    <p class="sub">Four screens where nearly everything happens.</p>
+
+    <div class="shots">
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span></div>
+          <img src="/shots/en/node.webp" alt="Server detail page" loading="lazy" width="1600" height="865">
+        </div>
+        <figcaption><b>Server detail.</b> Roles, advertised subnets, exit-gateway
+          mode with the list of devices allowed to use it, and agent state.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span></div>
+          <img src="/shots/en/access.webp" alt="Access section" loading="lazy" width="1600" height="584">
+        </div>
+        <figcaption><b>Access.</b> A rule is “who → where → which port”, granted
+          to several sources at once; the panel assembles the resulting HuJSON.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span></div>
+          <img src="/shots/en/routing.webp" alt="Routing section" loading="lazy" width="1600" height="860">
+        </div>
+        <figcaption><b>Routing.</b> Directions “source → destination → via which
+          node”, with domain resolution and automatic route updates.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
+          <img src="/shots/en/servers.webp" alt="Server list" loading="lazy" width="1600" height="711">
+        </div>
+        <figcaption><b>Servers and devices.</b> Online state, addresses, roles,
+          routes and key expiry on one screen.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="arch">
+  <div class="wrap">
+    <p class="eyebrow-s">Architecture</p>
+    <h2>The panel controls the network without sitting in the data path</h2>
+    <p class="sub">
+      The headscale management API is never exposed: the panel reaches it over
+      an internal Docker network. Only the node-facing surface of the control
+      server is published — the part Tailscale clients actually need.
+    </p>
+
+    <div class="arch">
+      <svg viewBox="0 0 980 336" role="img" aria-label="Diagram: browser through a reverse proxy to the panel, panel to headscale over an internal network, nodes connect to the public surface; node-to-node traffic goes direct">
+        <defs>
+          <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+            <path d="M0 0 L9 4.5 L0 9 z" fill="#3C4658"/>
+          </marker>
+        </defs>
+        <text x="0" y="16" fill="#6B778C" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.6">CONTROL PLANE</text>
+        <line x1="122" y1="11" x2="980" y2="11" stroke="#1B212C"/>
+
+        <g font-family="system-ui,sans-serif">
+          <rect x="0" y="40" width="150" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="75" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Browser</text>
+          <text x="75" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">administrator</text>
+
+          <rect x="204" y="40" width="176" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="292" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Reverse proxy</text>
+          <text x="292" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">TLS · allowlisted IPs</text>
+
+          <rect x="434" y="40" width="150" height="58" rx="10" fill="#101A16" stroke="#00E58A"/>
+          <text x="509" y="66" fill="#00E58A" font-size="13.5" text-anchor="middle">NodeRoost</text>
+          <text x="509" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">panel + Postgres</text>
+
+          <rect x="638" y="40" width="150" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="713" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">headscale</text>
+          <text x="713" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">control server</text>
+
+          <rect x="842" y="40" width="138" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="911" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Nodes</text>
+          <text x="911" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">Tailscale clients</text>
+
+          <line x1="150" y1="69" x2="196" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+          <line x1="380" y1="69" x2="426" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+          <line x1="584" y1="69" x2="630" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+          <line x1="788" y1="69" x2="834" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+
+          <text x="600" y="118" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">internal network · /api/v1 closed</text>
+          <text x="815" y="118" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">public · registration, netmap</text>
+
+          <path d="M911 100 L911 148 Q911 156 903 156 L478 156 Q470 156 470 148 L470 108" fill="none" stroke="#2C3444" stroke-dasharray="4 4" marker-end="url(#a)"/>
+          <text x="690" y="176" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">agent: configuration by token</text>
+
+          <text x="0" y="222" fill="#6B778C" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.6">DATA PLANE</text>
+          <line x1="104" y1="217" x2="980" y2="217" stroke="#1B212C"/>
+
+          <rect x="228" y="246" width="176" height="52" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="316" y="277" fill="#EEF2F7" font-size="13.5" text-anchor="middle">node A</text>
+
+          <rect x="576" y="246" width="176" height="52" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="664" y="277" fill="#EEF2F7" font-size="13.5" text-anchor="middle">node B</text>
+
+          <line x1="404" y1="272" x2="576" y2="272" stroke="#00E58A" stroke-width="2"/>
+          <text x="490" y="262" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">WireGuard, direct</text>
+          <text x="490" y="320" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">DERP only as a fallback</text>
+        </g>
+      </svg>
+    </div>
+
+    <ul class="facts">
+      <li><b>The panel never sees user traffic.</b> It distributes policy and
+        configuration; packets travel between nodes directly over WireGuard.</li>
+      <li><b>The agent is a separate channel.</b> headscale has no “panel → node”
+        path, so the node fetches its routes and exit mode by token and applies
+        them locally, confirming with a hash.</li>
+      <li><b>The policy is generated as a whole.</b> Rules, roles, gateways and
+        directions become one HuJSON document; it is validated, applied, and
+        rolled back to the last working version if headscale rejects it.</li>
+      <li><b>The panel's database is only the panel's.</b> Tailnet state stays in
+        headscale rather than being mirrored.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <p class="eyebrow-s">Install</p>
+    <h2>Docker Compose next to headscale</h2>
+    <p class="sub">The panel, Postgres and headscale itself come up from one
+      file. A reverse proxy terminates TLS and keeps the panel behind an
+      address allowlist.</p>
+
+    <div class="two">
+      <pre><span class="c"># 1. get the repository</span>
+git clone https://github.com/mihsergeev/NodeRoost.git
+cd NodeRoost
+
+<span class="c"># 2. domains, secrets, allowlisted addresses</span>
+cp .env.example .env && <span class="p">$EDITOR</span> .env
+
+<span class="c"># 3. bring it up</span>
+docker compose up -d
+
+<span class="c"># 4. enrol a node — the panel hands you this command</span>
+curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
+
+      <div class="side">
+        <h3>What you need</h3>
+        <dl>
+          <dt>headscale</dt><dd>0.29+, policy mode <code>database</code></dd>
+          <dt>host</dt><dd>Docker with Compose, 1 vCPU / 1 GB</dd>
+          <dt>domains</dt><dd>one for the panel, one for the control server</dd>
+          <dt>proxy</dt><dd>any TLS-terminating one; a caddy-docker-proxy example is included</dd>
+          <dt>images</dt><dd><code>ghcr.io/mihsergeev/noderoost-backend</code> and <code>-frontend</code></dd>
+        </dl>
       </div>
     </div>
-    <pre>curl -fsSL https://your-control-server/agent/&lt;token&gt;/setup | sh</pre>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>Straight talk about security</h2>
-    <p class="sub">The panel runs a VPN network, so the invariants live in the code
-       rather than the interface — a rule can arrive through the API too.</p>
-    <div class="sec">
-      <ul>
-        <li><b>Devices cannot reach each other.</b> A device cannot become a
-            rule&rsquo;s target by picking it from a list or by typing its address
-            by hand.</li>
-        <li><b>A node cannot promote itself.</b> A node&rsquo;s class and its tags
-            follow only what the administrator approved.</li>
-        <li><b>Sign-in:</b> JWT and TOTP, attempt limits, an audit log; the panel
-            refuses to start with a weak secret or the default password.</li>
-        <li><b>Every release</b> builds from a hash-verified dependency lock, with
-            base images pinned by digest.</li>
-      </ul>
-    </div>
+    <p class="eyebrow-s">Security</p>
+    <h2>Invariants live in the code, not in the UI</h2>
+    <p class="sub">The panel runs a VPN, and a rule can arrive from an API call
+      as easily as from a click. So the checks sit in the policy engine.</p>
+    <ul class="facts">
+      <li><b>A device never becomes a target.</b> Not by selection, not by an
+        address supplied in a request.</li>
+      <li><b>A node cannot promote itself.</b> Its class and tags come from what
+        the administrator confirmed, not from what the node announced about
+        itself.</li>
+      <li><b>Sign-in.</b> JWT and TOTP, attempt limits, an audit log; the panel
+        refuses to start with a weak secret or a default password.</li>
+      <li><b>Builds.</b> Dependencies pinned with hash verification, base images
+        pinned by digest, tests and a dependency audit on every commit.</li>
+    </ul>
   </div>
 </section>
 
 <footer>
   <div class="wrap foot">
-    <div>NodeRoost — BSD-3-Clause licensed</div>
+    <div>NodeRoost — BSD-3-Clause</div>
     <div>
       <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a> ·
-      <a href="https://github.com/juanfont/headscale">headscale</a>
+      <a href="https://github.com/juanfont/headscale">headscale</a> ·
+      <a href="/">Русский</a>
     </div>
   </div>
 </footer>
