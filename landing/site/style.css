@@ -23,10 +23,11 @@ a:hover{text-decoration:underline}
   position:sticky; top:0; z-index:50; border-bottom:1px solid var(--border-soft);
   background:rgba(11,14,20,.78); backdrop-filter:blur(10px);
 }
-.top .wrap{display:flex; align-items:center; gap:22px; height:58px}
-.brand{display:flex; align-items:center; gap:9px; color:var(--text); font-weight:650; letter-spacing:-.01em}
+.top .wrap{display:flex; align-items:center; gap:22px; height:66px}
+.brand{display:flex; align-items:center; gap:11px; color:var(--text); font-size:19px;
+       font-weight:650; letter-spacing:-.015em}
 .brand:hover{text-decoration:none}
-.brand img{width:24px; height:24px; display:block}
+.brand img{width:30px; height:30px; display:block}
 nav{margin-left:auto; display:flex; align-items:center; gap:22px; font-size:14.5px}
 nav a{color:var(--muted)}
 nav a:hover{color:var(--text); text-decoration:none}
