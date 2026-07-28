@@ -1,0 +1,72 @@
+name: Release
+
+# Публикация образов в GHCR по тегу вида v0.1.0. Тег — единственный триггер:
+# образы должны появляться только для того, что осознанно выпущено, а не для
+# каждого пуша в main.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+          - name: frontend
+            context: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Версия без «v»: в compose NODEROOST_VERSION задаётся как 0.1.0
+      - id: ver
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          # «latest» намеренно НЕ публикуем: compose требует явный тег релиза,
+          # чтобы прод не переезжал на другую сборку молча (см. .env.example)
+          tags: ghcr.io/${{ github.repository_owner }}/noderoost-${{ matrix.name }}:${{ steps.ver.outputs.value }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.ver.outputs.value }}
+            org.opencontainers.image.licenses=BSD-3-Clause
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  digests:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      # Дайджесты — то, чем прод должен пиниться: тег переставляем мы сами,
+      # дайджест не меняется. Выводим их в сводку релиза, чтобы не искать руками.
+      - name: Дайджесты опубликованных образов
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          {
+            echo "### Образы ${v}"
+            echo
+            for img in backend frontend; do
+              ref="ghcr.io/${{ github.repository_owner }}/noderoost-${img}:${v}"
+              d=$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')
+              echo "- \`${ref}@${d}\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
