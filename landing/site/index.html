@@ -4,229 +4,406 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NodeRoost — панель управления headscale</title>
-<meta name="description" content="Self-hosted веб-панель для headscale: ноды, доступы, роли, маршрутизация и выход в интернет через выбранные шлюзы. Open source, BSD-3-Clause.">
+<meta name="description" content="Self-hosted панель для headscale: доступы вместо policy.hujson, изоляция устройств, подсети, маршрутизация направлений и шлюзы выхода в интернет. Open source, BSD-3-Clause.">
 <meta property="og:title" content="NodeRoost — панель управления headscale">
-<meta property="og:description" content="Self-hosted панель для headscale: доступы вместо HuJSON, изоляция устройств, маршрутизация и шлюзы выхода.">
+<meta property="og:description" content="Доступы вместо policy.hujson, изоляция устройств, подсети, маршрутизация и шлюзы выхода. Self-hosted, BSD-3-Clause.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://noderoost.ru/">
+<meta property="og:image" content="https://noderoost.ru/shots/ru/servers.webp">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
-<style>
-  :root{
-    --bg:#0D111A; --surface:#151A24; --surface-2:#1A2130; --border:#262D3B;
-    --text:#F4F7FA; --muted:#9AA6B8; --accent:#00E58A; --accent-dim:#00B86B;
-    --radius:14px;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0}
-  body{
-    background:var(--bg); color:var(--text);
-    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  a{color:var(--accent); text-decoration:none}
-  a:hover{text-decoration:underline}
-  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
-
-  header{padding:24px 0; position:relative; z-index:2}
-  .bar{display:flex; align-items:center; justify-content:flex-end; gap:16px}
-  .lang{font-size:14px; color:var(--muted); border:1px solid var(--border);
-        padding:5px 12px; border-radius:8px}
-  .lang:hover{color:var(--text); border-color:var(--accent); text-decoration:none}
-
-  .hero{position:relative; padding:72px 0 64px; overflow:hidden}
-  .hero::before{
-    content:""; position:absolute; inset:-40% 0 auto 50%; width:900px; height:900px;
-    transform:translateX(-50%);
-    background:radial-gradient(circle, rgba(0,229,138,.13), transparent 62%);
-    pointer-events:none;
-  }
-  .hero-inner{position:relative; text-align:center}
-  /* лого — главный элемент первого экрана, а не значок в углу */
-  .hero-logo{width:min(560px,86vw); height:auto; display:block; margin:0 auto 38px}
-  h1{font-size:clamp(32px,5.2vw,52px); line-height:1.12; margin:0 0 18px; letter-spacing:-.02em}
-  h1 .hl{color:var(--accent)}
-  .lead{font-size:clamp(17px,2.2vw,20px); color:var(--muted); max-width:660px; margin:0 auto 30px}
-  .cta{display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:center}
-  .btn{
-    display:inline-block; padding:12px 22px; border-radius:10px; font-weight:650;
-    background:linear-gradient(180deg,var(--accent),var(--accent-dim)); color:#04140C;
-  }
-  .btn:hover{filter:brightness(1.07); text-decoration:none}
-  .btn-ghost{background:none; color:var(--text); border:1px solid var(--border)}
-  .btn-ghost:hover{border-color:var(--accent); color:var(--accent)}
-  .note{color:var(--muted); font-size:14px; margin-top:14px}
-
-  section{padding:56px 0}
-  h2{font-size:clamp(24px,3.4vw,32px); margin:0 0 10px; letter-spacing:-.01em}
-  .sub{color:var(--muted); margin:0 0 30px; max-width:680px}
-
-  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  .card{
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius); padding:22px;
-  }
-  .card h3{margin:0 0 8px; font-size:17px; display:flex; align-items:center; gap:9px}
-  .card p{margin:0; color:var(--muted); font-size:15px}
-  .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); flex:0 0 auto}
-
-  .steps{counter-reset:s; display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-  .step{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px}
-  .step::before{
-    counter-increment:s; content:counter(s);
-    display:inline-grid; place-items:center; width:28px; height:28px; margin-bottom:10px;
-    border-radius:8px; background:rgba(0,229,138,.12); color:var(--accent); font-weight:700; font-size:14px;
-  }
-  .step h3{margin:0 0 6px; font-size:16px}
-  .step p{margin:0; color:var(--muted); font-size:15px}
-  code, pre{font-family:Consolas,"Cascadia Mono",ui-monospace,monospace}
-  pre{
-    background:#0B0F17; border:1px solid var(--border); border-radius:10px;
-    padding:14px 16px; overflow-x:auto; font-size:13.5px; color:#CDE7D8; margin:14px 0 0;
-  }
-
-  .sec{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:26px}
-  .sec ul{margin:0; padding-left:20px; color:var(--muted)}
-  .sec li{margin:9px 0}
-  .sec li b{color:var(--text); font-weight:600}
-
-  footer{border-top:1px solid var(--border); padding:32px 0 46px; color:var(--muted); font-size:14px}
-  .foot{display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between}
-  @media (max-width:640px){ .hero{padding:48px 0 40px} section{padding:42px 0} }
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
-<header>
-  <div class="wrap bar">
-    <a class="lang" href="/en/">English</a>
+<div class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/mark.svg" alt="">NodeRoost</a>
+    <nav>
+      <a class="hide-sm" href="#why">Зачем</a>
+      <a class="hide-sm" href="#cases">Сценарии</a>
+      <a class="hide-sm" href="#ui">Интерфейс</a>
+      <a class="hide-sm" href="#arch">Устройство</a>
+      <a href="#install">Установка</a>
+      <span class="sep hide-sm"></span>
+      <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a>
+      <a class="lang" href="/en/">EN</a>
+    </nav>
   </div>
-</header>
+</div>
 
 <div class="hero">
   <div class="wrap hero-inner">
     <img class="hero-logo" src="/logo.svg" alt="NodeRoost">
-    <h1>Своя панель для <span class="hl">headscale</span></h1>
+    <p class="eyebrow">Open source · BSD-3-Clause · self-hosted</p>
+    <h1>Панель управления headscale</h1>
     <p class="lead">
-      NodeRoost управляет вашим тайлнетом на self-hosted control-сервере: кто с кем
-      соединяется, через какой узел идёт трафик и куда открыт выход в интернет.
-      Без правки HuJSON руками.
+      Свой control-сервер Tailscale — с интерфейсом. Доступы, роли, подсети,
+      маршруты и шлюзы выхода задаются мышью, а не правкой <code>policy.hujson</code>
+      и обходом нод по SSH.
     </p>
     <div class="cta">
       <a class="btn" href="https://github.com/mihsergeev/NodeRoost">Смотреть на GitHub</a>
-      <a class="btn btn-ghost" href="#how">Как это работает</a>
+      <a class="btn btn-ghost" href="#install">Установка</a>
     </div>
-    <p class="note">Open source, BSD-3-Clause. Ставится в Docker рядом с headscale.</p>
+    <div class="chips">
+      <span class="chip">headscale 0.29+</span>
+      <span class="chip">Docker Compose</span>
+      <span class="chip">FastAPI + React</span>
+      <span class="chip">агент для Linux</span>
+      <span class="chip">RU / EN</span>
+    </div>
+  </div>
+
+  <div class="wrap hero-shot">
+    <div class="frame">
+      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
+      <img src="/shots/ru/servers.webp" alt="Список серверов и устройств в NodeRoost" width="1600" height="711">
+    </div>
   </div>
 </div>
 
-<section>
+<section id="why">
   <div class="wrap">
-    <h2>Что она делает</h2>
+    <p class="eyebrow-s">Зачем</p>
+    <h2>headscale даёт сеть. Дальше — руками</h2>
     <p class="sub">
-      headscale умеет управлять тайлнетом, но общается с вами языком политики в
-      HuJSON. NodeRoost переводит это в понятия, которыми вы и так мыслите:
-      серверы, устройства, доступы, маршруты.
+      headscale раздаёт ключи, держит netmap и применяет политику. Управление —
+      это CLI и файл <code>policy.hujson</code>. На пяти нодах терпимо; дальше
+      приходится помнить теги наизусть, не ошибиться в ACL, ходить по SSH на
+      каждую ноду ради одного маршрута и узнавать о падении сервера от
+      пользователя. <b>NodeRoost — слой управления над тем же headscale:</b> он
+      его не заменяет и не проксирует трафик.
     </p>
-    <div class="grid">
-      <div class="card">
-        <h3><span class="dot"></span>Серверы и устройства</h3>
-        <p>Ноды разделены на серверы (куда ходят) и личные устройства. Устройства
-           изолированы друг от друга и никогда не бывают целью правила — это
-           держится в движке политики, а не в интерфейсе.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Задача</th><th>Голый headscale</th><th>С NodeRoost</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Правило доступа</td>
+            <td>правка <code>policy.hujson</code>: синтаксис HuJSON, теги и группы держите в голове</td>
+            <td>«кто → куда → порт», выдаётся мышью сразу нескольким; HuJSON собирается сам, при отказе применения — откат к рабочей версии</td>
+          </tr>
+          <tr>
+            <td>Личные устройства</td>
+            <td>изоляция ровно настолько, насколько вы не ошиблись в ACL</td>
+            <td>устройство не может стать целью правила — ни выбором в списке, ни вписыванием его адреса руками; инвариант держится в движке политики</td>
+          </tr>
+          <tr>
+            <td>Подсеть за нодой</td>
+            <td><code>headscale nodes approve-routes</code> по числовому ID</td>
+            <td>подсети видно на карточке сервера, одобрение в один клик, снятые маршруты панель убирает сама</td>
+          </tr>
+          <tr>
+            <td>Трафик к конкретному адресу</td>
+            <td>вручную: подобрать CIDR, одобрить маршрут, следить за переездом сайта</td>
+            <td>направление «источник → адрес → через ноду»; домен резолвится панелью и маршрут обновляется, если адрес сменился</td>
+          </tr>
+          <tr>
+            <td>Применить маршрут на самой ноде</td>
+            <td>SSH на каждую ноду, <code>tailscale set</code> руками</td>
+            <td>агент применяет то, что задано в панели, и подтверждает хешем применённой конфигурации</td>
+          </tr>
+          <tr>
+            <td>Выход в интернет</td>
+            <td>exit-node доступен всем, кто проходит ACL</td>
+            <td>шлюз + явный список устройств: в клиенте Tailscale пользователь видит только разрешённые ему выходы</td>
+          </tr>
+          <tr>
+            <td>Состояние парка</td>
+            <td><code>headscale nodes list</code> — срез на сейчас</td>
+            <td>история онлайна, алерты в Telegram или вебхук при падении ноды и истечении ключа, хостовый watchdog на случай молчания самой панели</td>
+          </tr>
+          <tr>
+            <td>Подключить машину</td>
+            <td>создать ключ в CLI и продиктовать команду</td>
+            <td>одноразовый ключ и готовая команда под Linux, Windows, macOS, Android; подключение видно в реальном времени</td>
+          </tr>
+          <tr>
+            <td>Бэкап</td>
+            <td>скопировать sqlite-файл и надеяться</td>
+            <td>консистентный снимок базы headscale и настроек панели, самопроверка архива, автобэкап, проверенный сценарий восстановления</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="cases">
+  <div class="wrap">
+    <p class="eyebrow-s">Сценарии</p>
+    <h2>Что на этом строят</h2>
+    <p class="sub">
+      Всё ниже работает без белых IP на клиентах, без проброса портов и без
+      обратных туннелей: узел сам держит соединение с control-сервером.
+    </p>
+
+    <div class="cases">
+      <div class="case">
+        <h3>Две локалки без внешних адресов</h3>
+        <p class="topo">192.168.10.0/24 ─ node-a ══ node-b ─ 192.168.50.0/24</p>
+        <p>Офис и склад видят сети друг друга напрямую. По одной ноде на каждой
+           стороне объявляют свою подсеть, вы одобряете её в панели и правилами
+           задаёте, кто с какой стороны куда ходит. Статический адрес у
+           провайдера не нужен ни одной из сторон.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Доступы, а не ACL-файл</h3>
-        <p>Правило — это «кто → куда → по какому порту». Выдаётся мышью, в том
-           числе сразу нескольким. Итоговый HuJSON панель собирает сама.</p>
+
+      <div class="case">
+        <h3>Рабочая машина за чужим NAT</h3>
+        <p class="topo">ноутбук ══ work-pc : 3389</p>
+        <p>Серый IP, корпоративный роутер, доступа к пробросу портов нет.
+           TeamViewer и обратный туннель не нужны: ставите ноду на машину и
+           выдаёте доступ ровно своему устройству и ровно на нужный порт.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Роли</h3>
-        <p>Роль — группа серверов (тег headscale). Доступ выдаётся на роль: добавили
-           сервер в роль — правила менять не нужно.</p>
+
+      <div class="case">
+        <h3>Внутренние сервисы без публикации портов</h3>
+        <p class="topo">postgres · kube-apiserver · ipmi · web-админки</p>
+        <p>База, панель гипервизора, API кластера остаются на адресах тайлнета.
+           Наружу не открыт ни один порт, отдельный бастион не нужен, правило
+           ограничено портом, а не «весь сервер целиком».</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Маршрутизация</h3>
-        <p>Направления «кто ходит на этот адрес через эту ноду». Домен панель
-           резолвит сама и обновляет маршрут, если сайт переехал.</p>
+
+      <div class="case">
+        <h3>Подрядчику — узко и снимаемо</h3>
+        <p class="topo">подрядчик → роль prod-db → 5432</p>
+        <p>Доступ выдаётся на роль, а не на конкретную машину: добавили сервер в
+           роль — он появился у всех, кому роль разрешена. Убрали устройство —
+           доступ исчез везде сразу, править правила не нужно.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Выход в интернет через шлюзы</h3>
-        <p>Пометьте сервер шлюзом и укажите, каким устройствам он разрешён.
-           В трее Tailscale пользователь увидит только разрешённые ему выходы —
-           выбор за ним, набор за вами.</p>
+
+      <div class="case">
+        <h3>Выход в интернет через выбранный узел</h3>
+        <p class="topo">устройство → gw-de → интернет</p>
+        <p>Помечаете сервер шлюзом и указываете, каким устройствам он разрешён.
+           Пользователь переключается сам в клиенте Tailscale, но видит там
+           только те выходы, которые вы ему дали.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Агент на ноде</h3>
-        <p>Маршруты и exit задаются в панели, нода применяет их сама: у headscale
-           нет канала «панель → нода», поэтому он сделан отдельно.</p>
+
+      <div class="case">
+        <h3>Весь трафик сервера через другой сервер</h3>
+        <p class="topo">app-01 ══ gw-nl → интернет + вход по своему белому IP</p>
+        <p>Временно увести исходящий трафик машины в другую страну или через
+           доверенный узел — одной кнопкой. Входящие соединения по внешнему
+           адресу при этом продолжают работать: панель настраивает маркировку
+           соединений и отдельное правило маршрутизации, так что ни SSH, ни 443
+           не отваливаются.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Бэкапы и восстановление</h3>
-        <p>Консистентный снимок базы headscale и настроек панели, самопроверка
-           архива, автобэкап и проверенный сценарий восстановления.</p>
+
+      <div class="case">
+        <h3>Сервис, который пускает с одного адреса</h3>
+        <p class="topo">ноутбук → api.example через edge-1</p>
+        <p>Партнёрский API, платёжный шлюз или админка с белым списком IP.
+           Задаёте направление — трафик к этому адресу идёт через нужный узел и
+           выходит с его адресом. Остальной трафик не трогается.</p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>Мониторинг и алерты</h3>
-        <p>История онлайна, алерты в Telegram или вебхук при падении сервера и
-           истечении ключа. Плюс независимый хостовый watchdog на случай, если
-           замолчит сама панель.</p>
+
+      <div class="case">
+        <h3>Вместо раздачи VPN-конфигов</h3>
+        <p class="topo">ключ → одна команда → нода в списке</p>
+        <p>Ни <code>.ovpn</code>, ни <code>.conf</code> по почте. Одноразовый
+           ключ с ограниченным сроком и готовая команда под нужную ОС; отзыв
+           доступа — снятие устройства, а не перевыпуск конфигов всем.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section id="how">
+<section id="ui">
   <div class="wrap">
-    <h2>Как это работает</h2>
-    <p class="sub">Панель ходит в headscale по внутренней сети; наружу торчит только
-       узловой контур control-сервера.</p>
-    <div class="steps">
-      <div class="step">
-        <h3>Поднимаете</h3>
-        <p>Docker Compose: headscale, панель и Postgres. Обратный прокси выдаёт
-           TLS и держит панель за списком доверенных адресов.</p>
-      </div>
-      <div class="step">
-        <h3>Подключаете ноды</h3>
-        <p>Панель выдаёт одноразовый ключ и готовую команду под нужную ОС —
-           Linux, Windows, macOS, Android.</p>
-      </div>
-      <div class="step">
-        <h3>Раздаёте доступ</h3>
-        <p>Отмечаете, кто куда ходит. Политика пересобирается и уезжает в
-           headscale сама, при отказе — откатывается.</p>
+    <p class="eyebrow-s">Интерфейс</p>
+    <h2>Как это выглядит</h2>
+    <p class="sub">Четыре экрана, на которых происходит почти всё.</p>
+
+    <div class="shots">
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span></div>
+          <img src="/shots/ru/node.webp" alt="Карточка сервера" loading="lazy" width="1600" height="865">
+        </div>
+        <figcaption><b>Карточка сервера.</b> Роли, объявленные подсети, режим
+          шлюза выхода и список устройств, которым он разрешён, состояние агента.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span></div>
+          <img src="/shots/ru/access.webp" alt="Раздел доступов" loading="lazy" width="1600" height="584">
+        </div>
+        <figcaption><b>Доступы.</b> Правило — «кто → куда → по какому порту».
+          Выдаётся сразу нескольким источникам; итоговый HuJSON собирает панель.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span></div>
+          <img src="/shots/ru/routing.webp" alt="Раздел маршрутизации" loading="lazy" width="1600" height="860">
+        </div>
+        <figcaption><b>Маршрутизация.</b> Направления «источник → адрес → через
+          какую ноду», с резолвом домена и автообновлением маршрута.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span></div>
+          <img src="/shots/ru/servers.webp" alt="Список серверов" loading="lazy" width="1600" height="711">
+        </div>
+        <figcaption><b>Серверы и устройства.</b> Онлайн, адреса, роли, маршруты
+          и срок ключа — одним экраном, без переключения контекста.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="arch">
+  <div class="wrap">
+    <p class="eyebrow-s">Устройство</p>
+    <h2>Панель управляет, но не стоит в тракте данных</h2>
+    <p class="sub">
+      Управляющий API headscale не выставлен наружу вообще: панель ходит в него
+      по внутренней сети Docker. Наружу публикуется только узловой контур
+      control-сервера — то, что нужно самим клиентам Tailscale.
+    </p>
+
+    <div class="arch">
+      <svg viewBox="0 0 980 336" role="img" aria-label="Схема: браузер через прокси в панель, панель по внутренней сети в headscale, ноды подключаются к публичному контуру; трафик между нодами идёт напрямую">
+        <defs>
+          <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+            <path d="M0 0 L9 4.5 L0 9 z" fill="#3C4658"/>
+          </marker>
+        </defs>
+        <text x="0" y="16" fill="#6B778C" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.6">CONTROL PLANE</text>
+        <line x1="122" y1="11" x2="980" y2="11" stroke="#1B212C"/>
+
+        <g font-family="system-ui,sans-serif">
+          <rect x="0" y="40" width="150" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="75" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Браузер</text>
+          <text x="75" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">администратор</text>
+
+          <rect x="204" y="40" width="176" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="292" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Обратный прокси</text>
+          <text x="292" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">TLS · доверенные адреса</text>
+
+          <rect x="434" y="40" width="150" height="58" rx="10" fill="#101A16" stroke="#00E58A"/>
+          <text x="509" y="66" fill="#00E58A" font-size="13.5" text-anchor="middle">NodeRoost</text>
+          <text x="509" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">панель + Postgres</text>
+
+          <rect x="638" y="40" width="150" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="713" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">headscale</text>
+          <text x="713" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">control-сервер</text>
+
+          <rect x="842" y="40" width="138" height="58" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="911" y="66" fill="#EEF2F7" font-size="13.5" text-anchor="middle">Ноды</text>
+          <text x="911" y="84" fill="#6B778C" font-size="11.5" text-anchor="middle">клиенты Tailscale</text>
+
+          <line x1="150" y1="69" x2="196" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+          <line x1="380" y1="69" x2="426" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+          <line x1="584" y1="69" x2="630" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+          <line x1="788" y1="69" x2="834" y2="69" stroke="#3C4658" marker-end="url(#a)"/>
+
+          <text x="600" y="118" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">внутренняя сеть · /api/v1 закрыт</text>
+          <text x="815" y="118" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">публично · регистрация, netmap</text>
+
+          <path d="M911 100 L911 148 Q911 156 903 156 L478 156 Q470 156 470 148 L470 108" fill="none" stroke="#2C3444" stroke-dasharray="4 4" marker-end="url(#a)"/>
+          <text x="690" y="176" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">агент: конфигурация по токену</text>
+
+          <text x="0" y="222" fill="#6B778C" font-family="ui-monospace,monospace" font-size="11" letter-spacing="1.6">DATA PLANE</text>
+          <line x1="104" y1="217" x2="980" y2="217" stroke="#1B212C"/>
+
+          <rect x="228" y="246" width="176" height="52" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="316" y="277" fill="#EEF2F7" font-size="13.5" text-anchor="middle">нода A</text>
+
+          <rect x="576" y="246" width="176" height="52" rx="10" fill="#161B26" stroke="#232A38"/>
+          <text x="664" y="277" fill="#EEF2F7" font-size="13.5" text-anchor="middle">нода B</text>
+
+          <line x1="404" y1="272" x2="576" y2="272" stroke="#00E58A" stroke-width="2"/>
+          <text x="490" y="262" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">WireGuard, напрямую</text>
+          <text x="490" y="320" fill="#6B778C" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">DERP только как запасной путь</text>
+        </g>
+      </svg>
+    </div>
+
+    <ul class="facts">
+      <li><b>Панель не видит пользовательский трафик.</b> Она раздаёт политику и
+        конфигурацию; пакеты идут между узлами напрямую по WireGuard.</li>
+      <li><b>Агент — отдельный канал.</b> У headscale нет пути «панель → нода»,
+        поэтому маршруты и режим выхода нода забирает сама по токену и
+        применяет локально, подтверждая хешем.</li>
+      <li><b>Политика собирается целиком.</b> Правила, роли, шлюзы и направления
+        превращаются в один HuJSON; он проверяется, применяется и откатывается
+        к предыдущей рабочей версии, если headscale его не принял.</li>
+      <li><b>Своя база — только для панели.</b> Состояние тайлнета остаётся в
+        headscale, панель не дублирует его у себя.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <p class="eyebrow-s">Установка</p>
+    <h2>Docker Compose рядом с headscale</h2>
+    <p class="sub">Панель, Postgres и сам headscale поднимаются одним файлом.
+      Обратный прокси выдаёт TLS и держит панель за списком доверенных адресов.</p>
+
+    <div class="two">
+      <pre><span class="c"># 1. забрать репозиторий</span>
+git clone https://github.com/mihsergeev/NodeRoost.git
+cd NodeRoost
+
+<span class="c"># 2. домены, секреты, список доверенных адресов</span>
+cp .env.example .env && <span class="p">$EDITOR</span> .env
+
+<span class="c"># 3. поднять</span>
+docker compose up -d
+
+<span class="c"># 4. подключить ноду — команду выдаёт панель</span>
+curl -fsSL https://control.example.com/agent/&lt;токен&gt;/setup | sh</pre>
+
+      <div class="side">
+        <h3>Что понадобится</h3>
+        <dl>
+          <dt>headscale</dt><dd>0.29+, режим политики <code>database</code></dd>
+          <dt>хост</dt><dd>Docker с Compose, 1 vCPU / 1 ГБ</dd>
+          <dt>домены</dt><dd>один для панели, один для control-сервера</dd>
+          <dt>прокси</dt><dd>любой с TLS; в комплекте пример для caddy-docker-proxy</dd>
+          <dt>образы</dt><dd><code>ghcr.io/mihsergeev/noderoost-backend</code> и <code>-frontend</code></dd>
+        </dl>
       </div>
     </div>
-    <pre>curl -fsSL https://ваш-control-сервер/agent/&lt;токен&gt;/setup | sh</pre>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>Про безопасность честно</h2>
-    <p class="sub">Панель управляет VPN-сетью, поэтому инварианты держатся в коде, а
-       не в интерфейсе — правило может прийти и через API.</p>
-    <div class="sec">
-      <ul>
-        <li><b>Устройства не видят друг друга.</b> Устройство не может стать целью
-            правила ни выбором в списке, ни вписыванием его адреса руками.</li>
-        <li><b>Нода не повышает себе права.</b> Класс ноды и её теги определяет
-            только то, что подтвердил администратор.</li>
-        <li><b>Вход:</b> JWT и TOTP, ограничение попыток, журнал действий; панель не
-            стартует со слабым секретом или дефолтным паролем.</li>
-        <li><b>Каждый релиз</b> собирается из зафиксированных зависимостей с
-            проверкой хешей, базовые образы прибиты по дайджестам.</li>
-      </ul>
-    </div>
+    <p class="eyebrow-s">Безопасность</p>
+    <h2>Инварианты — в коде, не в интерфейсе</h2>
+    <p class="sub">Панель управляет VPN-сетью, и правило может прийти не только
+      мышью, но и запросом в API. Поэтому проверки стоят в движке политики.</p>
+    <ul class="facts">
+      <li><b>Устройство не становится целью.</b> Ни выбором в списке, ни
+        подставленным адресом в запросе.</li>
+      <li><b>Нода не повышает себе права.</b> Класс ноды и её теги определяет
+        только то, что подтвердил администратор, а не то, что нода о себе
+        объявила.</li>
+      <li><b>Вход.</b> JWT и TOTP, ограничение попыток, журнал действий; панель
+        не стартует со слабым секретом или дефолтным паролем.</li>
+      <li><b>Сборка.</b> Зависимости зафиксированы с проверкой хешей, базовые
+        образы прибиты по дайджестам, на каждый коммит гоняются тесты и аудит
+        зависимостей.</li>
+    </ul>
   </div>
 </section>
 
 <footer>
   <div class="wrap foot">
-    <div>NodeRoost — лицензия BSD-3-Clause</div>
+    <div>NodeRoost — BSD-3-Clause</div>
     <div>
       <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a> ·
-      <a href="https://github.com/juanfont/headscale">headscale</a>
+      <a href="https://github.com/juanfont/headscale">headscale</a> ·
+      <a href="/en/">English</a>
     </div>
   </div>
 </footer>
