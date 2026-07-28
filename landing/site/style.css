@@ -150,11 +150,7 @@ code{font-family:var(--mono); font-size:.92em; color:#BFD8CC}
   border-radius:var(--radius); padding:22px; position:relative;
 }
 .case h3{margin:0 0 12px; font-size:16.5px; letter-spacing:-.01em}
-.case .topo{
-  font:500 12.5px/1.7 var(--mono); color:var(--accent);
-  background:var(--accent-soft); border:1px solid rgba(0,229,138,.16);
-  border-radius:9px; padding:9px 12px; margin:0 0 13px; word-break:break-word;
-}
+.case .dia{display:block; width:100%; max-width:340px; height:auto; margin:0 0 15px}
 .case p{margin:0; color:var(--muted); font-size:14.5px}
 
 /* ── серверы против устройств ────────────────────────── */
