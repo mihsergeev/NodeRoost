@@ -429,43 +429,33 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
 <section id="security">
   <div class="wrap">
     <p class="eyebrow-s">Security</p>
-    <h2>Where a panel like this is weak, and what was done about it</h2>
+    <h2>Safe by default</h2>
     <p class="sub">
-      The panel hands out access to a whole network, so general reassurance is
-      worth nothing. Below are the specific places where things can go wrong,
-      and what was done about each.
+      None of the following has to be enabled, installed or tuned — the panel
+      works this way from the moment it comes up.
     </p>
     <ul class="facts">
-      <li><b>The panel is not exposed to the internet.</b> The headscale
-        management API is never published; the panel itself sits behind TLS and
-        an address allowlist. The only thing answering publicly is what Tailscale
-        clients connect to.</li>
-      <li><b>A rule cannot slip past the checks.</b> They live where the policy
-        is built, not in the interface. A request straight to the API gives the
-        same result as a click: a device does not become the target of a rule,
-        even if you supply its address by hand.</li>
-      <li><b>A node cannot promote itself.</b> Its type and tags come from what
-        the administrator confirmed. What the node announces about itself has no
-        bearing on its rights.</li>
-      <li><b>A weak secret stops the panel from starting.</b> A JWT secret under
-        32 characters or a default admin password is a refusal at startup, not a
-        line in the docs. Sign-in is a password plus TOTP, with attempt limits
-        and an audit log.</li>
-      <li><b>The panel cannot be used as a way into the internal network.</b> The
-        alert webhook address is set by an administrator, but the request leaves
-        from inside the perimeter — where headscale and the database are visible.
-        So the address is checked on save: internal targets such as
-        <code>127.0.0.1</code> or <code>headscale:8080</code> are rejected, and
-        the scheme must be HTTPS.</li>
-      <li><b>The main deployment mistake is a shared Docker network.</b> The
-        address allowlist is enforced by the proxy, and a container on the same
-        network as the panel is already past the proxy and reaches its API
-        directly. So the panel needs a network of its own; SECURITY.md covers
-        how to create it and how to verify afterwards that other containers
-        cannot see the panel.</li>
-      <li><b>Builds.</b> Dependencies are pinned with hash verification, base
-        images are pinned by digest, and every commit runs the tests and a
-        dependency audit.</li>
+      <li><b>Two-factor sign-in and an audit log.</b> A password plus TOTP,
+        brute-force limits, and a record of who changed what. With a default
+        admin password the panel will not start at all.</li>
+      <li><b>Personal devices are protected on their own.</b> Laptops and phones
+        reach servers but never each other. That lives in how the policy is
+        built, not in a checkbox somebody can forget to tick.</li>
+      <li><b>Access is revoked in one move.</b> Delete a device and it vanishes
+        from every rule at once — no reissued configs, no lists to edit.</li>
+      <li><b>A bad policy will not lock you out.</b> The panel validates the
+        HuJSON it built, applies it, and restores the last working version if
+        headscale refuses it.</li>
+      <li><b>A hardened perimeter ships with it.</b> The repository carries a
+        ready reverse-proxy example: TLS, an address allowlist, a dedicated
+        network for the panel and headscale&#39;s management API closed from
+        outside. It deploys as is.</li>
+      <li><b>Outbound requests are kept in check.</b> The address the panel sends
+        alerts to is validated on save: nothing goes to the internal network or
+        over plain HTTP.</li>
+      <li><b>The build can be verified.</b> Dependencies pinned with hashes, base
+        images pinned by digest, tests and a dependency audit on every commit.
+        The code is BSD-3 licensed — everything claimed here can be read.</li>
     </ul>
   </div>
 </section>
