@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # Ставим ровно то, что уходит в образ: расхождение между тем, что проверено
+      # тестами, и тем, что выкатывается, — самая скучная причина сломанного релиза.
+      - run: pip install --require-hashes -r backend/requirements.lock
+      - run: pip install --no-deps -e backend
+      - run: pip install pytest pytest-asyncio aiosqlite
+      - run: pytest -q
+        working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # tsc здесь важнее сборки: Vite молча пропускает мёртвые импорты, а падение
+      # типов ловит их до деплоя
+      - run: npm run build
+        working-directory: frontend
+      - name: i18n — дубли ключей и непереведённые строки
+        run: npm run check-i18n
+        working-directory: frontend
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install pip-audit
+      - name: Известные уязвимости в зависимостях бэкенда
+        run: pip-audit -r backend/requirements.lock --disable-pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+      - name: Известные уязвимости в зависимостях фронта
+        working-directory: frontend
+        run: npm audit --audit-level=high
