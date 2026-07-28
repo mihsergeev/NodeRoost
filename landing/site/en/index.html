@@ -143,78 +143,112 @@
     <p class="eyebrow-s">Use cases</p>
     <h2>What people build with it</h2>
     <p class="sub">
-      Everything below works without public IPs on the clients, without port
-      forwarding and without reverse tunnels: the node keeps the connection to
-      the control server itself.
+      None of this needs a public IP on the client, a port forward on the router
+      or a reverse tunnel — the node keeps the connection to the control server
+      itself.
     </p>
 
     <div class="cases">
       <div class="case">
-        <h3>Two LANs with no public addresses</h3>
+        <h3>Two LANs, no public addresses</h3>
         <p class="topo">192.168.10.0/24 ─ node-a ══ node-b ─ 192.168.50.0/24</p>
-        <p>An office and a warehouse reach each other's networks directly. One
-           node per site advertises its subnet, you approve it in the panel and
-           rules decide who may cross. Neither side needs a static address from
-           its ISP.</p>
+        <p>The office and the warehouse start seeing each other&#39;s networks. Put
+           one node on each side, it advertises its subnet, you approve it —
+           then rules decide who may cross. Neither side needs a static address
+           from its ISP.</p>
       </div>
 
       <div class="case">
-        <h3>A workstation behind someone else's NAT</h3>
+        <h3>A work machine behind someone else&#39;s NAT</h3>
         <p class="topo">laptop ══ work-pc : 3389</p>
-        <p>Carrier-grade NAT, a router you don't control, no way to forward a
-           port. No TeamViewer and no reverse tunnel: install a node on the
-           machine and grant access to exactly your device, on exactly one port.</p>
+        <p>Carrier-grade NAT, a router you don&#39;t own, nobody to ask for a port
+           forward. Put a node on that machine and it shows up on the network.
+           You open access to your laptop only, on one port only — no
+           TeamViewer, no reverse tunnel.</p>
       </div>
 
       <div class="case">
-        <h3>Internal services with no exposed ports</h3>
+        <h3>Admin panels and databases with no open ports</h3>
         <p class="topo">postgres · kube-apiserver · ipmi · admin UIs</p>
-        <p>The database, the hypervisor console and the cluster API stay on
-           tailnet addresses. Nothing is published to the internet, no separate
-           bastion is needed, and the rule is scoped to a port rather than to
-           the whole host.</p>
+        <p>The database, the IPMI board, the cluster API and the router&#39;s web UI
+           live on tailnet addresses. Nothing is published, no bastion host
+           needed, and you grant a port rather than the whole machine.</p>
       </div>
 
       <div class="case">
-        <h3>Contractor access — narrow and revocable</h3>
+        <h3>A contractor gets exactly what they need</h3>
         <p class="topo">contractor → role prod-db → 5432</p>
-        <p>Access is granted to a role, not to one machine: add a server to the
-           role and everyone holding that role gets it. Remove the device and
-           the access disappears everywhere at once — no rule editing.</p>
+        <p>You grant a role, not a machine. Add another server to that role and
+           the contractor picks it up automatically. The job ends — you delete
+           their device and the access is gone everywhere at once.</p>
       </div>
 
       <div class="case">
-        <h3>Internet egress through a chosen node</h3>
+        <h3>Internet through the node you pick</h3>
         <p class="topo">device → gw-de → internet</p>
-        <p>Mark a server as a gateway and list the devices allowed to use it.
-           The user switches it on themselves in the Tailscale client, but only
-           ever sees the exits you granted.</p>
+        <p>Mark a server as a gateway and say who may use it. People switch it
+           on themselves in Tailscale, but the list they see contains only what
+           you allowed.</p>
       </div>
 
       <div class="case">
-        <h3>All of a server's traffic through another server</h3>
+        <h3>A server&#39;s whole traffic through another server</h3>
         <p class="topo">app-01 ══ gw-nl → internet + inbound on its own IP</p>
-        <p>Temporarily move a machine's outbound traffic to another country or
-           through a trusted node — one switch. Inbound connections on its
-           public address keep working: the panel sets up connection marking and
-           a dedicated routing rule, so neither SSH nor 443 drops.</p>
+        <p>Sometimes you need a machine&#39;s outbound traffic to leave from another
+           country for a while. It is one switch, and the server does not
+           disappear: SSH and the site on its public address keep working. The
+           panel makes sure replies leave the way the request came in.</p>
       </div>
 
       <div class="case">
-        <h3>A service that only allows one address</h3>
+        <h3>A service that allows one address only</h3>
         <p class="topo">laptop → api.example via edge-1</p>
-        <p>A partner API, a payment gateway or an admin panel with an IP
-           allowlist. Declare the direction and traffic to that destination goes
-           through the chosen node and leaves with its address. Nothing else is
-           affected.</p>
+        <p>A partner API, a payment gateway, an admin panel with an IP
+           allowlist. You say: reach this address through that server — and the
+           requests arrive from its address. Everything else goes as before.</p>
       </div>
 
       <div class="case">
-        <h3>Instead of handing out VPN configs</h3>
+        <h3>Home NAS, cameras, Home Assistant</h3>
+        <p class="topo">phone ══ nas · camera · homeassistant</p>
+        <p>No public IP, no dynamic DNS, no port forwarding on the router. Put a
+           node on the home server and reach it from your phone anywhere exactly
+           as you would from the sofa.</p>
+      </div>
+
+      <div class="case">
+        <h3>Server to server</h3>
+        <p class="topo">ci-runner → db-fra-1 : 5432</p>
+        <p>The runner writes to the database, the backup job ships to storage,
+           the app talks to the next data centre. This used to be an IP
+           allowlist on a firewall that broke on every migration. Now it is one
+           rule in the panel.</p>
+      </div>
+
+      <div class="case">
+        <h3>Not everything goes into the tunnel</h3>
+        <p class="topo">work addresses → via the network · the rest → direct</p>
+        <p>A normal VPN swallows all your traffic. Here the laptop reaches the
+           internet directly and fast, and only what you listed goes through the
+           network: office subnets, specific services, individual addresses.</p>
+      </div>
+
+      <div class="case">
+        <h3>The ISP changed — nothing broke</h3>
+        <p class="topo">100.64.0.7 — the address stays</p>
+        <p>You moved to another data centre, the provider handed out a new
+           address, the machine went from the office to someone&#39;s home. On the
+           tailnet it keeps its address and its name, so rules, scripts and
+           bookmarks need no editing.</p>
+      </div>
+
+      <div class="case">
+        <h3>Instead of mailing out VPN configs</h3>
         <p class="topo">key → one command → node in the list</p>
-        <p>No <code>.ovpn</code> or <code>.conf</code> files over email. A
-           single-use key with an expiry and a ready command for the right OS;
-           revoking means removing a device, not reissuing configs for everyone.</p>
+        <p>No <code>.ovpn</code> attachments. A person gets a single-use key and
+           one command for their OS — a minute later they are on the network.
+           Revoking means deleting a device, not reissuing configs for
+           everyone else.</p>
       </div>
     </div>
   </div>
