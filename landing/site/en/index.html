@@ -426,22 +426,46 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
   </div>
 </section>
 
-<section>
+<section id="security">
   <div class="wrap">
     <p class="eyebrow-s">Security</p>
-    <h2>Invariants live in the code, not in the UI</h2>
-    <p class="sub">The panel runs a VPN, and a rule can arrive from an API call
-      as easily as from a click. So the checks sit in the policy engine.</p>
+    <h2>Where a panel like this is weak, and what was done about it</h2>
+    <p class="sub">
+      The panel hands out access to a whole network, so general reassurance is
+      worth nothing. Below are the specific places where things can go wrong,
+      and what was done about each.
+    </p>
     <ul class="facts">
-      <li><b>A device never becomes a target.</b> Not by selection, not by an
-        address supplied in a request.</li>
-      <li><b>A node cannot promote itself.</b> Its class and tags come from what
-        the administrator confirmed, not from what the node announced about
-        itself.</li>
-      <li><b>Sign-in.</b> JWT and TOTP, attempt limits, an audit log; the panel
-        refuses to start with a weak secret or a default password.</li>
-      <li><b>Builds.</b> Dependencies pinned with hash verification, base images
-        pinned by digest, tests and a dependency audit on every commit.</li>
+      <li><b>The panel is not exposed to the internet.</b> The headscale
+        management API is never published; the panel itself sits behind TLS and
+        an address allowlist. The only thing answering publicly is what Tailscale
+        clients connect to.</li>
+      <li><b>A rule cannot slip past the checks.</b> They live where the policy
+        is built, not in the interface. A request straight to the API gives the
+        same result as a click: a device does not become the target of a rule,
+        even if you supply its address by hand.</li>
+      <li><b>A node cannot promote itself.</b> Its type and tags come from what
+        the administrator confirmed. What the node announces about itself has no
+        bearing on its rights.</li>
+      <li><b>A weak secret stops the panel from starting.</b> A JWT secret under
+        32 characters or a default admin password is a refusal at startup, not a
+        line in the docs. Sign-in is a password plus TOTP, with attempt limits
+        and an audit log.</li>
+      <li><b>The panel cannot be used as a way into the internal network.</b> The
+        alert webhook address is set by an administrator, but the request leaves
+        from inside the perimeter — where headscale and the database are visible.
+        So the address is checked on save: internal targets such as
+        <code>127.0.0.1</code> or <code>headscale:8080</code> are rejected, and
+        the scheme must be HTTPS.</li>
+      <li><b>The main deployment mistake is a shared Docker network.</b> The
+        address allowlist is enforced by the proxy, and a container on the same
+        network as the panel is already past the proxy and reaches its API
+        directly. So the panel needs a network of its own; SECURITY.md covers
+        how to create it and how to verify afterwards that other containers
+        cannot see the panel.</li>
+      <li><b>Builds.</b> Dependencies are pinned with hash verification, base
+        images are pinned by digest, and every commit runs the tests and a
+        dependency audit.</li>
     </ul>
   </div>
 </section>
