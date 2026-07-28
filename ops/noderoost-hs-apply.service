@@ -1,0 +1,10 @@
+# systemd oneshot: применяет изменения config.yaml headscale (перезапуск).
+# Триггерится noderoost-hs-apply.path при появлении флага-запроса от панели.
+[Unit]
+Description=NodeRoost: apply headscale config (restart container)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/lib65/noderoost/hs-apply.sh

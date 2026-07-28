@@ -1,0 +1,76 @@
+# Override для деплоя за caddy-docker-proxy (edge-TLS + IP-вайтлист).
+# Требует внешнюю docker-сеть "caddy", которую слушает запущенный
+# caddy-docker-proxy.
+#
+#   docker compose -f compose.yml -f compose.caddy.yml up -d --build
+#
+# или COMPOSE_FILE=compose.yml:compose.caddy.yml в .env.
+#
+# Два хоста:
+#   1) NODEROOST_DOMAIN  — ПАНЕЛЬ, доступна только с IP из NODEROOST_ALLOW_IPS.
+#   2) NODEROOST_HS_DOMAIN — ПУБЛИЧНЫЙ control-сервер headscale (ноды коннектятся
+#      отовсюду); управляющий /api/v1 и /swagger режем на Caddy (404), наружу
+#      остаётся только узловой контур. Панель ходит в /api/v1 по внутренней сети.
+services:
+  frontend:
+    # caddy проксирует по внутренней сети — host-порт не нужен (снимаем из base)
+    ports: !reset []
+    networks:
+      internal:
+      caddy:
+        # уникальный alias (не "frontend"!) — на общей caddy-сети имя frontend
+        # может конфликтовать с фронтами других панелей; сюда шлём /pkgs с hs-домена
+        aliases:
+          - noderoost-frontend
+    labels:
+      # Второй хост (ALIASES) — для БЕСШОВНОЙ смены домена: старое имя продолжает
+      # обслуживаться, пока не переведены все ссылки/закладки. Пусто = один хост.
+      caddy: ${NODEROOST_DOMAIN} ${NODEROOST_DOMAIN_ALIASES:-}
+      # Запрет всем, кого НЕТ в NODEROOST_ALLOW_IPS.
+      # FAIL-CLOSED: если переменная пуста/забыта, подставляется 127.0.0.1 — тогда
+      # "не из 127.0.0.1" истинно для всех, и панель закрыта для всех. Раньше тут
+      # был fail-open (0.0.0.0/0 ::/0 = никто не отклонён), и пустая переменная
+      # МОЛЧА выставляла админ-панель в интернет.
+      caddy.@denied.not.remote_ip: ${NODEROOST_ALLOW_IPS:-127.0.0.1}
+      caddy.abort: "@denied"
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  headscale:
+    networks:
+      - internal
+      - caddy
+    labels:
+      # ALIASES — старые имена control-сервера на время миграции. КРИТИЧНО: у ноды
+      # адрес control-сервера зашит в её состоянии, а URL агента — в
+      # /lib65/noderoost-agent/apply.sh. Погасив старое имя раньше, чем нода
+      # переведена, вы отрежете её от управления (агент при этом молчит: он
+      # выходит с кодом 0, если панель недоступна). Держите оба имени, пока все
+      # ноды не переехали.
+      caddy: ${NODEROOST_HS_DOMAIN} ${NODEROOST_HS_DOMAIN_ALIASES:-}
+      # Взаимоисключающие handle-блока (работают одинаково на c-d-p 2.8/2.12/
+      # 2.13, в отличие от суффиксных not_N матчеров):
+      #  0) /api/v1/*  — управляющий API: наружу 404 (доступен только по внутр. сети)
+      #  1) /swagger*  — swagger-доки API: наружу 404
+      #  2) /pkgs/*    — локальный мирор бинарей Tailscale: раздаёт фронт (nginx),
+      #     ноды в закрытом меше видят только hs-домен, поэтому качают клиент отсюда.
+      #  3) /agent/*    — желаемое состояние ноды (какие маршруты анонсировать);
+      #     агент на ноде тянет его по токену и применяет сам.
+      #  4) всё остальное (узловой контур: /ts2021, /machine, /key, /derp,
+      #     /register, /health, регистрация) — публично проксируется в headscale.
+      # без слеша: «/api/v1/*» не покрывал сам путь «/api/v1» — headscale отвечал
+      # на него 401 вместо 404, то есть управляющий контур отзывался наружу
+      caddy.handle_0: /api/v1*
+      caddy.handle_0.respond: "404"
+      caddy.handle_1: /swagger*
+      caddy.handle_1.respond: "404"
+      caddy.handle_2: /pkgs/*
+      caddy.handle_2.reverse_proxy: noderoost-frontend:80
+      caddy.handle_3: /agent/*
+      caddy.handle_3.reverse_proxy: noderoost-frontend:80
+      caddy.handle_4.reverse_proxy: "{{upstreams 8080}}"
+
+networks:
+  caddy:
+    external: true
+    # Имя существующей сети caddy-docker-proxy (переопределить в .env, если не "caddy")
+    name: ${NODEROOST_CADDY_NETWORK:-caddy}

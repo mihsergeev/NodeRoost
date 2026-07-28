@@ -1,0 +1,38 @@
+# Заглушка на апексе noderoost.ru, пока настоящего сайта нет.
+#
+# ОТДЕЛЬНЫЙ стек, а не сервис в compose.yml панели: control-сервер и панель не
+# должны зависеть от лендинга, а лендинг — переживать их пересборку. Разворачивать
+# в /app/landing, сеть caddy та же, что у остальных.
+#
+#   sudo docker compose -f /app/landing/compose.yml up -d
+#
+# DNS: апекс идёт через Cloudflare-прокси (оранжевое облако) — и это работает.
+# Проверено вживую: CF пропускает ACME-проверку HTTP-01 до origin, Caddy выпустил
+# сертификат. TLS-ALPN при этом бесполезен (TLS терминирует CF), но Caddy сам
+# выбирает http-01. Если однажды серт перестанет продлеваться — первым делом
+# смотреть, не включился ли в CF редирект, съедающий /.well-known/acme-challenge.
+services:
+  landing:
+    image: nginx:alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+    networks:
+      - caddy
+    labels:
+      caddy: noderoost.ru
+      caddy.reverse_proxy: "{{upstreams 80}}"
+      # статика без секретов, но поисковикам заглушка ни к чему
+      caddy.header.X-Robots-Tag: "noindex, nofollow"
+
+networks:
+  caddy:
+    external: true
+    name: caddy

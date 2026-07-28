@@ -1,0 +1,38 @@
+# --- секреты / данные ---
+# ВАЖНО: паттерн без слеша матчит имя файла целиком, поэтому «.env» НЕ закрывает
+# «offsite.env» и т.п. — перечисляем явно. Здесь лежат креды restic-репозитория и
+# пароль его шифрования: утечка = чужой доступ к бэкапам.
+.env
+*.env
+!*.env.example
+data/
+# ключи/сертификаты и архивы бэкапов — никогда в git
+*.key
+*.pem
+*.p12
+*.tar.gz
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# --- node / frontend ---
+node_modules/
+dist/
+*.tsbuildinfo
+
+# --- брендпак (исходный zip и распаковка не идут в git; нужные ассеты уже
+#     скопированы в frontend/) ---
+NodeRoost-brand-pack.zip
+brand-pack-extracted/
+
+# --- прочее ---
+.DS_Store
+*.log
+
+# локальный venv для прогона тестов (не часть проекта)
+.venv-test/

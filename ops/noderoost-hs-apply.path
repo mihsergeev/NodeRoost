@@ -1,0 +1,15 @@
+# systemd path-юнит: следит за флагом «применить config.yaml» от панели и
+# мгновенно запускает noderoost-hs-apply.service (перезапуск headscale).
+# Установка (на хосте, root):
+#   cp ops/hs-apply.sh /lib65/noderoost/ && chmod +x /lib65/noderoost/hs-apply.sh
+#   cp ops/noderoost-hs-apply.{path,service} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now noderoost-hs-apply.path
+[Unit]
+Description=NodeRoost: watch headscale apply-config flag
+
+[Path]
+PathExists=/app/noderoost/data/headscale/.restart-request
+Unit=noderoost-hs-apply.service
+
+[Install]
+WantedBy=multi-user.target

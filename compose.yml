@@ -1,0 +1,140 @@
+# NodeRoost — базовый compose: Postgres (панель) + headscale (control-сервер) +
+# backend (FastAPI) + frontend (nginx SPA). Данные — бинд-маунты под ./data.
+# Публикация/edge-TLS/вайтлист — в compose.caddy.yml (override).
+
+# ротация docker-логов: без max-size json-file-логи растут без предела
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${NODEROOST_PG_SHARED_BUFFERS:-256MB}
+      - -c
+      - effective_cache_size=${NODEROOST_PG_EFFECTIVE_CACHE:-1536MB}
+      - -c
+      - work_mem=${NODEROOST_PG_WORK_MEM:-16MB}
+      - -c
+      - maintenance_work_mem=${NODEROOST_PG_MAINT_MEM:-128MB}
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+    environment:
+      POSTGRES_DB: noderoost
+      POSTGRES_USER: noderoost
+      POSTGRES_PASSWORD: ${NODEROOST_DB_PASSWORD}
+    # PG 18+ хранит данные в подкаталоге версии под /var/lib/postgresql,
+    # поэтому монтируем КОРЕНЬ кластера (не …/data).
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noderoost -d noderoost"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  headscale:
+    # Официальный образ headscale. Тег пиновать в .env (NODEROOST_HEADSCALE_IMAGE);
+    # проверить актуальный стабильный тег при деплое (docker pull).
+    image: ${NODEROOST_HEADSCALE_IMAGE:-headscale/headscale:0.29.2@sha256:d337f1be4a9155b330aa9077bf6c82d24ff0581b8e69390ebc6d7c623bb339ce}
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    command: serve
+    volumes:
+      - ./data/headscale/config:/etc/headscale
+      - ./data/headscale/lib:/var/lib/headscale
+      - ./data/headscale/run:/var/run/headscale
+    networks:
+      - internal
+    # Узловой контур/DERP-relay/управляющий API идут через Caddy (compose.caddy.yml)
+    # по внутренней сети — TCP-порты наружу не публикуем. Исключение — STUN
+    # встроенного DERP: это UDP, Caddy его не проксирует, поэтому публикуем напрямую
+    # (нужен для NAT-traversal закрытого меша; на хосте открыть `ufw route allow 3478/udp`).
+    ports:
+      - "3478:3478/udp"
+
+  backend:
+    image: ghcr.io/mihsergeev/noderoost-backend:${NODEROOST_VERSION:?задайте тег релиза, напр. 0.1.0 — latest молча переносит прод на другую сборку}
+    build: ./backend
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODEROOST_DB_URL: postgresql+asyncpg://noderoost:${NODEROOST_DB_PASSWORD}@db:5432/noderoost
+      NODEROOST_JWT_SECRET: ${NODEROOST_JWT_SECRET}
+      NODEROOST_JWT_TTL_MINUTES: ${NODEROOST_JWT_TTL_MINUTES:-720}
+      NODEROOST_ADMIN_USER: ${NODEROOST_ADMIN_USER}
+      NODEROOST_ADMIN_PASSWORD: ${NODEROOST_ADMIN_PASSWORD}
+      # break-glass: 1 сбрасывает пароль/2FA админа при старте (потом убрать)
+      NODEROOST_ADMIN_PASSWORD_RESET: ${NODEROOST_ADMIN_PASSWORD_RESET:-0}
+      NODEROOST_DATA_DIR: /data
+      NODEROOST_PANEL_IP: ${NODEROOST_PANEL_IP:-}
+      NODEROOST_PANEL_URL: https://${NODEROOST_DOMAIN}
+      # интеграция с headscale по внутренней сети
+      NODEROOST_HEADSCALE_URL: http://headscale:8080
+      NODEROOST_HEADSCALE_API_KEY: ${NODEROOST_HEADSCALE_API_KEY:-}
+      NODEROOST_HEADSCALE_SERVER_URL: https://${NODEROOST_HS_DOMAIN}
+    volumes:
+      - ./data:/data
+      # База нод и приватные ключи headscale нужны бэкенду ТОЛЬКО на чтение: он
+      # берёт оттуда host_info (ОС/версия клиента) и снимает копию для бэкапа.
+      # Восстановление headscale делается с хоста (ops/restore.sh) — у панели
+      # такого доступа нет by design. Так компрометация бэкенда не позволит
+      # подменить базу нод или ключи узла. Проверено: чтение sqlite в режиме WAL
+      # через read-only монтирование работает.
+      - ./data/headscale/lib:/data/headscale/lib:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      headscale:
+        condition: service_started
+    networks:
+      - internal
+    healthcheck:
+      # /api/health отдаёт 503 при мёртвой БД → healthcheck перезапустит backend
+      # (падение headscale health НЕ роняет — это по замыслу)
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    image: ghcr.io/mihsergeev/noderoost-frontend:${NODEROOST_VERSION:?задайте тег релиза, напр. 0.1.0 — latest молча переносит прод на другую сборку}
+    build: ./frontend
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Локальный мирор бинарей Tailscale (бэкенд туда качает) раздаётся под /pkgs;
+    # публично отдаётся через Caddy на hs-домене (см. compose.caddy.yml).
+    volumes:
+      - ./data/tailscale-pkgs:/usr/share/nginx/html/pkgs:ro
+    # Панель на хосте по NODEROOST_BIND (по умолчанию 127.0.0.1:8080).
+    # Впереди должен стоять обратный прокси с HTTPS, либо используйте compose.caddy.yml.
+    ports:
+      - "${NODEROOST_BIND:-127.0.0.1:8080}:80"
+    networks:
+      - internal
+
+networks:
+  internal:

@@ -1,0 +1,88 @@
+# headscale — конфиг control-сервера для NodeRoost.
+# Копируется в ./data/headscale/config/config.yaml при деплое; замените
+# server_url на ваш ПУБЛИЧНЫЙ адрес headscale (тот же, что NODEROOST_HS_DOMAIN).
+#
+# Полный справочник опций: https://headscale.net/stable/ref/configuration/
+
+# Публичный URL, к которому подключаются tailscale-клиенты. Ноды ЗАПОМИНАЮТ его,
+# поэтому фиксируется до первого подключения. Впереди — Caddy (TLS), сюда пишем https.
+server_url: https://hs.example.com
+
+# HTTP-слушатель узлового + управляющего контура (Caddy проксирует на него).
+listen_addr: 0.0.0.0:8080
+# Метрики Prometheus (только внутренняя docker-сеть, наружу не публикуются).
+# только петля внутри контейнера: метрики headscale неаутентифицированы, а
+# контейнер стоит в общей сети с обратным прокси — с 0.0.0.0 их читал бы любой
+# сосед по этой сети (см. SECURITY.md, «Изоляция сети»)
+metrics_listen_addr: 127.0.0.1:9090
+# gRPC для удалённого CLI (не используется — CLI ходит через unix-сокет).
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: false
+
+# Ключ шифрования протокола TS2021 (генерируется автоматически при первом старте).
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+# Диапазоны адресов тайлнета (CGNAT/ULA — стандартные для Tailscale).
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+  allocation: sequential
+
+# DERP-релеи: используем публичную карту Tailscale (свой встроенный DERP выключен).
+derp:
+  # Полностью закрытая инфра: только СВОЙ встроенный DERP, публичный DERP Tailscale
+  # (controlplane.tailscale.com) не используем — ноды не ходят на чужие серверы.
+  server:
+    enabled: true
+    region_id: 999
+    region_code: noderoost
+    region_name: NodeRoost Embedded DERP
+    stun_listen_addr: "0.0.0.0:3478"       # опубликовать в compose (udp) + ufw
+    private_key_path: /var/lib/headscale/derp_server_private.key
+    ipv4: 203.0.113.10                       # ЗАМЕНИТЬ на публичный IP control-сервера
+    automatically_add_embedded_derp_region: true
+  urls: []                                   # публичный DERP-map НЕ тянем
+  paths: []
+  auto_update_enabled: false
+  update_frequency: 24h
+
+disable_check_updates: false
+
+# Эфемерные ноды (0.29+: секция node.ephemeral)
+node:
+  ephemeral:
+    inactivity_timeout: 30m
+
+# База данных самого headscale — его родной SQLite (бинд ./data/headscale/lib).
+# Postgres в этом стеке — только для панели NodeRoost, не для headscale.
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+
+log:
+  level: info
+  format: text
+
+# Политика доступа (ACL). Режим database — политику можно править через API
+# (редактор в панели). При первом старте политики нет (headscale отдаёт «acl
+# policy not found»), панель показывает дефолтный шаблон для инициализации.
+policy:
+  mode: database
+  path: ""
+
+# MagicDNS. base_domain — суффикс имён нод в тайлнете; НЕ должен совпадать с
+# доменом server_url.
+dns:
+  magic_dns: true
+  base_domain: noderoost.internal
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 1.0.0.1
+
+# Unix-сокет для локального CLI внутри контейнера (headscale apikeys/users/...).
+unix_socket: /var/run/headscale/headscale.sock
+unix_socket_permission: "0770"
