@@ -9,6 +9,18 @@ assembles the policy for you.
 
 [Русская версия](README.ru.md) · [noderoost.ru](https://noderoost.ru)
 
+![Servers](docs/screenshots/servers.png)
+
+<table>
+<tr>
+<td width="50%"><a href="docs/screenshots/access.png"><img src="docs/screenshots/access.png" alt="Access"></a><br><sub>Access — who reaches which server, on which port</sub></td>
+<td width="50%"><a href="docs/screenshots/routing.png"><img src="docs/screenshots/routing.png" alt="Routing"></a><br><sub>Routing — who goes where, through which node</sub></td>
+</tr>
+</table>
+
+<sub>Screens are rendered from the panel's own stylesheet with example data; the
+addresses are documentation ranges (RFC 5737), not a live tailnet.</sub>
+
 ---
 
 ## What it does
@@ -24,6 +36,8 @@ generated, pushed, and rolled back if headscale refuses it.
 
 **Roles.** A role is a group of servers (a headscale tag). Grant access to the
 role; adding a server to it later needs no rule changes.
+
+![A node's page](docs/screenshots/node.png)
 
 **Routing.** Directions — *these nodes reach that address through this node*. Give a
 hostname and the panel resolves it, keeps the route in sync when the site moves, and

@@ -9,6 +9,18 @@ NodeRoost переводит это в понятия, которыми вы и 
 
 [English version](README.md) · [noderoost.ru](https://noderoost.ru)
 
+![Серверы](docs/screenshots/ru/servers.png)
+
+<table>
+<tr>
+<td width="50%"><a href="docs/screenshots/ru/access.png"><img src="docs/screenshots/ru/access.png" alt="Доступы"></a><br><sub>Доступы — кто до какого сервера и по какому порту</sub></td>
+<td width="50%"><a href="docs/screenshots/ru/routing.png"><img src="docs/screenshots/ru/routing.png" alt="Маршрутизация"></a><br><sub>Маршрутизация — кто куда ходит и через какую ноду</sub></td>
+</tr>
+</table>
+
+<sub>Экраны отрисованы стилями самой панели на примерных данных; адреса —
+документационные (RFC 5737), это не живой тайлнет.</sub>
+
 ---
 
 ## Что она делает
@@ -24,6 +36,8 @@ NodeRoost переводит это в понятия, которыми вы и 
 
 **Роли.** Роль — группа серверов (тег headscale). Доступ выдаётся на роль: добавили
 в неё сервер — правила менять не нужно.
+
+![Карточка ноды](docs/screenshots/ru/node.png)
 
 **Маршрутизация.** Направления — *эти ноды ходят на такой-то адрес через такую-то
 ноду*. Дайте имя хоста: панель сама его резолвит, обновляет маршрут, если сайт
