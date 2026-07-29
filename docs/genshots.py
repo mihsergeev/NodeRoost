@@ -24,7 +24,9 @@ SHELL = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
   /* анимации выключены: иначе кадр ловится на opacity:0 у модалок и карточек */
   *,*::before,*::after{{animation:none!important;transition:none!important}}
   body{{margin:0}}
-  .shot{{width:{width}px;padding:28px 0 34px}}
+  /* margin:auto — кадр шире .shot на полосу прокрутки, без этого
+     содержимое уезжает влево; поля сверху и снизу держим равными */
+  .shot{{width:{width}px;padding:40px 0 0;margin:0 auto}}
 </style></head><body class="theme-dark"><div class="shot"><div class="page">{body}</div></div></body></html>"""
 
 HEADER = """
@@ -312,6 +314,7 @@ PAGES = {"servers": servers_page, "access": access_page,
          "routing": routing_page, "node": node_page, "login": login_page}
 # экран входа — узкая карточка, широкий кадр оставил бы её в пустом поле
 WIDTHS = {"login": 460}
+TIGHT = {"login"}
 # высота кадра: у экрана входа контента на пол-экрана
 HEIGHTS = {"login": 700}
 
@@ -349,7 +352,24 @@ def render(lang):
                    for x in range(0, im.width, 5)):
                 bottom = min(im.height, y + 40)
                 break
-        im.crop((0, 0, im.width, bottom)).save(outdir / f"{name}.png", optimize=True)
+        if name in TIGHT:
+            # Узкая карточка: режем по её границам с ОДИНАКОВЫМ полем со всех
+            # сторон. Иначе поле сверху задаёт вёрстка, а снизу — обрезка, и
+            # карточка в кадре сидит не по центру.
+            def has(seq, bg):
+                return any(sum(abs(a - b) for a, b in zip(px[x, y], bg)) > 24
+                           for x, y in seq)
+            cols = [x for x in range(im.width)
+                    if has(((x, y) for y in range(0, im.height, 4)), px[x, 3])]
+            rows = [y for y in range(im.height)
+                    if has(((x, y) for x in range(0, im.width, 4)), px[3, y])]
+            m = 106
+            im.crop((max(0, cols[0] - m), max(0, rows[0] - m),
+                     min(im.width, cols[-1] + 1 + m),
+                     min(im.height, rows[-1] + 1 + m))
+                    ).save(outdir / f"{name}.png", optimize=True)
+        else:
+            im.crop((0, 0, im.width, bottom)).save(outdir / f"{name}.png", optimize=True)
         print(f"  {lang}/{name}.png  {(outdir / f'{name}.png').stat().st_size // 1024} КБ")
 
 
