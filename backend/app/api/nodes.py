@@ -95,7 +95,7 @@ def _map_node(n: dict, meta: dict | None = None, hinfo: dict | None = None) -> N
     )
 
 
-_ROLE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+_ROLE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def _normalize_tags(tags: list[str]) -> list[str]:
@@ -103,10 +103,15 @@ def _normalize_tags(tags: list[str]) -> list[str]:
 
     Заодно проверяем набор символов: тег попадает и в политику, и в аргументы
     headscale, и пробел/двоеточие внутри значения меняли бы её смысл.
+
+    Регистр приводим к нижнему: headscale принимает только такие теги, и роль
+    «PROD» уходила отказом «tag should be lowercase» — английским, из чужих
+    потрохов, за 502. Заодно «PROD» и «prod» перестают быть двумя разными
+    ролями, которыми они выглядели в списке.
     """
     out: list[str] = []
     for t in tags:
-        t = t.strip()
+        t = t.strip().lower()
         if not t:
             continue
         if not t.startswith("tag:"):
