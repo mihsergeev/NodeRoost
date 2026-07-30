@@ -96,6 +96,9 @@ Deployment notes that matter — network isolation, what is exposed publicly —
 
 ## Quick start
 
+**Full guide:** [docs/install.md](docs/install.md) — one-command install, your own
+domain, the address allowlist, the firewall and what to do when something is wrong.
+
 ```bash
 git clone https://github.com/mihsergeev/NodeRoost.git
 cd NodeRoost
