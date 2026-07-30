@@ -225,19 +225,20 @@
     <p class="sub">
       headscale knows nothing about this — to it every machine is just a node.<br>
       The split into servers and devices is ours; it lives in the panel&#39;s database.<br>
-      The idea is simple: <b>a server is what you connect to, a device is what you
-      connect from</b>.<br>
-      Which one the panel thinks a machine is decides what rules you can write
-      for it.
+      The difference is one thing: <b>access can be opened to a server, never to a
+      device</b>.<br>
+      So servers reach each other too, while devices cannot see each other at all.
     </p>
 
     <div class="pair">
       <div class="kind srv">
         <p class="role">Server</p>
-        <h3>You connect to it</h3>
+        <h3>Access can be opened to it</h3>
         <ul>
           <li>This is what access gets opened to: a database, a hypervisor, the
               office router, a build machine.</li>
+          <li>A server is a source as well: the runner reaches the database, the
+              backup job reaches storage, the app reaches the next data centre.</li>
           <li>Servers can be grouped into roles, so you grant the role instead of
               every machine one by one.</li>
           <li>A server can hand out its local network or work as a gateway out
@@ -249,7 +250,7 @@
 
       <div class="kind dev">
         <p class="role">Device</p>
-        <h3>You connect from it</h3>
+        <h3>Access is never opened to it</h3>
         <ul>
           <li>A laptop, a phone, a work computer — anything with a person
               sitting at it.</li>
@@ -325,10 +326,10 @@
     <p class="eyebrow-s">Architecture</p>
     <h2>The panel runs the network without traffic passing through it</h2>
     <p class="sub">
-      The panel and headscale talk over an internal Docker network — the
-      management API is never exposed. The only thing open to the world is what
-      Tailscale clients themselves need: joining and fetching the network map.
-      The data meanwhile travels between machines directly.
+      The panel reaches headscale over an internal Docker network — the
+      management API is never exposed.<br>
+      The only thing open to the world is what Tailscale clients need: joining
+      and fetching the network map.
     </p>
 
     <div class="arch" data-lb-svg data-caption="Architecture">
