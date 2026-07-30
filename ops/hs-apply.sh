@@ -5,7 +5,7 @@
 # НЕ в /usr (исключён из restic-бэкапа).
 set -eu
 
-APP_DIR=/app/noderoost
+APP_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
 FLAG="$APP_DIR/data/headscale/.restart-request"
 
 [ -f "$FLAG" ] || exit 0

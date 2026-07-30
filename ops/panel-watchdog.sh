@@ -3,7 +3,7 @@
 #
 # Панель не может сама сообщить о собственной смерти по своему же каналу, поэтому
 # нужен наблюдатель ВНЕ её процесса. Этот скрипт читает «пульс», который панель
-# пишет раз в минуту в /app/noderoost/data/heartbeat (backend/app/heartbeat.py),
+# пишет раз в минуту в <установка>/data/heartbeat (backend/app/heartbeat.py),
 # и НЕЗАВИСИМО шлёт в Telegram/webhook, если:
 #   • пульс протух (>MAX_AGE) — контейнер/БД мертвы или зависли;
 #   • alerts_ok=0 — self-тест канала алертов панели не прошёл.
@@ -17,7 +17,11 @@
 # (скрипт — в /lib65, т.к. /usr исключён из бэкапа; cron-конфиг в /etc.)
 
 set -u
-HB="${NODEROOST_HEARTBEAT:-/app/noderoost/data/heartbeat}"
+# Корень приложения: по умолчанию — каталог, из которого запущен скрипт
+# (ops/ внутри установки). Так он работает и в /opt/noderoost, и в любом
+# другом каталоге, куда поставили панель.
+APP_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+HB="${NODEROOST_HEARTBEAT:-$APP_ROOT/data/heartbeat}"
 STATE=/lib65/noderoost/watchdog.state
 MAX_AGE="${NODEROOST_HB_MAX_AGE:-600}"
 STRIKES="${NODEROOST_WD_STRIKES:-2}"          # проверок ПОДРЯД с проблемой до тревоги
