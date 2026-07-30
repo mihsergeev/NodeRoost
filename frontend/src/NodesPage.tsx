@@ -13,6 +13,7 @@ import { Menu } from './Menu'
 import { NodeDetail } from './NodeDetail'
 import { NodeEditModal } from './NodeEditModal'
 import { RoutesModal } from './RoutesModal'
+import { CountryFlag } from './CountryFlag'
 import { OsIcon } from './OsIcon'
 import { useI18n } from './i18n'
 
@@ -266,6 +267,7 @@ export function NodesPage({
         <div className="node-info">
           <div className="node-title">
             {n.os && <OsIcon os={n.os} size={16} />}
+            <CountryFlag code={n.country} />
             <span className="node-name">{n.name || t('без имени')}</span>
             {n.admin && <span className="pill-admin">{t('админ')}</span>}
             {/* заглушённая нода обязана быть видна: иначе о ней просто забудут */}

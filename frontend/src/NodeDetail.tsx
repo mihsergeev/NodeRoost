@@ -15,6 +15,7 @@ import { Menu } from './Menu'
 import { NodeEditModal } from './NodeEditModal'
 import { ReconnectModal } from './ReconnectModal'
 import { RoutesModal } from './RoutesModal'
+import { CountryFlag } from './CountryFlag'
 import { OsIcon } from './OsIcon'
 import { useI18n } from './i18n'
 
@@ -171,6 +172,7 @@ export function NodeDetail({
       <div className="page-head">
         <h2 className="detail-title">
           <span className={`dot ${node.online ? 'dot-ok' : 'dot-unknown'}`} />
+          <CountryFlag code={node.country} />
           {node.name}
           {node.admin && <span className="pill-admin">{t('админ')}</span>}
           {node.is_exit_node && <span className="pill-ok">exit</span>}

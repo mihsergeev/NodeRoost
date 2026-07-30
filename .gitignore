@@ -6,6 +6,9 @@
 *.env
 !*.env.example
 data/
+# таблица IP→страна лежит в backend/app/data — общий data/ её съедал,
+# а деплой идёт архивом из git
+!backend/app/data/
 # ключи/сертификаты и архивы бэкапов — никогда в git
 *.key
 *.pem
@@ -22,6 +25,8 @@ venv/
 
 # --- node / frontend ---
 node_modules/
+# SVG-флаги копирует prebuild из flag-icons — в репо им незачем
+frontend/public/flags/
 dist/
 *.tsbuildinfo
 
