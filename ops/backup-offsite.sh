@@ -27,7 +27,11 @@ ENVF="${NODEROOST_OFFSITE_ENV:-/lib65/noderoost/offsite.env}"
 : "${RESTIC_PASSWORD:?offsite.env: не задан RESTIC_PASSWORD}"
 export RESTIC_REPOSITORY RESTIC_PASSWORD
 
-SRC="${NODEROOST_BACKUPS_DIR:-/app/noderoost/data/backups}"
+# Корень приложения: по умолчанию — каталог, из которого запущен скрипт
+# (ops/ внутри установки). Так он работает и в /opt/noderoost, и в любом
+# другом каталоге, куда поставили панель.
+APP_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+SRC="${NODEROOST_BACKUPS_DIR:-$APP_ROOT/data/backups}"
 [ -d "$SRC" ] || { echo "нет каталога бэкапов: $SRC" >&2; exit 0; }
 
 # init, если репозитория ещё нет (append-only rest-server допускает init)
