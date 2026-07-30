@@ -306,3 +306,52 @@ async def test_claim_pending_meta_reads_old_format(session):
     ) == 1
     meta = await settings_store.get_node_meta(session)
     assert meta["42"]["kind"] == "server" and meta["42"]["admin"] is True
+
+
+async def test_forget_node_refs_clears_rules_routes_agent(session):
+    """Удалённая нода не возвращается — её следы только вводят в заблуждение."""
+    from app import settings_store
+
+    await settings_store.set_acl_rules(session, [
+        {"src": {"kind": "node", "value": "7"}, "dst": {"kind": "tag", "value": "prod"},
+         "ports": "22"},
+        {"src": {"kind": "node", "value": "9"}, "dst": {"kind": "node", "value": "7"},
+         "ports": "443"},
+        {"src": {"kind": "node", "value": "9"}, "dst": {"kind": "tag", "value": "prod"},
+         "ports": "80"},                                   # чужое — не трогать
+    ])
+    await settings_store.set_routing(session, {
+        "d1": {"src_kind": "node", "src": ["7"], "dst": "1.2.3.4", "via": "9"},
+        "d2": {"src_kind": "node", "src": ["7", "9"], "dst": "1.2.3.5", "via": "9"},
+        "d3": {"src_kind": "node", "src": ["9"], "dst": "1.2.3.6", "via": "7"},
+        "d4": {"src_kind": "devices", "src": [], "dst": "1.2.3.7", "via": "9"},
+    })
+    await settings_store.set_agent_all(session, {"7": {"token": "t"}, "9": {"token": "u"}})
+
+    await settings_store.forget_node_refs(session, "7")
+
+    rules = await settings_store.get_acl_rules(session)
+    assert len(rules) == 1 and rules[0]["ports"] == "80"
+
+    routing = await settings_store.get_routing(session)
+    assert "d1" not in routing        # источников не осталось
+    assert routing["d2"]["src"] == ["9"]
+    assert "d3" not in routing        # выход был через удалённую ноду
+    assert "d4" in routing            # группа целиком — ноду не перечисляет
+
+    agents = await settings_store.get_agent_all(session)
+    assert "7" not in agents and "9" in agents
+
+
+async def test_agent_alert_skips_deleted_node(session):
+    """Агент удалённой ноды молчит по уважительной причине."""
+    from datetime import datetime, timedelta, timezone
+
+    from app import alerts
+    from app.config import Settings
+
+    alerts._agent_silent.clear()
+    long_ago = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    agents = {"7": {"last_poll": long_ago}}
+    st = Settings(agent_silent_minutes=10)
+    assert await alerts.reconcile_agents(session, st, agents, {}, {}, set()) == []
