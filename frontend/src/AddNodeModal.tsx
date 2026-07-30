@@ -29,6 +29,8 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EnrollResult | null>(null)
   const [connected, setConnected] = useState(false)
+  // имя старой записи, если машина уже была в сети
+  const [reused, setReused] = useState<string | null>(null)
   // команда установки агента — только для серверов и только после подключения:
   // токен привязан к id ноды, а его до регистрации не существует
   const [agentCmd, setAgentCmd] = useState('')
@@ -45,6 +47,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
         const s = await enrollStatus(result.key_id, result.hostname)
         if (alive && s.connected) {
           setConnected(true)
+          setReused(s.reused_from || null)
           // Тип ноды закрепляем ДО обновления списка и ждём ответа: иначе список
           // успевает перечитаться раньше, чем мета запишется, и свежий сервер
           // уезжает в «Устройства» по авто-определению.
@@ -206,6 +209,13 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
                   : t('Ждём подключения ноды — статус обновится сам…')}
               </span>
             </div>
+
+            {connected && reused && (
+              <p className="muted small">
+                {t('Эта машина уже была в сети под именем')} «{reused}» —
+                {' '}{t('её запись переиспользована и переименована. Прежние настройки доступа и маршруты сохранены.')}
+              </p>
+            )}
 
             {connected && agentCmd && (
               <div className="exit-setup">
