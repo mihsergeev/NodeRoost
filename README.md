@@ -8,7 +8,7 @@ access, send traffic through a chosen node — no editing `policy.hujson`, no SS
 into nodes. The panel does not replace headscale and does not proxy traffic: it
 takes over the part that is otherwise done by hand.
 
-[Русская версия](README.ru.md) · [noderoost.ru](https://noderoost.ru)
+[Русская версия](README.ru.md) · [Why and what for](docs/why.md) · [Changelog](CHANGELOG.md) · [noderoost.ru](https://noderoost.ru)
 
 ![Servers](docs/screenshots/servers.png)
 
@@ -27,6 +27,20 @@ takes over the part that is otherwise done by hand.
 addresses are documentation ranges (RFC 5737), not a live tailnet.</sub>
 
 ---
+
+## Why a panel when headscale already works
+
+The panel does not replace headscale and does not carry your traffic. It takes over
+the part that is otherwise done by hand: granting access becomes a *who → where → on
+which port* rule instead of an edit to `policy.hujson`; a subnet behind a node is a
+button instead of `approve-routes` by node id; a route is applied by an agent instead
+of an SSH session on every machine.
+
+What people build with it — two office LANs seeing each other without a public address
+anywhere, a work machine reachable from behind someone else's NAT, a database open to
+a contractor on one port and nothing else, a laptop leaving for the internet through a
+server whose address a partner allows. **[Reasons, goals and the full set of
+scenarios → docs/why.md](docs/why.md)**
 
 ## What it does
 
