@@ -211,6 +211,13 @@ For caddy-docker-proxy there is a ready override: `compose.caddy.yml`.
 resolve to this server and that 80/443 are reachable from outside — Let's
 Encrypt validates over port 80. Logs: `docker compose logs caddy --tail 30`.
 
+**No certificate after several reinstalls.** The caddy log says `too many
+certificates (5) already issued for this exact set of identifiers`. Let's Encrypt
+allows five certificates per week for the same name; the counter resets on its
+own and the error states when. If you cannot wait, install under another name.
+Keep the `data/caddy` directory across reinstalls — it holds the certificates
+already issued, so nothing has to be issued again.
+
 **The panel refuses the connection from one address and works from another.**
 The address list did that; see `NODEROOST_ALLOW_IPS` in `.env`.
 
