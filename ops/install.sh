@@ -7,6 +7,10 @@
 #     | sudo bash -s -- --panel-domain panel.example.com --hs-domain hs.example.com
 #
 # Полный список параметров: --help.
+# ВАЖНО про stdin: скрипт запускают как `curl … | sudo bash`, то есть bash читает
+# САМ СЕБЯ со стандартного ввода. Любая команда внутри, которая тоже читает stdin
+# (docker compose, apt-get, git), сожрёт остаток скрипта — и он оборвётся на
+# середине без единого сообщения. Поэтому таким командам явно даём </dev/null.
 set -euo pipefail
 
 REPO_URL="https://github.com/mihsergeev/NodeRoost.git"
@@ -74,13 +78,13 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     ok "Docker уже установлен"
 else
     say "Ставлю Docker"
-    if command -v curl >/dev/null 2>&1; then :; else apt-get update -qq && apt-get install -y -qq curl; fi
+    if command -v curl >/dev/null 2>&1; then :; else apt-get update -qq </dev/null && apt-get install -y -qq curl </dev/null; fi
     # Официальный установщик знает не про каждый свежий релиз дистрибутива —
     # тогда откатываемся на пакеты самого дистрибутива.
-    if ! curl -fsSL https://get.docker.com | sh >/tmp/nr-docker.log 2>&1; then
+    if ! curl -fsSL https://get.docker.com | sh >/tmp/nr-docker.log 2>&1 </dev/null; then
         warn "get.docker.com не отработал, ставлю docker.io из репозитория дистрибутива"
-        apt-get update -qq
-        apt-get install -y -qq docker.io docker-compose-v2 \
+        apt-get update -qq </dev/null
+        apt-get install -y -qq docker.io docker-compose-v2 </dev/null \
             || die "не удалось поставить Docker, смотрите /tmp/nr-docker.log"
     fi
     systemctl enable --now docker >/dev/null 2>&1 || true
@@ -91,11 +95,11 @@ fi
 # ── 2. Исходники ──────────────────────────────────────────────────────────
 if [ -d "$DIR/.git" ]; then
     say "Обновляю $DIR"
-    git -C "$DIR" fetch --depth 1 origin main -q && git -C "$DIR" reset --hard origin/main -q
+    git -C "$DIR" fetch --depth 1 origin main -q </dev/null && git -C "$DIR" reset --hard origin/main -q </dev/null
 else
     say "Скачиваю NodeRoost в $DIR"
-    command -v git >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq git; }
-    git clone --depth 1 "$REPO_URL" "$DIR" -q
+    command -v git >/dev/null 2>&1 || { apt-get update -qq </dev/null; apt-get install -y -qq git </dev/null; }
+    git clone --depth 1 "$REPO_URL" "$DIR" -q </dev/null
 fi
 cd "$DIR"
 
@@ -169,14 +173,14 @@ fi
 say "Поднимаю контейнеры"
 COMPOSE=(docker compose --env-file .env)
 if [ "$BUILD" = 1 ]; then
-    "${COMPOSE[@]}" build backend frontend
+    "${COMPOSE[@]}" build backend frontend </dev/null
 fi
 # Бэкенд без ключа headscale не стартует — поднимаем остальное, ключ создаём ниже.
-"${COMPOSE[@]}" up -d db headscale frontend caddy
+"${COMPOSE[@]}" up -d db headscale frontend caddy </dev/null
 
 say "Жду headscale"
 for i in $(seq 1 60); do
-    if "${COMPOSE[@]}" exec -T headscale headscale users list >/dev/null 2>&1; then break; fi
+    if "${COMPOSE[@]}" exec -T headscale headscale users list >/dev/null 2>&1 </dev/null; then break; fi
     sleep 2
     [ "$i" = 60 ] && die "headscale не поднялся, смотрите: docker compose logs headscale"
 done
@@ -184,16 +188,16 @@ ok "headscale отвечает"
 
 if ! grep -q '^NODEROOST_HEADSCALE_API_KEY=.\+' .env; then
     say "Создаю API-ключ headscale для панели"
-    KEY="$("${COMPOSE[@]}" exec -T headscale headscale apikeys create --expiration 3650d 2>/dev/null | tail -1 | tr -d '\r')"
+    KEY="$("${COMPOSE[@]}" exec -T headscale headscale apikeys create --expiration 3650d 2>/dev/null </dev/null | tail -1 | tr -d '\r')"
     [ -n "$KEY" ] || die "не удалось создать API-ключ"
     sed -i "s|^NODEROOST_HEADSCALE_API_KEY=.*|NODEROOST_HEADSCALE_API_KEY=$KEY|" .env
     ok "ключ записан в .env"
 fi
 
-"${COMPOSE[@]}" up -d
+"${COMPOSE[@]}" up -d </dev/null
 say "Жду панель"
 for i in $(seq 1 60); do
-    if "${COMPOSE[@]}" exec -T backend python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')" >/dev/null 2>&1; then break; fi
+    if "${COMPOSE[@]}" exec -T backend python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')" >/dev/null 2>&1 </dev/null; then break; fi
     sleep 2
     [ "$i" = 60 ] && die "панель не поднялась, смотрите: docker compose logs backend"
 done
@@ -202,7 +206,7 @@ ok "панель отвечает"
 # ── 5. Фаервол (по желанию) ───────────────────────────────────────────────
 if [ "$UFW" = 1 ]; then
     say "Настраиваю ufw"
-    command -v ufw >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq ufw; }
+    command -v ufw >/dev/null 2>&1 || { apt-get update -qq </dev/null; apt-get install -y -qq ufw </dev/null; }
     # Существующие правила НЕ сбрасываем: на сервере может быть уже что-то нужное.
     ufw default deny incoming >/dev/null
     ufw default allow outgoing >/dev/null
