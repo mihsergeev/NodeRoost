@@ -139,6 +139,12 @@ cd backend  && python -m venv .venv && .venv/bin/pip install -e . && pytest
 cd frontend && npm install && npm run dev
 ```
 
+The country flag next to a node is resolved from its public address **offline** — none of your fleet's addresses leave the host. The table (`backend/app/data/geoip.csv.gz`, DB-IP IP-to-Country Lite, CC BY 4.0) ships in the repository; refresh it every few months:
+
+```bash
+python ops/build-geoip.py
+```
+
 ## License
 
 BSD-3-Clause — see [LICENSE](LICENSE).

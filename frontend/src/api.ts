@@ -90,6 +90,7 @@ export type Node = {
   arch: string
   container: boolean
   endpoint: string
+  country: string
   direct_ok: boolean
   available_routes: string[]
   approved_routes: string[]
