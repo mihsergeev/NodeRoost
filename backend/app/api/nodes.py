@@ -428,7 +428,7 @@ async def reconnect_node(
     meta_now = await settings_store.get_node_meta(session)
     await settings_store.stash_node_meta(
         session, str(node.get("givenName") or node.get("name") or ""),
-        meta_now.get(str(node_id)) or {},
+        meta_now.get(str(node_id)) or {}, old_id=str(node_id),
     )
     await hs_call(client.delete_node(node_id))
     # мета была привязана к старому id — чистим (панель перенесёт тип/описание/
