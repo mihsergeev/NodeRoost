@@ -17,6 +17,7 @@ TMP = Path(os.environ.get("TEMP", "/tmp")) / "nr-shots"
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 CSS = sorted(glob.glob(str(ROOT / "frontend" / "dist" / "assets" / "*.css")))[-1]
 LOGO = (ROOT / "landing" / "site" / "logo.svg")   # горизонтальный локап на тёмном
+FLAGS = ROOT / "frontend" / "public" / "flags"   # кладёт prebuild из flag-icons
 
 SHELL = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
 <link rel="stylesheet" href="file:///{css}">
@@ -53,7 +54,15 @@ def header(active, labels):
     )
 
 
-def node_card(name, ip, os_name, badges="", tags="", desc="", lang="ru"):
+def flag(cc):
+    """Флаг страны — как в панели: страна там берётся по внешнему IP (app/geoip.py)."""
+    if not cc:
+        return ""
+    src = str(FLAGS / f"{cc.lower()}.svg").replace("\\", "/")
+    return f'<img class="country-flag" src="file:///{src}" alt="{cc.upper()}">'
+
+
+def node_card(name, ip, os_name, badges="", tags="", desc="", lang="ru", cc=""):
     b = "".join(badges)
     online = "онлайн" if lang == "ru" else "online"
     t = tags or (
@@ -65,7 +74,7 @@ def node_card(name, ip, os_name, badges="", tags="", desc="", lang="ru"):
       <div class="node-main">
         <span class="nr-grip">⠿</span><span class="dot dot-ok"></span>
         <div class="node-info">
-          <div class="node-title"><span class="node-name">{name}</span>{b}</div>{d}
+          <div class="node-title">{flag(cc)}<span class="node-name">{name}</span>{b}</div>{d}
           <div class="node-meta"><span class="chip">{ip}</span>
             <span class="muted small">{online} · {os_name}</span>{t}</div>
         </div>
@@ -103,16 +112,16 @@ def servers_page(lang):
     g1 = group("Acme", 3,
         node_card("edge-fra-1", "203.0.113.11", "Debian 12",
                   ['<span class="pill-ok">' + L["gw"] + "</span>"],
-                  '<span class="tag-chip">tag:web</span>', lang=lang),
+                  '<span class="tag-chip">tag:web</span>', lang=lang, cc="de"),
         sub="prod")
     g2 = group("Acme · billing", 2,
         node_card("db-fra-1", "203.0.113.12", "Ubuntu 24.04",
-                  [], '<span class="tag-chip">tag:db</span>', lang=lang)
+                  [], '<span class="tag-chip">tag:db</span>', lang=lang, cc="de")
         + node_card("api-fra-2", "203.0.113.13", "Ubuntu 24.04",
                     ['<span class="pill-warn route-pending pill-action">маршруты ожидают</span>'
                      if lang == "ru" else
                      '<span class="pill-warn route-pending pill-action">routes pending</span>'],
-                    lang=lang))
+                    lang=lang, cc="fi"))
     return f"""
     {header(0, L['nav'])}
     <div class="page-head"><h2>{L['h']}</h2>
@@ -261,7 +270,7 @@ def node_page(lang):
     return f"""
     {header(0, L['nav'])}
     <button class="linklike detail-back">{L['back']}</button>
-    <div class="page-head"><h2 class="detail-title"><span class="dot dot-ok"></span>edge-fra-1
+    <div class="page-head"><h2 class="detail-title"><span class="dot dot-ok"></span>{flag("de")}edge-fra-1
       <span class="pill-ok">exit</span></h2>
       <div class="page-head-actions"><button class="ghost">{L['edit']}</button>
       <button class="ghost icon-btn"><span class="menu-gear">⋯</span></button></div></div>
