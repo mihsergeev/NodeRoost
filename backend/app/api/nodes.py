@@ -146,6 +146,24 @@ async def get_node(node_id: str, _: CurrentUser, session: SessionDep) -> NodeOut
     return _map_node(node, meta, hinfo)
 
 
+def _kind_ctx(meta: dict | None, node_id, kind: str | None) -> dict:
+    """Мета для effective_kind: сохранённое значение + перекрытие из запроса.
+
+    Запрос может касаться только галки шлюза — тогда kind в теле нет (None), и
+    брать его надо из БД. Раньше сюда подставлялась пустая мета, тип считался
+    авто-определением, и сервер без тегов и маршрутов оказывался «устройством»:
+    панель отказывалась делать шлюзом ровно ту ноду, ради которой ручной выбор
+    типа и придуман.
+    """
+    ctx = dict(meta or {})
+    nid = str(node_id)
+    entry = dict(ctx.get(nid) or {})
+    if kind is not None:
+        entry["kind"] = kind
+    ctx[nid] = entry
+    return ctx
+
+
 @router.post("/{node_id}/meta", response_model=NodeOut)
 async def set_meta(
     node_id: str,
@@ -183,8 +201,14 @@ async def set_meta(
     # назначением в правиле видимости: тег на устройстве открыл бы устройства друг
     # другу в обход изоляции. UI галку устройству не показывает, но запрет должен
     # держаться и при прямом обращении к API.
+    # Тип берём из сохранённой меты, а запросом только ПЕРЕКРЫВАЕМ. Иначе запрос
+    # без поля kind (галку шлюза ставят отдельно от смены типа) приходил с kind=None,
+    # мета подменялась пустой — и сервер, помеченный руками, но без тегов и
+    # маршрутов, авто-определялся устройством: панель отказывалась делать шлюзом
+    # именно ту ноду, ради которой ручной выбор типа и существует.
+    meta_stored = await settings_store.get_node_meta(session)
     if body.exit_gateway and effective_kind(
-        node, {str(node.get("id", "")): {"kind": body.kind}}
+        node, _kind_ctx(meta_stored, node.get("id", node_id), body.kind)
     ) != "server":
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -258,7 +282,10 @@ async def set_meta(
     await apply_policy(session, client, settings)
     node = await hs_call(client.get_node(node_id))  # теги могли смениться
     meta = await settings_store.get_node_meta(session)
-    return _map_node(node or {}, meta)
+    # hinfo обязателен и здесь: интерфейс перерисовывает карточку ЭТИМ ответом,
+    # и без него у ноды пропадали ОС, адрес и флаг страны до обновления списка.
+    hinfo = hostinfo.read_all(settings.headscale_db_path)
+    return _map_node(node or {}, meta, hinfo)
 
 
 @router.post("/{node_id}/exit-clients", response_model=NodeOut)
@@ -293,7 +320,10 @@ async def set_exit_clients(
     await apply_policy(session, client, settings)
     node = await hs_call(client.get_node(node_id))
     meta = await settings_store.get_node_meta(session)
-    return _map_node(node or {}, meta)
+    # hinfo обязателен и здесь: интерфейс перерисовывает карточку ЭТИМ ответом,
+    # и без него у ноды пропадали ОС, адрес и флаг страны до обновления списка.
+    hinfo = hostinfo.read_all(settings.headscale_db_path)
+    return _map_node(node or {}, meta, hinfo)
 
 
 async def _set_agent_exit(session, node_id: str, on: bool) -> None:
@@ -425,7 +455,9 @@ async def rename_node(
     client = get_client(settings)
     node = await hs_call(client.rename_node(node_id, body.name))
     await audit.record(session, user.username, "node_rename", node_id, body.name)
-    return _map_node(node or {})
+    meta = await settings_store.get_node_meta(session)
+    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    return _map_node(node or {}, meta, hinfo)
 
 
 @router.post("/{node_id}/tags", response_model=NodeOut)
@@ -463,7 +495,9 @@ async def set_tags(
         await declare_tags(session, client, settings, tags)
     node = await hs_call(client.set_node_tags(node_id, tags + keep))
     await audit.record(session, user.username, "node_tags", node_id, ", ".join(tags))
-    return _map_node(node or {})
+    meta = await settings_store.get_node_meta(session)
+    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    return _map_node(node or {}, meta, hinfo)
 
 
 @router.post("/{node_id}/routes", response_model=NodeOut)
@@ -481,7 +515,9 @@ async def set_routes(
     routes = [r.strip() for r in body.routes if r.strip()]
     node = await hs_call(client.approve_routes(node_id, routes))
     await audit.record(session, user.username, "node_routes", node_id, ", ".join(routes))
-    return _map_node(node or {})
+    meta = await settings_store.get_node_meta(session)
+    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    return _map_node(node or {}, meta, hinfo)
 
 
 @router.post("/{node_id}/expire", response_model=NodeOut)
@@ -493,7 +529,9 @@ async def expire_node(
     client = get_client(settings)
     node = await hs_call(client.expire_node(node_id))
     await audit.record(session, user.username, "node_expire", node_id)
-    return _map_node(node or {})
+    meta = await settings_store.get_node_meta(session)
+    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    return _map_node(node or {}, meta, hinfo)
 
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)

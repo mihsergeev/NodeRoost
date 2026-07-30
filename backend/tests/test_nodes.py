@@ -190,3 +190,20 @@ async def test_clear_node_meta_wipes_everything(session):
     await settings_store.set_node_meta(session, "9", muted=True, exit_gateway=True)
     await settings_store.clear_node_meta(session, "9")
     assert "9" not in await settings_store.get_node_meta(session)
+
+
+def test_kind_ctx_keeps_stored_kind_when_request_has_none():
+    """Галку «шлюз выхода» ставят отдельным запросом, без поля kind. Тип для
+    проверки обязан браться из сохранённой меты: сервер, помеченный руками, но
+    без тегов и маршрутов, авто-определяется устройством — и панель отказывала
+    ровно той ноде, ради которой ручной выбор типа и существует."""
+    from app.api.nodes import _kind_ctx
+
+    stored = {"42": {"kind": "server", "description": "прод"}}
+    ctx = _kind_ctx(stored, "42", None)
+    assert ctx["42"]["kind"] == "server"
+    assert ctx["42"]["description"] == "прод"  # чужие поля не теряем
+    # явный kind в запросе перекрывает сохранённый
+    assert _kind_ctx(stored, "42", "device")["42"]["kind"] == "device"
+    # ноды в мете ещё нет — пустая запись, дальше сработает авто-определение
+    assert _kind_ctx(stored, "99", None)["99"] == {}
