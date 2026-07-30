@@ -59,6 +59,9 @@ async def collect_once(
     names = {n["id"]: n["name"] for n in nodes}
     # тип ноды (server/device) — алертим только серверы (устройства гасят на ночь)
     async with session_factory() as session:
+        # Нода после переподключения приходит с НОВЫМ id — забираем отложенную
+        # заметку (тип, админ, описание) обратно, иначе она вернётся чистой.
+        await settings_store.claim_pending_meta(session, raw)
         meta = await settings_store.get_node_meta(session)
     kinds = {str(n.get("id", "")): effective_kind(n, meta) for n in raw}
     # «не беспокоить»: помеченные ноды наблюдаем как обычно, но не уведомляем
