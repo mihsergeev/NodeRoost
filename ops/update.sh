@@ -54,11 +54,26 @@ if [ -d /lib65/noderoost ]; then
         sed "s|^APP_DIR=.*|APP_DIR=$APP|" "ops/$f" > "/lib65/noderoost/$f"
         chmod 755 "/lib65/noderoost/$f"
     done
-    if [ -f /lib65/noderoost/panel-watchdog.sh ]; then
-        sed "s|^APP_ROOT=.*|APP_ROOT=\"\${NODEROOST_APP:-$APP}\"|" \
-            ops/panel-watchdog.sh > /lib65/noderoost/panel-watchdog.sh
-        chmod 755 /lib65/noderoost/panel-watchdog.sh
+    # Сторож ставим и тем, у кого его ещё не было: на установках старше 0.2.2 его
+    # просто не существовало, а обновление — единственный момент, когда он там
+    # появится.
+    sed "s|^APP_ROOT=.*|APP_ROOT=\"\${NODEROOST_APP:-$APP}\"|" \
+        ops/panel-watchdog.sh > /lib65/noderoost/panel-watchdog.sh
+    chmod 755 /lib65/noderoost/panel-watchdog.sh
+    if [ ! -f /etc/cron.d/noderoost-watchdog ]; then
+        echo '*/5 * * * * root /lib65/noderoost/panel-watchdog.sh' \
+            > /etc/cron.d/noderoost-watchdog
+        chmod 644 /etc/cron.d/noderoost-watchdog
     fi
+    # systemd-юниты помощников тоже могли поменяться вместе с релизом
+    for u in noderoost-hs-apply noderoost-hs-logs; do
+        [ -f "/etc/systemd/system/$u.path" ] || continue
+        for ext in path service; do
+            sed "s|/app/noderoost|$APP|g; s|/opt/noderoost|$APP|g" \
+                "ops/$u.$ext" > "/etc/systemd/system/$u.$ext"
+        done
+    done
+    systemctl daemon-reload 2>/dev/null || true
 fi
 
 echo ">> ГОТОВО. Проверьте: docker compose ps ; версия внизу страницы панели."
