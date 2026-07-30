@@ -40,6 +40,11 @@ fi
 SRC="${NODEROOST_BACKUPS_DIR:-$APP_ROOT/data/backups}"
 [ -d "$SRC" ] || { echo "нет каталога бэкапов: $SRC" >&2; exit 0; }
 
+# restic ставится отдельно; без него скрипт свалился бы невнятной ошибкой sh
+command -v restic >/dev/null 2>&1 || {
+    echo "не найден restic — поставьте его (apt install restic) и запустите снова" >&2
+    exit 1
+}
 # init, если репозитория ещё нет (append-only rest-server допускает init)
 restic snapshots >/dev/null 2>&1 || restic init
 
