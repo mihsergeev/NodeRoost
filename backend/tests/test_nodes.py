@@ -458,3 +458,28 @@ def test_expired_key_means_offline():
     out = _map_node({"id": "3", "name": "db", "givenName": "db",
                      "ipAddresses": ["100.64.0.3"], "online": True, "expiry": past})
     assert out.online is False and out.key_expired is True
+
+
+async def test_dropping_gateway_clears_devices_choice(session):
+    """Снятая галка «шлюз выхода» не должна оставлять за собой связей.
+
+    Устройство показывало «через шлюзы: web-fra», хотя грант исчез, а с
+    принудительным выходом агент гнал туда весь трафик — и устройство теряло
+    сеть молча.
+    """
+    from app import settings_store
+
+    await settings_store.set_node_meta(session, "2", kind="server", exit_gateway=True)
+    await settings_store.set_node_meta(session, "1", kind="device", exit_via=["2", "5"])
+    await settings_store.set_node_meta(session, "4", kind="device", exit_via=["2"],
+                                       force_exit="2")
+    await settings_store.set_node_meta(session, "6", kind="device", exit_via=["5"])
+
+    unforced = await settings_store.drop_gateway(session, "2")
+
+    meta = await settings_store.get_node_meta(session)
+    assert meta["1"]["exit_via"] == ["5"]          # другой шлюз остался
+    assert "exit_via" not in meta.get("4", {})     # выбор был только этот
+    assert "force_exit" not in meta.get("4", {})
+    assert meta["6"]["exit_via"] == ["5"]          # чужие связи не тронуты
+    assert unforced == ["4"]                        # агенту сбросить use_exit
