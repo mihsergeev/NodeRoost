@@ -139,6 +139,12 @@ cd backend  && python -m venv .venv && .venv/bin/pip install -e . && pytest
 cd frontend && npm install && npm run dev
 ```
 
+Флаг страны рядом с нодой панель определяет по её внешнему адресу **офлайн** — никакие адреса вашего парка наружу не уходят. Таблица (`backend/app/data/geoip.csv.gz`, DB-IP IP-to-Country Lite, CC BY 4.0) лежит в репозитории; обновить раз в несколько месяцев:
+
+```bash
+python ops/build-geoip.py
+```
+
 ## Лицензия
 
 BSD-3-Clause — см. [LICENSE](LICENSE).

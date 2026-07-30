@@ -2356,3 +2356,23 @@ button.node-group-head {
 .dir-full-toggle {
   margin: -6px 0 0;
 }
+
+/* --- флаг страны (страна определяется по IP, см. app/geoip.py) --- */
+.country-flag {
+  height: 0.95em;
+  width: auto;
+  flex-shrink: 0;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent);
+  vertical-align: -0.08em;
+  cursor: default;
+}
+/* запасной вариант, если такого файла нет: код страны текстом */
+.country-flag-txt {
+  height: auto;
+  box-shadow: none;
+  font-size: 0.72em;
+  font-weight: 600;
+  opacity: 0.75;
+  letter-spacing: 0.03em;
+}

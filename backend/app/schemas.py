@@ -85,6 +85,9 @@ class NodeOut(BaseModel):
     arch: str = ""  # x86_64 / aarch64
     container: bool = False
     endpoint: str = ""  # публичный адрес:порт, с которого нода видна
+    # ISO-код страны по адресу из endpoint (app/geoip.py, офлайн-таблица).
+    # Пусто, если адреса нет, он приватный или таблица не собрана.
+    country: str = ""
     direct_ok: bool = False  # UDP работает → возможен прямой P2P, а не через DERP
     # маршруты
     available_routes: list[str] = []  # что нода анонсирует
