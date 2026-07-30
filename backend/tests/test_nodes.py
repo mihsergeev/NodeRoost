@@ -207,3 +207,24 @@ def test_kind_ctx_keeps_stored_kind_when_request_has_none():
     assert _kind_ctx(stored, "42", "device")["42"]["kind"] == "device"
     # ноды в мете ещё нет — пустая запись, дальше сработает авто-определение
     assert _kind_ctx(stored, "99", None)["99"] == {}
+
+
+def test_marker_tag_replaces_empty_tag_list():
+    """headscale 0.29 не снимает с ноды последний тег («cannot remove all tags»),
+    поэтому выключить галку шлюза или убрать последнюю роль было нельзя — панель
+    отвечала 502. Пустой список заменяем служебным маркером."""
+    from app import exitvia
+
+    assert exitvia.keep_tagged([]) == [exitvia.MARKER_TAG]
+    assert exitvia.keep_tagged(["tag:db"]) == ["tag:db"]
+    # маркер служебный: в ролях не показывается
+    assert exitvia.is_service_tag(exitvia.MARKER_TAG)
+
+
+def test_marker_tag_does_not_make_a_node_a_server():
+    """Маркер остаётся на ноде только из-за ограничения headscale — считать
+    ноду сервером он не должен, иначе снятие последней роли молча меняло бы тип."""
+    from app.nodekind import guess_kind
+
+    assert guess_kind({"tags": ["tag:noderoost"]}) == "device"
+    assert guess_kind({"tags": ["tag:db"]}) == "server"
