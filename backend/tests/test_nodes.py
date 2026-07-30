@@ -355,3 +355,60 @@ async def test_agent_alert_skips_deleted_node(session):
     agents = {"7": {"last_poll": long_ago}}
     st = Settings(agent_silent_minutes=10)
     assert await alerts.reconcile_agents(session, st, agents, {}, {}, set()) == []
+
+
+def test_node_name_normalized_to_one_dns_label():
+    """Имя ноды — то, из чего собирается имя в MagicDNS."""
+    import pytest
+    from app.schemas import NodeRenameIn
+
+    assert NodeRenameIn(name="  WEB-Fra ").name == "web-fra"   # регистр не значим
+    for bad in ("srv.prod", "web_1", "-web", "web-", "плохо", "a b", "x" * 64):
+        with pytest.raises(Exception):
+            NodeRenameIn(name=bad)
+
+
+async def test_rename_refuses_name_taken_in_other_case(client, monkeypatch):
+    """«WEB-FRA» рядом с «web-fra» — в MagicDNS это одно имя на двоих."""
+    from app.api import nodes as api_nodes
+
+    class _HS:
+        async def get_nodes(self):
+            return [{"id": "2", "givenName": "web-fra"}, {"id": "3", "givenName": "db"}]
+
+        async def rename_node(self, node_id, name):  # не должен быть вызван
+            raise AssertionError("переименование не должно дойти до headscale")
+
+    monkeypatch.setattr(api_nodes, "get_client", lambda _s: _HS())
+    monkeypatch.setattr(api_nodes, "require_hs", lambda _s: None)
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    tok = r.json()["access_token"]
+    resp = await client.post("/api/nodes/3/rename", json={"name": "WEB-FRA"},
+                             headers={"Authorization": f"Bearer {tok}"})
+    assert resp.status_code == 409
+    assert "занято" in resp.json()["detail"]
+
+
+async def test_headscale_input_errors_are_not_502():
+    """Жалоба headscale на ввод — это отказ пользователю, а не поломка шлюза."""
+    import pytest
+    from fastapi import HTTPException
+
+    from app.hs_client import HeadscaleError
+    from app.hs_util import hs_call
+
+    async def boom(text):
+        raise HeadscaleError(text)
+
+    with pytest.raises(HTTPException) as e:
+        await hs_call(boom("headscale 500: node name is not unique: web-fra"))
+    assert e.value.status_code == 409
+
+    with pytest.raises(HTTPException) as e:
+        await hs_call(boom('headscale 500: "a.b" is not a valid DNS label'))
+    assert e.value.status_code == 400
+
+    with pytest.raises(HTTPException) as e:
+        await hs_call(boom("headscale 500: internal database failure"))
+    assert e.value.status_code == 502   # настоящая поломка остаётся 502

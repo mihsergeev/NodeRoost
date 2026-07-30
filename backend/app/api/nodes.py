@@ -461,6 +461,17 @@ async def rename_node(
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
+    # Занятость имени проверяем сами и БЕЗ оглядки на регистр: headscale
+    # различает «WEB-FRA» и «web-fra», а MagicDNS — нет. Такая пара уживалась в
+    # списке, но имя в сети доставалось одной из них, и обращение по имени
+    # молча уходило на ЧУЖУЮ машину.
+    for n in await hs_call(client.get_nodes()):
+        if str(n.get("id", "")) == str(node_id):
+            continue
+        if str(n.get("givenName") or "").lower() == body.name:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Имя уже занято другой нодой"
+            )
     node = await hs_call(client.rename_node(node_id, body.name))
     await audit.record(session, user.username, "node_rename", node_id, body.name)
     meta = await settings_store.get_node_meta(session)
