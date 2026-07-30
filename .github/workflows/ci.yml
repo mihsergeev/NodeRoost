@@ -16,8 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      # Ставим ровно то, что уходит в образ: расхождение между тем, что проверено
-      # тестами, и тем, что выкатывается, — самая скучная причина сломанного релиза.
+      # Install exactly what goes into the image: a gap between what the tests
+      # checked and what ships is the dullest reason for a broken release.
       - run: pip install --require-hashes -r backend/requirements.lock
       - run: pip install --no-deps -e backend
       - run: pip install pytest pytest-asyncio aiosqlite
@@ -35,11 +35,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
-      # tsc здесь важнее сборки: Vite молча пропускает мёртвые импорты, а падение
-      # типов ловит их до деплоя
+      # tsc matters more than the bundle here: Vite passes dead imports over in
+      # silence, while a type error catches them before the deploy
       - run: npm run build
         working-directory: frontend
-      - name: i18n — дубли ключей и непереведённые строки
+      - name: i18n — duplicate keys and untranslated strings
         run: npm run check-i18n
         working-directory: frontend
 
@@ -51,11 +51,11 @@ jobs:
         with:
           python-version: "3.14"
       - run: pip install pip-audit
-      - name: Известные уязвимости в зависимостях бэкенда
+      - name: Known vulnerabilities in backend dependencies
         run: pip-audit -r backend/requirements.lock --disable-pip
       - uses: actions/setup-node@v4
         with:
           node-version: "26"
-      - name: Известные уязвимости в зависимостях фронта
+      - name: Known vulnerabilities in frontend dependencies
         working-directory: frontend
         run: npm audit --audit-level=high

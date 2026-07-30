@@ -1,212 +1,217 @@
 # Changelog
 
-Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/);
-проект следует [семантическому версионированию](https://semver.org/lang/ru/).
+[Русская версия](CHANGELOG.ru.md)
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
+project follows [semantic versioning](https://semver.org/).
 
 ## [0.2.5] — 2026-07-31
 
-### Исправлено
+### Fixed
 
-- **Нода с истёкшим ключом показывалась онлайн.** headscale держит флаг ещё
-  долго после того, как сам отключил машину: в панели она горела зелёным,
-  «Logged out» на самой ноде, и алерт «сервер упал» не приходил — для него нода
-  оставалась живой. С истёкшим ключом нода подключиться не может, панель так и
-  считает.
-- **Снятая галка «Шлюз выхода» оставляла за собой связи.** У устройств
-  сохранялся выбор этого шлюза: карточка сообщала «через шлюзы: web-fra», хотя
-  грант уже исчез, а устройство с принудительным выходом продолжало гнать туда
-  весь трафик — и просто теряло интернет. Повторная установка галки молча
-  возвращала старые разрешения.
-- **Карточка ноды не показывала работающий маршрут работающим.** headscale
-  отвечает на запрос ОДНОЙ ноды с пустым `subnetRoutes` (в списке поле
-  заполнено). Панель считает действующие маршруты сама: одобрено И анонсируется.
-- **Панель предлагала IPv6-адрес ноды, которого не знает ни одно правило.**
-  Скопировав его из карточки, админ получал отказ при живом доступе. Показываем
-  адрес, по которому доступ действительно работает.
-- **Неудавшийся ручной бэкап отвечал голым «500 Internal Server Error»** — ни
-  места на диске, ни каталога, ни причины. Теперь причина названа, как и в
-  алерте автобэкапа.
-- `ops/restore.sh` на битом файле отвечал жалобой gzip на stdin вместо внятного
-  «не читается как архив бэкапа» (панель при этом не страдала — проверка идёт до
-  остановки контейнеров).
+- **A node whose key had expired was shown as online.** headscale keeps the flag set
+  long after it has itself dropped the machine: the node said "Logged out" while the
+  panel showed it green, and the "server is down" alert never fired because to it the
+  node was still alive. A node with an expired key cannot be connected at all, and
+  the panel now says so.
+- **Turning off "exit gateway" left the links behind.** Devices kept pointing at it:
+  the card still said "goes out through web-fra" while the grant was already gone,
+  and a device set to send all its traffic that way went on doing so — into a node
+  the policy no longer lets out to the internet, so it simply lost the internet.
+  Ticking the box again silently handed the old permissions back.
+- **A node's own card did not show a working route as working.** headscale answers a
+  single-node request with `subnetRoutes` empty, while the same field is filled in
+  the list. The panel now works out what is in force itself: approved *and*
+  announced.
+- **The panel offered an IPv6 address no rule of its own covers.** Copying it from
+  the card and connecting was refused while the panel still showed the access as
+  granted. Only the address the rules cover is shown.
+- **A failed manual backup answered with a bare "500 Internal Server Error"** — no
+  disk space, no directory, no reason. The cause is named now, as it already was in
+  the scheduled backup's alert.
+- `ops/restore.sh` met a damaged file with gzip's complaint about stdin instead of a
+  plain "this does not read as a backup archive". The panel was never at risk — the
+  check runs before anything is stopped.
 
 ## [0.2.4] — 2026-07-31
 
-### Исправлено
+### Fixed
 
-- **Нода могла отобрать имя у соседа.** MagicDNS не различает регистр, headscale
-  различает: «WEB-FRA» рядом с «web-fra» проходил проверку уникальности, после
-  чего оба имени резолвились в ЧУЖУЮ машину — обращение к серверу по имени тихо
-  уходило не туда. Имя ноды теперь — одна DNS-метка в нижнем регистре, занятость
-  проверяется без оглядки на регистр.
-- **Указание DNS-серверов молча перехватывало DNS на всех нодах.** Вместе со
-  списком включался `override_local_dns`, и сервер переставал видеть внутренние
-  имена, которые знал его прежний резолвер. Это отдельная галочка, по умолчанию
-  снятая.
-- **Направление можно было навести на адрес, который у каждой машины свой.**
-  `127.0.0.1` — это она сама, `169.254.169.254` — служба метаданных облака с
-  токенами доступа: трафик к ним уходил через чужую ноду. Такие адреса
-  отвергаются — и введённые руками, и полученные резолвом домена.
-- **Панель и сеть могли расходиться на минуту.** Две одновременные правки правил
-  раскладывались как «A сохранил, B сохранил, B запушил, A запушил»: в списке
-  одно, в сети другое, до следующего самоисцеления. Сохранение и пуш идут под
-  общим замком.
-- **Ручная политика принималась и молча исчезала.** `PUT /api/policy` отвечал
-  200, а самоисцеление через минуту возвращало собранную панелью версию. Теперь
-  эндпоинт отказывает и говорит, где менять правила.
-- **Код, которым включали второй фактор, ещё полминуты открывал вход** — при
-  включении и выключении 2FA он не тратился, в отличие от входа.
-- Имена с точкой или подчёркиванием и роли в верхнем регистре панель принимала,
-  а headscale отвергал: админ получал 502 с его английскими потрохами.
-- Порты `0`, `70000` и диапазоны задом наперёд доходили до headscale, и тот
-  отвергал политику целиком — вместе со всеми следующими пушами.
+- **A node could take over another node's name.** MagicDNS does not distinguish case,
+  headscale does: `WEB-FRA` next to an existing `web-fra` passed the uniqueness
+  check, after which both names resolved to the *other* machine — addressing a server
+  by name quietly reached a different one. A node's name is now a single lowercase
+  DNS label, and collisions are checked case-insensitively.
+- **Naming DNS servers quietly hijacked DNS on every node.** `override_local_dns` was
+  switched on together with the list, so a server stopped seeing the internal names
+  its previous resolver knew. It is a separate checkbox now, off by default.
+- **A direction could be aimed at an address every machine has of its own.**
+  `127.0.0.1` is the machine asking; `169.254.169.254` is the cloud metadata service
+  that hands out account credentials — traffic to both was routed through another
+  node. Those are refused now, on the address typed in and on whatever a domain
+  resolves to later.
+- **The panel and the network could disagree for a minute.** Two simultaneous rule
+  edits interleaved as save-A, save-B, push-B, push-A: one set listed, another in
+  force, until the next self-heal. Saving and pushing now happen under one lock.
+- **A hand-written policy was accepted and then vanished.** `PUT /api/policy`
+  answered 200 while the self-heal pass put the panel's own version back a minute
+  later. The endpoint refuses now and says where the rules live.
+- **The code that switched two-factor on still opened the panel** for the rest of its
+  half-minute: enabling and disabling 2FA only checked the code, unlike signing in.
+- Names with a dot or an underscore, and roles typed in capitals, were accepted by
+  the panel and refused by headscale — the admin got a 502 carrying its internals.
+- Ports `0`, `70000` and ranges written backwards reached headscale, which then
+  rejected the whole policy, along with every later push, while the bad rule sat in
+  the panel.
 
 ## [0.2.3] — 2026-07-30
 
-### Исправлено
+### Fixed
 
-- **После обновления панель отвечала 502.** nginx во фронтенде резолвил адрес
-  бэкенда один раз при старте и держал его навсегда: пересобранный бэкенд
-  поднимался с новым IP контейнера, и панель — вместе с агентами нод — молчала,
-  пока кто-нибудь не перезапустит и фронтенд. Теперь адрес резолвится через
-  DNS докера с коротким кэшем.
-- **Обновление не обновляло.** `git pull && docker compose pull && up -d`
-  отрабатывал без ошибок и оставлял прежнюю сборку: теги образов берутся из
-  `NODEROOST_VERSION` в `.env`, а его git не трогает. Появился `ops/update.sh` —
-  он переносит версию релиза, при отсутствии образов собирает на месте и
-  обновляет хостовые помощники.
-- **Переподключение ноды отбирало у неё доступы.** Правила ссылаются на id, а
-  переподключение выдаёт новый: правило оставалось в списке, но не действовало.
-  Правила, направления и настройки агента переезжают вместе с нодой.
-- **Удалённая нода оставляла следы.** Её правила висели в списке как рабочий
-  доступ, а запись агента заставляла панель вечно звать на помощь по
-  несуществующей ноде. Теперь удаляются вместе с нодой; правило на ноду,
-  удалённую мимо панели, так и подписано.
-- **Восстановление на другой машине оставляло панель без headscale.** В архиве
-  приезжает база headscale со своим списком ключей, а ключ панели живёт в
-  `.env` — на новой машине он был свой, и восстановленная панель показывала
-  «headscale: down». `ops/restore.sh` проверяет ключ и при необходимости
-  выпускает новый.
-- **Сторож панели звал на помощь по живой панели.** Он ставится в `/lib65`, вне
-  каталога панели, и вычисленный «от себя» корень уводил его от файла пульса.
-  Путь вписывает установщик; он же теперь ставит сторож и cron сам.
-- **Машина, уже бывшая в сети, подключалась в никуда.** headscale узнаёт её по
-  ключу и новую запись не заводит — мастер рапортовал об успехе, а в списке
-  ничего не менялось. Запись переименовывается в запрошенное имя, и мастер
-  говорит, чью запись переиспользовал.
-- Алерт «ключ ноды истекает» округлял остаток вниз: за 40 минут до смерти ключа
-  писал «через 0 дн.».
-- Скрипты в `ops/` лежали без бита исполнения, хотя инструкция зовёт их по пути.
+- **The panel answered 502 after an update.** nginx resolved the backend's name once
+  at startup and held that address: a rebuilt backend came up on a new container IP,
+  and the panel — along with the node agents — stayed silent until somebody thought
+  to restart the frontend too.
+- **Updating did not update.** `git pull && docker compose pull && up -d` ran without
+  a single error and left the old build in place: image tags come from
+  `NODEROOST_VERSION` in `.env`, which git never touches. `ops/update.sh` carries the
+  release version across, builds locally when a registry image is missing, and
+  refreshes the host helpers.
+- **Reconnecting a node took its access away.** Rules refer to a node id and a
+  reconnect issues a new one: the rule stayed in the list and stopped working. Rules,
+  routing directions and the agent's own settings now follow the node.
+- **A deleted node left traces.** Its rules stayed in the list, reading as working
+  access, and its agent record had the panel calling for help about a node that no
+  longer existed. Both go with the node now; a rule pointing at a node deleted
+  outside the panel is labelled as such.
+- **Restoring onto another machine left the panel without headscale.** The archive
+  carries headscale's database with its own list of keys, while the panel's key lives
+  in `.env` — on a new machine that key was its own, and the restored panel showed
+  "headscale: down". `ops/restore.sh` checks the key and issues a new one when
+  needed.
+- **The panel's watchdog called for help about a healthy panel.** It is installed in
+  `/lib65`, outside the application directory, so working the root out from its own
+  location led it away from the heartbeat file. The installer writes the real path in
+  and now installs the watchdog and its cron entry itself.
+- **A machine already on the network joined into nowhere.** headscale recognises it
+  by key and creates no second record — the wizard reported success while the list
+  did not change. The record is renamed to the name that was asked for, and the
+  wizard says whose record it took over.
+- The key-expiry alert truncated the remainder: forty minutes before a key died it
+  said "in 0 days".
+- The scripts in `ops/` shipped without the executable bit, although the guide calls
+  them by path.
 
 ## [0.2.2] — 2026-07-30
 
-### Исправлено
+### Fixed
 
-- **Переподключение ноды стирало её настройки в панели.** «Переподключить»
-  заводит ноду заново, с новым id, а заметки панели (тип, админ-флаг, описание,
-  группа, «без алертов», шлюз выхода) привязаны к id — машина возвращалась
-  чистой, и доступы к ней переставали работать. Заметки откладываются по имени
-  и возвращаются, когда нода подключилась.
+- **Reconnecting a node wiped its settings in the panel.** "Reconnect" creates the
+  node again with a new id, while the panel's notes (type, admin flag, description,
+  group, "no alerts", exit gateway) are keyed by that id — the machine came back
+  blank and the access to it stopped working. Notes are now stashed by name and
+  returned once the node is connected.
 
 ## [0.2.1] — 2026-07-30
 
-### Исправлено
+### Fixed
 
-- **Восстановление из бэкапа не работало после установки скриптом.** Скрипты в
-  `ops/` считали, что панель лежит в `/app/noderoost`, а установщик кладёт её в
-  `/opt/noderoost` — `ops/restore.sh` падал на первой строке. Корень установки
-  теперь вычисляется от самого скрипта.
-- Панель показывала версию 0.1.0 на установке 0.2.0: строка версии живёт в трёх
-  местах, двигали только тег образа.
+- **Restoring from a backup did not work after a scripted install.** The scripts in
+  `ops/` assumed the panel lived in `/app/noderoost` while the installer puts it in
+  `/opt/noderoost` — `ops/restore.sh` died on its first line. The application root is
+  derived from the script's own location now.
+- The panel reported version 0.1.0 on a 0.2.0 install: the version string lives in
+  three places and only the image tag had been moved.
 
 ## [0.2.0] — 2026-07-30
 
-### Добавлено
+### Added
 
-- **Установка одной командой** — `ops/install.sh`: ставит Docker, генерирует
-  секреты, поднимает панель, headscale и Caddy с автоматическими сертификатами,
-  создаёт API-ключ, по желанию настраивает ufw и хостовые помощники. Инструкция:
-  [docs/install.ru.md](docs/install.ru.md) и [docs/install.md](docs/install.md).
-- **Свой Caddy в комплекте** (`compose.tls.yml` + `deploy/Caddyfile`): TLS от
-  Let's Encrypt, список доверенных адресов для панели, управляющий API headscale
-  наружу не выставлен. Внешний обратный прокси больше не обязателен.
-- **Флаг страны рядом с именем ноды.** Страна определяется по внешнему адресу
-  ноды (его панель уже читала из базы headscale) **офлайн**, по таблице
-  `backend/app/data/geoip.csv.gz` — DB-IP IP-to-Country Lite (CC BY 4.0).
-  Обновление таблицы: `python ops/build-geoip.py`. Данные RIR для этого не
-  годятся: они дают страну владельца диапазона, а не геолокацию.
-- Алерт о падении сервера ведёт **сразу в карточку упавшей ноды**, а не на
-  главную; иконка падения — 🔥.
+- **One-command install** — `ops/install.sh`: installs Docker, generates the secrets,
+  brings up the panel, headscale and Caddy with automatic certificates, creates the
+  API key, optionally configures ufw and the host helpers. Guides:
+  [docs/install.md](docs/install.md) and [docs/install.ru.md](docs/install.ru.md).
+- **Caddy included** (`compose.tls.yml` + `deploy/Caddyfile`): Let's Encrypt TLS, an
+  address allowlist for the panel, headscale's management API not exposed. An
+  external reverse proxy is no longer required.
+- **A country flag next to a node's name.** The country is resolved from the node's
+  public address (which the panel already read from headscale's database) **offline**,
+  against `backend/app/data/geoip.csv.gz` — DB-IP IP-to-Country Lite (CC BY 4.0).
+  Refresh with `python ops/build-geoip.py`. RIR data will not do: it gives the country
+  of whoever owns the range, not where the address is.
+- A downed-server alert now links **straight to that node's card** rather than the
+  front page; the icon for it is 🔥.
 
-### Исправлено
+### Fixed
 
-- **Выключить шлюз выхода и снять последнюю роль было нельзя**: headscale 0.29
-  не разрешает снять с ноды последний тег, панель отвечала 502. Пустой список
-  тегов заменяется служебным маркером, в ролях он не показывается.
-- **Правка DNS могла уронить control-сервер.** Очистка списка DNS-серверов
-  оставляла `override_local_dns: true`, с которым headscale не стартует —
-  контейнер уходил в рестарт-луп. Флаг теперь пишется по состоянию списка.
-- **Подключение и переподключение падали** на машине, где Tailscale уже был
-  настроен (например `--exit-node-allow-lan-access` после выхода через шлюз):
-  `tailscale up` отказывается менять настройки без перечисления всех флагов.
-  Скрипты подключения передают `--reset`.
-- **Галка «шлюз выхода» игнорировала сохранённый тип ноды**: сервер, помеченный
-  руками, но без тегов и маршрутов, авто-определялся устройством, и панель
-  отказывалась делать его шлюзом.
-- Ответы на изменение ноды приходили без данных клиента — интерфейс перерисовывал
-  карточку и терял ОС, адрес и флаг страны до обновления списка.
+- **An exit gateway could not be switched off, nor the last role removed**: headscale
+  0.29 refuses to strip a node's last tag and the panel answered 502. An empty tag
+  list is replaced by a marker tag, which is not shown among the roles.
+- **Editing DNS could take the control server down.** Clearing the list of DNS servers
+  left `override_local_dns: true`, which headscale will not start with — the container
+  went into a restart loop. The flag now follows the state of the list.
+- **Joining and reconnecting failed** on a machine where Tailscale had already been
+  configured (`--exit-node-allow-lan-access` after using a gateway, for instance):
+  `tailscale up` refuses to change settings unless every non-default flag is
+  restated. The join scripts pass `--reset`.
+- **The "exit gateway" checkbox ignored a node's stored type**: a server marked by
+  hand but carrying no tags or routes was auto-detected as a device, and the panel
+  refused to make it a gateway.
+- Responses to node changes came back without client data — the interface redrew the
+  card and lost the OS, the address and the country flag until the list refreshed.
 
 ## [0.1.0] — 2026-07-28
 
-Первый публичный выпуск.
+First public release.
 
-### Ноды
+### Nodes
 
-- Разделение на серверы и личные устройства; устройства изолированы друг от друга
-  и никогда не бывают целью правила (проверка в движке политики, а не в интерфейсе).
-- Подключение ноды: одноразовый pre-auth-ключ и готовая команда под Linux,
-  Windows, macOS и Android; локальный мирор бинарей Tailscale с проверкой sha256.
-- Переподключение с сохранением имени, группировка по организациям и проектам,
-  описания, «не слать алерты» для отдельных нод.
+- Split into servers and personal devices; devices are isolated from one another and
+  are never a rule's destination (enforced in the policy engine, not in the UI).
+- Joining a node: a single-use pre-auth key and a ready command for Linux, Windows,
+  macOS and Android; a local mirror of the Tailscale binaries with sha256
+  verification.
+- Reconnect keeping the name, grouping by organisation and project, descriptions, and
+  "send no alerts" per node.
 
-### Доступы
+### Access
 
-- Правила «кто → куда → по какому порту» вместо ручной правки HuJSON: выдача
-  мышью — массовая и точечная, из карточки ноды.
-- Роли (теги headscale) как группы серверов; админ-устройство с доступом ко всем
-  серверам.
-- Политика собирается и пушится в headscale автоматически, при отказе
-  откатывается; самоисцеление сверяет действующую политику с ожидаемой.
+- *Who → where → on which port* rules instead of hand-edited HuJSON: granted by
+  clicking, to several sources at once or from inside a node's page.
+- Roles (headscale tags) as groups of servers; an admin device with access to every
+  server.
+- The policy is assembled and pushed to headscale automatically and rolled back if it
+  is refused; a self-heal pass compares the policy in force with the expected one.
 
-### Сеть
+### Network
 
-- Направления «эти ноды ходят на такой-то адрес через такую-то ноду» с
-  автоматическим перерезолвом доменов.
-- Выход в интернет через выбранные шлюзы: per-device набор разрешённых exit-нод
-  (grants `via`) и принудительный туннель для отдельной ноды — с сохранением её
-  доступности по публичному IP.
-- Агент на ноде (POSIX sh + systemd-таймер): применяет маршруты и exit из панели
-  и отчитывается хешем применённого состояния.
+- Directions — *these nodes reach that address through this node* — with domains
+  re-resolved automatically.
+- Internet egress through chosen gateways: a per-device set of allowed exit nodes
+  (`via` grants) and a forced tunnel for a single node, which stays reachable on its
+  public IP.
+- An agent on the node (POSIX sh + a systemd timer): applies the routes and the exit
+  flag from the panel and reports the hash of what it applied.
 
-### Эксплуатация
+### Operations
 
-- Бэкапы: консистентный снимок базы headscale и настроек панели, самопроверка
-  архива, автобэкап с ретеншном, сценарий восстановления, выгрузка offsite.
-- Мониторинг: история онлайна, алерты в Telegram и на вебхук (падение сервера,
-  истечение ключа, молчание агента), самоконтроль панели и хостовый watchdog.
-- Настройки: API-ключи headscale, правка DNS/MagicDNS и диапазонов меша, пиновая
-  версия клиента Tailscale, журнал действий и диагностика.
+- Backups: a consistent snapshot of headscale's database and the panel's settings, a
+  self-test of the archive, scheduled backups with retention, a restore procedure and
+  an offsite copy.
+- Monitoring: uptime history, Telegram and webhook alerts (server down, key expiring,
+  agent gone quiet), the panel's own self-check and a host watchdog.
+- Settings: headscale API keys, DNS/MagicDNS and mesh range editing, a pinned
+  Tailscale client version, an audit log and diagnostics.
 
-### Безопасность
+### Security
 
-- Вход: JWT с версионированием токенов, TOTP-2FA с защитой от повторного
-  использования кода, ограничение попыток, журнал действий; панель не стартует со
-  слабым секретом или дефолтным паролем.
-- Владелец всех тегов — пустая группа: навесить тег себе нода не может.
-- Класс ноды и её теги определяются только тем, что подтвердил администратор.
-- Маршруты и адреса направлений проверяются на попадание в меш и на чрезмерную
-  ширину; одобрения снимаются вместе с отозванным намерением.
-- SSRF-защита адресов алертов, анти-traversal при скачивании бэкапов, строгий CSP
-  и заголовки безопасности на фронте.
-- Сборка из зафиксированных зависимостей с проверкой хешей, базовые образы прибиты
-  по дайджестам.
+- Sign-in: JWT with token versioning, TOTP two-factor with replay protection, attempt
+  limits, an audit log; the panel will not start with a weak secret or the default
+  password.
+- Every tag is owned by an empty group, so no node can apply one to itself.
+- A node's class and its tags follow only what the administrator approved.
+- Routes and direction addresses are checked for reaching into the mesh and for being
+  too wide; approvals are withdrawn along with the intent behind them.
+- SSRF protection on alert addresses, anti-traversal on backup downloads, a strict CSP
+  and security headers on the frontend.
+- Built from a hash-verified dependency lock, with base images pinned by digest.
