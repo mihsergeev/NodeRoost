@@ -106,12 +106,31 @@ class NodeOut(BaseModel):
     subgroup: str = ""  # …и проект внутри неё
 
 
+# Имя ноды = ОДНА DNS-метка: именно так его проверяет headscale, и именно из
+# него собирается имя в MagicDNS. Точки, подчёркивания и хвостовой дефис он
+# отвергает — раньше панель их пропускала, и пользователь получал 502 с
+# английскими потрохами вместо внятного отказа.
+#
+# Регистр приводим к нижнему: DNS его не различает, а headscale — различает.
+# Нода, названная «WEB-FRA» рядом с «web-fra», проходила проверку уникальности
+# и отбирала у соседа имя: оба имени резолвились в ЧУЖОЙ адрес.
+_NODE_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def normalize_node_name(v: str) -> str:
+    name = str(v or "").strip().lower()
+    if not _NODE_LABEL.match(name):
+        raise ValueError(
+            "Имя ноды — латинские буквы, цифры и дефис (до 63 символов), "
+            "без точек, подчёркиваний и дефиса по краям"
+        )
+    return name
+
+
 class NodeRenameIn(BaseModel):
-    # DNS-label-подобное имя (буквы/цифры/дефис/точка/подчёркивание); headscale
-    # ещё раз нормализует его на своей стороне
-    name: str = Field(
-        min_length=1, max_length=63, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
-    )
+    name: str = Field(min_length=1, max_length=63)
+
+    _norm_name = field_validator("name")(normalize_node_name)
 
 
 class NodeTagsIn(BaseModel):
@@ -195,9 +214,10 @@ class ExitClientsIn(BaseModel):
 # --- enroll (добавление ноды) ---
 
 class EnrollIn(BaseModel):
-    name: str = Field(
-        min_length=1, max_length=63, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
-    )
+    # то же имя, что станет именем ноды в сети, — правила те же
+    name: str = Field(min_length=1, max_length=63)
+
+    _norm_name = field_validator("name")(normalize_node_name)
     os: Literal["linux", "windows", "macos", "android"] = "linux"
     # exit-нода: скрипт анонсирует exit + на Linux закрепляет ip_forward.
     exit_node: bool = False
