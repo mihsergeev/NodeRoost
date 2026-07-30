@@ -4,6 +4,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from math import ceil
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -235,8 +236,11 @@ async def _check_key_expiry(
         expiring, days = False, 0
         dt = _parse(n["expiry"])
         if dt is not None and dt > now:
-            days = (dt - now).days
-            expiring = days <= warn
+            left = dt - now
+            expiring = left <= timedelta(days=warn)
+            # Остаток округляем ВВЕРХ: до смерти ключа 40 минут — это «через 1 дн.»,
+            # а не «через 0 дн.», как выходило при обрезании вниз.
+            days = max(1, ceil(left.total_seconds() / 86400))
         if n["id"] in (muted or set()):
             continue
         if expiring and not st.key_alerted:

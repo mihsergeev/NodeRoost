@@ -111,3 +111,46 @@ async def test_prune_preauthkeys_survives_delete_error(fake_hs):
     removed = await collector._prune_preauthkeys(Settings(preauth_retention_days=7), [])
     assert removed == 1
     assert client.deleted == ["2"]
+
+
+async def _expiry_alerts(session, monkeypatch, hours_left, warn_days=14):
+    """Прогнать проверку срока ключа и вернуть тексты ушедших алертов."""
+    from app import alerts, settings_store
+    from app.models import NodeStatus
+
+    session.add(NodeStatus(node_id="1", name="web", online=True))
+    await session.commit()
+
+    async def fake_cfg(*a, **k):
+        return {"webhook": "https://hook.example"}
+
+    sent: list[str] = []
+
+    async def fake_send(cfg, text, link=None):
+        sent.append(text)
+
+    monkeypatch.setattr(settings_store, "get_alert_config", fake_cfg)
+    monkeypatch.setattr(alerts, "send_alert", fake_send)
+    exp = datetime.now(timezone.utc) + timedelta(hours=hours_left)
+    node = {"id": "1", "name": "web", "expiry": exp.isoformat().replace("+00:00", "Z")}
+    await collector._check_key_expiry(
+        session, Settings(key_expiry_warn_days=warn_days), [node]
+    )
+    return sent
+
+
+async def test_key_expiry_counts_last_day_as_one(session, monkeypatch):
+    """До смерти ключа 40 минут — это «через 1 дн.», а не «через 0 дн.»."""
+    sent = await _expiry_alerts(session, monkeypatch, hours_left=0.7)
+    assert len(sent) == 1 and "через 1 дн." in sent[0]
+
+
+async def test_key_expiry_rounds_up(session, monkeypatch):
+    # 47 часов — почти двое суток; обрезание вниз показывало «1 дн.»
+    sent = await _expiry_alerts(session, monkeypatch, hours_left=47)
+    assert "через 2 дн." in sent[0]
+
+
+async def test_key_expiry_silent_beyond_threshold(session, monkeypatch):
+    # 14 суток и ещё 5 часов — порог в 14 дней ещё не перейдён
+    assert await _expiry_alerts(session, monkeypatch, hours_left=14 * 24 + 5) == []
