@@ -406,3 +406,26 @@ def test_approved_routes_reject_mesh_but_allow_exit():
     # exit-маршруты этот эндпоинт как раз и одобряет
     assert NodeRoutesIn(routes=["0.0.0.0/0", "::/0"]).routes == ["0.0.0.0/0", "::/0"]
     assert NodeRoutesIn(routes=["10.0.0.0/24"]).routes == ["10.0.0.0/24"]
+
+
+async def test_direction_approval_is_marked_as_the_panel_s(monkeypatch):
+    """Направление одобряет свой маршрут сразу, не дожидаясь агента. Раньше это
+    шло мимо panel_approved, и коллектор считал маршрут одобренным вручную —
+    после удаления направления /32 оставался на ноде-выходе навсегда."""
+    from app import routing
+
+    approved: dict[str, list[str]] = {}
+
+    class FakeClient:
+        async def get_nodes(self):
+            return [{"id": "2", "approvedRoutes": ["10.0.0.0/24"]}]
+
+        async def approve_routes(self, nid, routes):
+            approved[nid] = routes
+
+    directions = {"d1": {"src": ["4"], "dst": "example.test", "via": "2",
+                         "ips": ["203.0.113.9"], "ports": "*"}}
+    done = await routing.approve_for(FakeClient(), directions)
+    # маршрут одобрен в headscale И возвращён вызывающему для отметки
+    assert "203.0.113.9/32" in approved["2"]
+    assert done == {"2": ["203.0.113.9/32"]}

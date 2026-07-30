@@ -314,12 +314,19 @@ async def routing_loop(session_factory, settings) -> None:
         await asyncio.sleep(REFRESH_AFTER.total_seconds())
 
 
-async def approve_for(client, directions: dict) -> None:
-    """Дотянуть одобрение маршрутов на нодах-выходах после смены адресов."""
+async def approve_for(client, directions: dict) -> dict[str, list[str]]:
+    """Дотянуть одобрение маршрутов на нодах-выходах после смены адресов.
+
+    Возвращает {node_id: [одобренные маршруты]} — вызывающая сторона обязана
+    записать их в panel_approved агента. Без этой отметки коллектор считает
+    маршрут одобренным вручную и НИКОГДА его не снимет: удалённое направление
+    оставляло бы за собой /32 на ноде-выходе, и они копились бы.
+    """
     wanted = routes_by_node(directions)
     if not wanted:
-        return
+        return {}
     nodes = {str(n.get("id", "")): n for n in await client.get_nodes()}
+    done: dict[str, list[str]] = {}
     for node_id, routes in wanted.items():
         node = nodes.get(node_id)
         if node is None:
@@ -328,3 +335,5 @@ async def approve_for(client, directions: dict) -> None:
         target = approved | set(routes)
         if target != approved:
             await client.approve_routes(node_id, sorted(target))
+        done[node_id] = sorted(routes)
+    return done
