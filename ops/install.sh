@@ -104,10 +104,13 @@ fi
 cd "$DIR"
 
 if [ -z "$VERSION" ]; then
-    # Последний релиз; без сети/без релизов — версия из CHANGELOG, иначе сборка.
-    VERSION="$(curl -fsSL https://api.github.com/repos/mihsergeev/NodeRoost/releases/latest 2>/dev/null \
-        | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -1 || true)"
-    [ -n "$VERSION" ] || { VERSION="0.0.0-local"; BUILD=1; warn "no release found — building from source"; }
+    # Версия берётся из .env.example склонированного репозитория: там она и есть
+    # источник правды для тегов образов. На GitHub Releases не ориентируемся —
+    # выпуск помечается тегом, объект Release при этом не создаётся, и запрос
+    # к releases/latest молча возвращал пусто, отправляя установку в долгую
+    # сборку из исходников на однопроцессорной машине.
+    VERSION="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env.example | head -1)"
+    [ -n "$VERSION" ] || { VERSION="0.0.0-local"; BUILD=1; warn "no version found — building from source"; }
 fi
 
 # ── 3. Конфигурация ───────────────────────────────────────────────────────
