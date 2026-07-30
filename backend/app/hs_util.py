@@ -20,9 +20,28 @@ def require_hs(settings) -> None:
         )
 
 
+# Ошибки, которые headscale возвращает на НЕВЕРНЫЙ ВВОД, а не на свою поломку.
+# Он отдаёт их как 500 с английским текстом внутри, и панель показывала это
+# админу дословно: «502 headscale 500: renaming node: "srv.prod" is not a valid
+# DNS label…». Переводим в понятный отказ.
+_INPUT_ERRORS = (
+    ("name is not unique", status.HTTP_409_CONFLICT, "Имя уже занято другой нодой"),
+    (
+        "not a valid dns label",
+        status.HTTP_400_BAD_REQUEST,
+        "Недопустимое имя: латинские буквы, цифры и дефис, без точек и подчёркиваний",
+    ),
+)
+
+
 async def hs_call(coro):
-    """Выполняет вызов headscale, превращая HeadscaleError в 502."""
+    """Выполняет вызов headscale, превращая HeadscaleError в HTTP-ошибку."""
     try:
         return await coro
     except HeadscaleError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+        text = str(exc)
+        low = text.lower()
+        for needle, code, human in _INPUT_ERRORS:
+            if needle in low:
+                raise HTTPException(code, human) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, text) from exc
