@@ -179,3 +179,53 @@ async def test_manual_policy_push_is_refused(client):
     )
     assert r.status_code == 409
     assert "Доступы" in r.json()["detail"]
+
+
+async def test_parallel_rule_writes_end_up_consistent(client, monkeypatch):
+    """Две одновременные правки не должны расходиться: в панели одно, в сети другое.
+
+    Без замка запросы раскладывались как «A сохранил, B сохранил, B запушил,
+    A запушил» — до следующего самоисцеления панель показывала доступ, которого
+    в сети нет.
+    """
+    import asyncio
+
+    from app import policy_apply, settings_store
+    from app.api import policy as api_policy
+
+    pushed: list[str] = []
+
+    class _HS:
+        async def get_nodes(self):
+            return [{"id": "1", "givenName": "a", "ipAddresses": ["100.64.0.1"]},
+                    {"id": "2", "givenName": "b", "ipAddresses": ["100.64.0.2"]}]
+
+    async def fake_push(session, client_, settings):
+        # пуш «медленный» — тут-то гонка и вылезала
+        await asyncio.sleep(0.05)
+        rules = await settings_store.get_acl_rules(session)
+        pushed.append(rules[0]["ports"] if rules else "")
+        return ""
+
+    async def fake_build(*a, **k):
+        return ""
+
+    monkeypatch.setattr(api_policy, "get_client", lambda _s: _HS())
+    monkeypatch.setattr(api_policy, "require_hs", lambda _s: None)
+    monkeypatch.setattr(policy_apply, "push_policy", fake_push)
+    monkeypatch.setattr(policy_apply, "build_policy", fake_build)
+
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    def body(port):
+        return {"rules": [{"src": {"kind": "node", "value": "1"},
+                           "dst": {"kind": "node", "value": "2"}, "ports": port}]}
+
+    await asyncio.gather(*[
+        client.put("/api/policy/rules", json=body(p), headers=h)
+        for p in ("111", "222", "333")
+    ])
+    stored = (await client.get("/api/policy/rules", headers=h)).json()["rules"]
+    assert pushed[-1] == stored[0]["ports"]   # в сети ровно то, что в панели

@@ -184,21 +184,24 @@ async def create_direction(
         "resolved_at": None,
         "error": "",
     }
-    directions = await settings_store.get_routing(session)
-    did = routing.new_id()
-    directions[did] = entry
-    await settings_store.set_routing(session, directions)
-    # Если headscale политику не принял — откатываем сохранение. Иначе негодная
-    # запись осталась бы в хранилище и валила КАЖДУЮ следующую сборку политики,
-    # а панель показала бы, что направление создано.
-    err = await _apply(session)
-    if err:
-        directions.pop(did, None)
+    # Замок держим до пуша: иначе параллельная правка успеет запушить между
+    # нашим сохранением и нашим пушем, и в сети окажется не то, что в панели.
+    async with policy_apply.write_lock():
+        directions = await settings_store.get_routing(session)
+        did = routing.new_id()
+        directions[did] = entry
         await settings_store.set_routing(session, directions)
-        await _apply(session)
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, f"headscale не принял правило: {err}"
-        )
+        # Если headscale политику не принял — откатываем сохранение. Иначе негодная
+        # запись осталась бы в хранилище и валила КАЖДУЮ следующую сборку политики,
+        # а панель показала бы, что направление создано.
+        err = await _apply(session)
+        if err:
+            directions.pop(did, None)
+            await settings_store.set_routing(session, directions)
+            await _apply(session)
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"headscale не принял правило: {err}"
+            )
     await audit.record(
         session,
         user.username,
@@ -215,15 +218,16 @@ async def create_direction(
 async def delete_direction(
     direction_id: str, user: CurrentUser, session: SessionDep
 ) -> None:
-    directions = await settings_store.get_routing(session)
-    d = directions.pop(direction_id, None)
-    if d is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Направление не найдено")
-    await settings_store.set_routing(session, directions)
-    # Маршрут на ноде-выходе снимется сам: агент получит состояние без него.
-    # Одобрение осиротеет, но неанонсируемый маршрут неактивен, а чистить чужие
-    # ручные одобрения мы не вправе — их мог поставить админ.
-    await _apply(session)
+    async with policy_apply.write_lock():
+        directions = await settings_store.get_routing(session)
+        d = directions.pop(direction_id, None)
+        if d is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Направление не найдено")
+        await settings_store.set_routing(session, directions)
+        # Маршрут на ноде-выходе снимется сам: агент получит состояние без него.
+        # Одобрение осиротеет, но неанонсируемый маршрут неактивен, а чистить чужие
+        # ручные одобрения мы не вправе — их мог поставить админ.
+        await _apply(session)
     await audit.record(session, user.username, "direction_del", str(d.get("dst", "")), "")
 
 

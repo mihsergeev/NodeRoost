@@ -106,14 +106,17 @@ async def put_rules(
     # запушенное всегда совпадает с хранимым и с кэшем _last_pushed (иначе
     # самоисцеление считает, что всё в порядке, и расхождение живёт до следующей
     # правки). Порядок «сохранить → запушить → откатить» тот же, что у направлений.
-    prev = await settings_store.get_acl_rules(session)
-    await settings_store.set_acl_rules(session, rules_dicts)
-    err = await policy_apply.push_policy(session, client, settings)
-    if err:
-        await settings_store.set_acl_rules(session, prev)
-        await policy_apply.apply_policy(session, client, settings)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
-    generated = await policy_apply.build_policy(session, client, settings, nodes) or ""
+    async with policy_apply.write_lock():
+        prev = await settings_store.get_acl_rules(session)
+        await settings_store.set_acl_rules(session, rules_dicts)
+        err = await policy_apply.push_policy(session, client, settings)
+        if err:
+            await settings_store.set_acl_rules(session, prev)
+            await policy_apply.apply_policy(session, client, settings)
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
+        generated = (
+            await policy_apply.build_policy(session, client, settings, nodes) or ""
+        )
     await audit.record(
         session, user.username, "acl_rules_set", "", f"{len(rules_dicts)} правил"
     )
