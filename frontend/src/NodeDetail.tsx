@@ -253,17 +253,21 @@ export function NodeDetail({
           <div className="spec-cell">
             <span className="spec-label">IP</span>
             <span className="spec-value">
-              {node.ip_addresses.map((ip) => (
-                <button
-                  key={ip}
-                  type="button"
-                  className="chip chip-copy"
-                  title={t('Скопировать IP')}
-                  onClick={() => copyValue(ip, `ip:${ip}`)}
-                >
-                  {copied === `ip:${ip}` ? t('Скопировано ✓') : ip}
-                </button>
-              ))}
+              {/* см. NodesPage: наружу показываем только IPv4 — по IPv6-адресу
+                  ноды доступ не даст ни одно правило панели */}
+              {node.ip_addresses
+                .filter((ip) => !ip.includes(':'))
+                .map((ip) => (
+                  <button
+                    key={ip}
+                    type="button"
+                    className="chip chip-copy"
+                    title={t('Скопировать IP')}
+                    onClick={() => copyValue(ip, `ip:${ip}`)}
+                  >
+                    {copied === `ip:${ip}` ? t('Скопировано ✓') : ip}
+                  </button>
+                ))}
               {nameWithIp && (
                 <button
                   type="button"
