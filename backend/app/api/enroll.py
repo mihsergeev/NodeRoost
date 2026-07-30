@@ -80,6 +80,23 @@ async def enroll_status(
     # вернул ноду атакующего — которой фронт и проставил admin=true.
     for n in nodes:
         pak = n.get("preAuthKey") or {}
-        if key_id and str(pak.get("id", "")) == key_id:
-            return EnrollStatusOut(connected=True, node=_map_node(n))
+        if key_id and str(pak.get("id", "")) != key_id:
+            continue
+        if not key_id:
+            continue
+        # Машина, которая уже была в сети, при повторном подключении прилипает к
+        # СВОЕЙ старой записи: headscale узнаёт её по machine key и заводить
+        # новую не станет. Имя при этом остаётся прежним — админ просил
+        # «new-net», а в списке по-прежнему «laptop», и добавление выглядит как
+        # будто не сработало. Переименовываем запись под запрошенное имя и
+        # говорим, чью запись переиспользовали. Найдена она по НАШЕМУ ключу,
+        # выданному минуту назад, так что подменить чужую ноду этим нельзя.
+        was = str(n.get("givenName") or "")
+        reused = None
+        if hostname and was and was != hostname:
+            renamed = await hs_call(client.rename_node(str(n.get("id", "")), hostname))
+            reused = was
+            if renamed:
+                n = renamed.get("node") or renamed
+        return EnrollStatusOut(connected=True, node=_map_node(n), reused_from=reused)
     return EnrollStatusOut(connected=False)
