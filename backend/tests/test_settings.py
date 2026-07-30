@@ -171,3 +171,25 @@ async def test_hsinfo_ok_defaults(client, monkeypatch):
     body = r.json()
     assert body["server_url"] == ""
     assert body["dns"]["magic_dns"] is False
+
+
+def test_empty_nameservers_turn_off_override(tmp_path):
+    """headscale не стартует, если список DNS-серверов пуст, а override_local_dns
+    включён — а он включён по умолчанию. Очистка списка в панели роняла
+    control-сервер: контейнер уходил в рестарт-луп, панель теряла с ним связь.
+    Пустой список = «клиенты пользуются своим DNS», флаг обязан выключиться."""
+    from app.api.settings import _write_dns_config
+    import yaml
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("server_url: https://hs.example\ndns:\n  magic_dns: true\n", encoding="utf-8")
+
+    _write_dns_config(str(cfg), True, "mesh.internal", ["1.1.1.1"])
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert data["dns"]["nameservers"]["global"] == ["1.1.1.1"]
+    assert data["dns"]["override_local_dns"] is True
+
+    _write_dns_config(str(cfg), True, "mesh.internal", [])
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert data["dns"]["nameservers"]["global"] == []
+    assert data["dns"]["override_local_dns"] is False
