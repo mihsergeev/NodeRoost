@@ -31,7 +31,9 @@ TMP=$(mktemp -d)
 # настройки алертов с токенами). Чистим его тем же trap'ом: при падении любой из
 # команд ниже (set -eu) файл иначе остаётся на диске и уезжает в следующий бэкап.
 trap 'rm -rf "$TMP"; rm -f "$APP/data/_restore_panel.json"' EXIT INT TERM
-tar -xzf "$ARCHIVE" -C "$TMP"
+# Распаковываем ДО остановки контейнеров: битый файл не должен ронять живую
+# панель. Своё сообщение — вместо «gzip: stdin: not in gzip format».
+tar -xzf "$ARCHIVE" -C "$TMP" 2>/dev/null \n  || { echo "не читается как архив бэкапа: $ARCHIVE (повреждён или это не .tar.gz)" >&2; exit 1; }
 
 # минимальная комплектность
 [ -f "$TMP/panel.json" ] || { echo "в архиве нет panel.json" >&2; exit 1; }
