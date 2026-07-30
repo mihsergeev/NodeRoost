@@ -233,10 +233,13 @@ control-сервера.
 ## Обновление и удаление
 
 ```bash
-cd /opt/noderoost
-sudo git pull
-sudo docker compose pull && sudo docker compose up -d
+cd /opt/noderoost && sudo ops/update.sh
 ```
+
+Скрипт забирает свежий код, переносит номер версии в `.env` и поднимает стек.
+Одного `git pull` мало: теги образов панель берёт из `NODEROOST_VERSION` в
+`.env`, а этот файл ваш и git его не трогает — команды отработают без ошибок, а
+версия останется прежней.
 
 Удалить всё вместе с данными:
 
