@@ -203,7 +203,27 @@ for i in $(seq 1 60); do
 done
 ok "панель отвечает"
 
-# ── 5. Фаервол (по желанию) ───────────────────────────────────────────────
+# ── 5. Хостовые помощники ─────────────────────────────────────────────────
+# У бэкенда нет доступа к Docker (сознательно), поэтому перезапуск headscale
+# после правки его config.yaml и снятие логов делает хост: systemd видит флаг
+# от панели и запускает скрипт. Без этого «Настройки → DNS» и «Логи headscale»
+# в панели не работают.
+say "Ставлю хостовые помощники (DNS-апплай и логи headscale)"
+install -d /lib65/noderoost
+for f in hs-apply.sh hs-logs.sh; do
+    sed "s|^APP_DIR=.*|APP_DIR=$DIR|" "ops/$f" > "/lib65/noderoost/$f"
+    chmod 755 "/lib65/noderoost/$f"
+done
+for u in noderoost-hs-apply noderoost-hs-logs; do
+    for ext in path service; do
+        sed "s|/app/noderoost|$DIR|g" "ops/$u.$ext" > "/etc/systemd/system/$u.$ext"
+    done
+done
+systemctl daemon-reload
+systemctl enable --now noderoost-hs-apply.path noderoost-hs-logs.path >/dev/null 2>&1 || true
+ok "помощники в /lib65/noderoost, systemd следит за флагами"
+
+# ── 6. Фаервол (по желанию) ───────────────────────────────────────────────
 if [ "$UFW" = 1 ]; then
     say "Настраиваю ufw"
     command -v ufw >/dev/null 2>&1 || { apt-get update -qq </dev/null; apt-get install -y -qq ufw </dev/null; }
