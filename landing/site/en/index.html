@@ -18,7 +18,7 @@
 <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#00E58A">
 <link rel="manifest" href="/site.webmanifest">
 <meta name="theme-color" content="#0D111A">
-<link rel="stylesheet" href="/style.css?v=4">
+<link rel="stylesheet" href="/style.css?v=5">
 </head>
 <body>
 
@@ -72,32 +72,30 @@
 <section id="why">
   <div class="wrap">
     <p class="eyebrow-s">Why</p>
-    <h2>headscale gives you the network. The rest is manual</h2>
+    <h2>Why a panel when headscale already works</h2>
     <p class="sub">
-      headscale issues keys, keeps the netmap and enforces the policy. Managing
-      it means the CLI and a <code>policy.hujson</code> file. That is fine for
-      five nodes; past that you memorise tags, hope you got the ACL right, SSH
-      into every node for a single route, and hear about a node being down from
-      its user. <b>NodeRoost is a management layer on top of the same
-      headscale</b> — it does not replace it and it does not proxy traffic.
+      The panel does not replace headscale and does not proxy traffic. It takes
+      over the part that is otherwise done by hand — in the CLI and in the policy
+      file.
     </p>
 
     <div class="tablewrap">
       <table>
         <thead>
-          <tr><th>Task</th><th>Without the panel</th><th>With NodeRoost</th></tr>
+          <tr><th>Task</th><th>With NodeRoost</th><th>Without the panel</th></tr>
         </thead>
         <tbody>
-          <tr><td>Granting access</td><td>edit <code>policy.hujson</code> by hand</td><td>a “who → where → port” rule, by clicking</td></tr>
-          <tr><td>Isolating personal devices</td><td>yours to get right in the ACL</td><td>devices never see each other</td></tr>
-          <tr><td>A subnet behind a node</td><td><code>approve-routes</code> by node ID in the CLI</td><td>a button on the server card</td></tr>
-          <tr><td>Traffic to one destination</td><td>pick the CIDR, watch for the IP changing</td><td>name the domain — the panel tracks it</td></tr>
-          <tr><td>Applying a route on the node</td><td>SSH into every machine</td><td>the agent applies it</td></tr>
-          <tr><td>Internet egress</td><td>the exit node is open to anyone the ACL allows</td><td>every device gets its own list of gateways</td></tr>
-          <tr><td>Who is online</td><td><code>nodes list</code> — this moment only</td><td>history and Telegram alerts</td></tr>
-          <tr><td>Onboarding a machine</td><td>make a key in the CLI, dictate the command</td><td>a key and a ready command for the OS</td></tr>
-          <tr><td>Backups</td><td>copy the sqlite file yourself</td><td>a scheduled snapshot, verified</td></tr>
-          <tr><td>A mistake in the rules</td><td>edit the file and apply it again</td><td>rollback to the last working version</td></tr>
+          <tr><td>Granting access</td><td>a “who → where → port” rule, by clicking</td><td>edit <code>policy.hujson</code> by hand</td></tr>
+          <tr><td>Isolating personal devices</td><td>devices never see each other</td><td>yours to get right in the ACL</td></tr>
+          <tr><td>A subnet behind a node</td><td>a button on the server card</td><td><code>approve-routes</code> by node ID in the CLI</td></tr>
+          <tr><td>Traffic to one destination</td><td>name the domain — the panel tracks it</td><td>pick the CIDR, watch for the IP changing</td></tr>
+          <tr><td>Applying a route on the node</td><td>the agent applies it</td><td>SSH into every machine</td></tr>
+          <tr><td>Internet egress</td><td>every device gets its own list of gateways</td><td>the exit node is open to anyone the ACL allows</td></tr>
+          <tr><td>Who is online</td><td>history and Telegram alerts</td><td><code>nodes list</code> — this moment only</td></tr>
+          <tr><td>Onboarding a machine</td><td>a key and a ready command for the OS</td><td>make a key in the CLI, dictate the command</td></tr>
+          <tr><td>Where a server sits</td><td>a country flag from its public address</td><td>remember it yourself or go look it up</td></tr>
+          <tr><td>Backups</td><td>a scheduled snapshot, verified</td><td>copy the sqlite file yourself</td></tr>
+          <tr><td>A mistake in the rules</td><td>rollback to the last working version</td><td>edit the file and apply it again</td></tr>
         </tbody>
       </table>
     </div>
@@ -446,7 +444,7 @@ curl -fsSL https://control.example.com/agent/&lt;token&gt;/setup | sh</pre>
   </div>
 </footer>
 
-<script src="/lb.js?v=4" defer></script>
+<script src="/lb.js?v=5" defer></script>
 
 </body>
 </html>

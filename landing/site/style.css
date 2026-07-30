@@ -137,14 +137,15 @@ thead th{
   background:var(--surface-2); color:var(--dim); font:600 11.5px/1.4 var(--mono);
   letter-spacing:.1em; text-transform:uppercase; white-space:nowrap;
 }
-thead th:last-child{color:var(--accent); padding-left:36px}
+thead th:nth-child(2){color:var(--accent); padding-left:36px}
 td:first-child{color:var(--text); font-weight:600; width:24%}
-td:nth-child(2){color:var(--dim); width:34%}
-td:last-child{color:#D7DFEA; width:42%; position:relative; padding-left:36px}
-td:last-child::before{
+/* сначала то, что даёт панель, — и оно ярче; «без панели» рядом, приглушённым */
+td:nth-child(2){color:#D7DFEA; width:40%; position:relative; padding-left:36px}
+td:nth-child(2)::before{
   content:"✓"; position:absolute; left:16px; top:13px;
   color:var(--accent); font-weight:700; font-size:13px;
 }
+td:last-child{color:var(--dim); width:36%}
 tbody tr:nth-child(even){background:rgba(255,255,255,.016)}
 tbody tr:hover{background:rgba(0,229,138,.05)}
 code{font-family:var(--mono); font-size:.92em; color:#BFD8CC}
