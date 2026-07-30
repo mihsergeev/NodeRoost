@@ -4,15 +4,19 @@
 # в Postgres и перезапускает стек. У бэкенда нет доступа к Docker by design,
 # поэтому оркестрация — здесь, на хосте.
 #
-#   sudo /lib65/noderoost/restore.sh /app/noderoost/data/backups/noderoost-backup-YYYYMMDD-HHMMSS.tar.gz
+#   sudo ops/restore.sh data/backups/noderoost-backup-YYYYMMDD-HHMMSS.tar.gz
 #
-# Второй аргумент — корень приложения (по умолчанию /app/noderoost).
+# Второй аргумент — корень приложения (по умолчанию — каталог установки).
 # Для DR на ПУСТОМ сервере сначала подними стек один раз (docker compose up -d),
 # чтобы прогнать миграции, затем запусти restore.
 set -eu
 
 ARCHIVE="${1:?укажите путь к архиву бэкапа}"
-APP="${2:-/app/noderoost}"
+# Корень приложения: по умолчанию — каталог, из которого запущен скрипт
+# (ops/ внутри установки). Так он работает и в /opt/noderoost, и в любом
+# другом каталоге, куда поставили панель.
+APP_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+APP="${2:-$APP_ROOT}"
 [ -f "$ARCHIVE" ] || { echo "нет архива: $ARCHIVE" >&2; exit 1; }
 cd "$APP"
 

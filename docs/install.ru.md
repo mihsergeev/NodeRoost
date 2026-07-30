@@ -239,5 +239,5 @@ sudo docker compose pull && sudo docker compose up -d
 ```bash
 cd /opt/noderoost && sudo docker compose down -v
 sudo rm -rf /opt/noderoost /lib65/noderoost
-sudo rm -f /etc/systemd/system/noderoost-hs-*.{path,service} && sudo systemctl daemon-reload
+sudo rm -f /etc/systemd/system/noderoost-hs-* && sudo systemctl daemon-reload
 ```

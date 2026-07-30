@@ -12,7 +12,7 @@
 #
 # Установка (скрипты держим в /lib65 — он в бэкапе, /usr нет):
 #   install -D -m755 ops/node-firewall-sync.sh /lib65/noderoost/node-firewall-sync.sh
-#   echo '* * * * * root NODEROOST_NODE_IPS=/app/noderoost/data/node_allow_ips /lib65/noderoost/node-firewall-sync.sh' \
+#   echo '* * * * * root NODEROOST_NODE_IPS=/opt/noderoost/data/node_allow_ips /lib65/noderoost/node-firewall-sync.sh' \
 #     > /etc/cron.d/noderoost-node-fw
 #   chmod 644 /etc/cron.d/noderoost-node-fw
 #
@@ -23,7 +23,10 @@ set -eu
 # cron даёт урезанный PATH (/usr/bin:/bin) — ufw/firewall-cmd живут в sbin
 PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH
 
-IPS_FILE="${NODEROOST_NODE_IPS:-/app/noderoost/data/node_allow_ips}"
+# Корень установки вычисляем от самого скрипта — панель может стоять в любом
+# каталоге (установщик кладёт в /opt/noderoost).
+APP_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+IPS_FILE="${NODEROOST_NODE_IPS:-$APP_ROOT/data/node_allow_ips}"
 [ -r "$IPS_FILE" ] || exit 0
 
 # регэксп IPv4/CIDR или IPv6/CIDR — для вырезания source-IP из строки правила

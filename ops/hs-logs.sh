@@ -4,7 +4,7 @@
 # systemd path-юнитом noderoost-hs-logs.path. Живёт в /lib65 (бэкапится).
 set -eu
 
-APP_DIR=/app/noderoost
+APP_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
 FLAG="$APP_DIR/data/.hslogs-request"
 OUT="$APP_DIR/data/_hslogs.txt"
 
