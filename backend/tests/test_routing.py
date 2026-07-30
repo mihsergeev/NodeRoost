@@ -429,3 +429,23 @@ async def test_direction_approval_is_marked_as_the_panel_s(monkeypatch):
     # маршрут одобрен в headscale И возвращён вызывающему для отметки
     assert "203.0.113.9/32" in approved["2"]
     assert done == {"2": ["203.0.113.9/32"]}
+
+
+def test_machine_local_addresses_are_never_a_destination():
+    """127.0.0.1 — это сама машина, 169.254.169.254 — метаданные облака с токенами."""
+    from app.routing import is_machine_local
+
+    for dst in ("127.0.0.1", "127.0.0.0/8", "169.254.169.254", "169.254.0.0/16",
+                "224.0.0.1", "0.0.0.0", "255.255.255.255"):
+        assert is_machine_local(dst), dst
+    # обычные цели направлений не задеваем
+    for dst in ("10.5.0.0/24", "192.168.7.10", "172.16.0.0/12", "8.8.8.8", "example.com"):
+        assert not is_machine_local(dst), dst
+
+
+def test_resolved_addresses_are_filtered_too():
+    """Домен мог отрезолвиться в такой адрес — в т.ч. подменённой A-записью."""
+    from app.routing import _dst_ips
+
+    d = {"ips": ["169.254.169.254", "93.184.216.34", "127.0.0.1", "100.64.0.5"]}
+    assert _dst_ips(d) == ["93.184.216.34"]
