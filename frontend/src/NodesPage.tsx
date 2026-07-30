@@ -332,11 +332,17 @@ export function NodesPage({
               тремя; строку-заглушку «нет тегов» не показываем — её отсутствие и
               так очевидно, а на каждой ноде это лишняя высота */}
           <div className="node-meta">
-            {n.ip_addresses.map((ip) => (
-              <span key={ip} className="chip">
-                {ip}
-              </span>
-            ))}
+            {/* Только IPv4: правила, направления и маршруты панель строит по нему.
+                IPv6-адрес у ноды есть, но ни одно правило его не покрывает —
+                показывать его значило предлагать адрес, по которому доступ не
+                работает. */}
+            {n.ip_addresses
+              .filter((ip) => !ip.includes(':'))
+              .map((ip) => (
+                <span key={ip} className="chip">
+                  {ip}
+                </span>
+              ))}
             <span className="muted small">
               {n.online
                 ? t('онлайн')
