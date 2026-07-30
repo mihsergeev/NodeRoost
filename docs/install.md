@@ -167,7 +167,11 @@ on the machine itself.
   goes down and when a key is about to expire.
 - **Backups** run daily on their own (⚙ → Backups). An archive is a consistent
   snapshot of the headscale database and the panel's settings; restoring is
-  covered by `ops/restore.sh`.
+  covered by `ops/restore.sh`. You can restore onto another machine too — the
+  script issues the panel a fresh key to the headscale database it just restored.
+- **A watchdog** is already in place: `/lib65/noderoost/panel-watchdog.sh` checks
+  the panel's pulse every five minutes and, if it goes quiet, raises the alarm
+  itself — outside the panel. Nobody else would be left to report its death.
 
 ---
 

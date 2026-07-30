@@ -27,10 +27,16 @@ ENVF="${NODEROOST_OFFSITE_ENV:-/lib65/noderoost/offsite.env}"
 : "${RESTIC_PASSWORD:?offsite.env: не задан RESTIC_PASSWORD}"
 export RESTIC_REPOSITORY RESTIC_PASSWORD
 
-# Корень приложения: по умолчанию — каталог, из которого запущен скрипт
-# (ops/ внутри установки). Так он работает и в /opt/noderoost, и в любом
-# другом каталоге, куда поставили панель.
-APP_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+# Корень установки. Этот скрипт ставится в /lib65/noderoost — то есть вне каталога
+# панели, и вычислить путь «от себя» нельзя: получится /lib65. Установщик
+# подставляет сюда реальный каталог; если панель переехала, поправьте строку.
+APP_ROOT="${NODEROOST_APP:-/opt/noderoost}"
+# Запуск прямо из ops/, без установки: берём соседний каталог, если он похож на
+# установку панели.
+if [ ! -f "$APP_ROOT/compose.yml" ]; then
+    _near="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || true)"
+    [ -n "${_near:-}" ] && [ -f "$_near/compose.yml" ] && APP_ROOT="$_near"
+fi
 SRC="${NODEROOST_BACKUPS_DIR:-$APP_ROOT/data/backups}"
 [ -d "$SRC" ] || { echo "нет каталога бэкапов: $SRC" >&2; exit 0; }
 
