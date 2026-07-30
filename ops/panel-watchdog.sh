@@ -10,17 +10,25 @@
 # Креды (токен/чат/зеркало) берёт из самого пульса — достучится даже когда панель
 # и БД уже не отвечают. Алертит только на переходе (без спама).
 #
-# УСТАНОВКА (на хосте панели, от root):
+# ops/install.sh ставит сторож сам (cron каждые 5 минут). Вручную — от root:
 #   install -D -m755 ops/panel-watchdog.sh /lib65/noderoost/panel-watchdog.sh
+#   sed -i 's|^APP_ROOT=.*|APP_ROOT="/путь/к/установке"|' /lib65/noderoost/panel-watchdog.sh
 #   echo '*/5 * * * * root /lib65/noderoost/panel-watchdog.sh' > /etc/cron.d/noderoost-watchdog
 #   chmod 644 /etc/cron.d/noderoost-watchdog
-# (скрипт — в /lib65, т.к. /usr исключён из бэкапа; cron-конфиг в /etc.)
+# Путь к панели обязателен: без него сторож не найдёт пульс и будет звать на помощь
+# по живой панели. (Скрипт — в /lib65, т.к. /usr исключён из бэкапа; cron — в /etc.)
 
 set -u
-# Корень приложения: по умолчанию — каталог, из которого запущен скрипт
-# (ops/ внутри установки). Так он работает и в /opt/noderoost, и в любом
-# другом каталоге, куда поставили панель.
-APP_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+# Корень установки. Этот скрипт ставится в /lib65/noderoost — то есть вне каталога
+# панели, и вычислить путь «от себя» нельзя: получится /lib65. Установщик
+# подставляет сюда реальный каталог; если панель переехала, поправьте строку.
+APP_ROOT="${NODEROOST_APP:-/opt/noderoost}"
+# Запуск прямо из ops/, без установки: берём соседний каталог, если он похож на
+# установку панели.
+if [ ! -f "$APP_ROOT/compose.yml" ]; then
+    _near="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || true)"
+    [ -n "${_near:-}" ] && [ -f "$_near/compose.yml" ] && APP_ROOT="$_near"
+fi
 HB="${NODEROOST_HEARTBEAT:-$APP_ROOT/data/heartbeat}"
 STATE=/lib65/noderoost/watchdog.state
 MAX_AGE="${NODEROOST_HB_MAX_AGE:-600}"
