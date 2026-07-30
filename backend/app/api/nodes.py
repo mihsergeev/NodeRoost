@@ -51,7 +51,12 @@ def _map_node(n: dict, meta: dict | None = None, hinfo: dict | None = None) -> N
     forced = [t for t in editable_tags(n) if not exitvia.is_service_tag(t)]
     available = n.get("availableRoutes", []) or []
     approved = n.get("approvedRoutes", []) or []
-    subnet = n.get("subnetRoutes", []) or []
+    # Действующие маршруты считаем сами — «одобрено И анонсируется». Ровно это
+    # значит subnetRoutes, но headscale 0.29 отдаёт его пустым в ответе на запрос
+    # ОДНОЙ ноды (в списке — правильно). Карточка ноды из-за этого показывала
+    # работающий маршрут как неработающий, и админ шёл искать несуществующую
+    # поломку.
+    subnet = [r for r in approved if r in available]
     is_exit = "0.0.0.0/0" in approved
     nid = str(n.get("id", ""))
     entry = (meta or {}).get(nid) or {}
