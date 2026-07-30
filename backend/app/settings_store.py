@@ -155,6 +155,51 @@ async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     return moved
 
 
+async def forget_node_refs(session: AsyncSession, node_id: str) -> None:
+    """Убрать ссылки на УДАЛЁННУЮ ноду: правила, направления, настройки агента.
+
+    В отличие от переподключения нода не вернётся, и ссылки на неё уже ничего не
+    значат. Правило при этом оставалось в списке — админ читал его как
+    действующий доступ. Запись агента жила ещё вреднее: коллектор видел «агент
+    молчит» и звал на помощь по ноде, которой больше нет.
+    """
+    node_id = str(node_id)
+    rules = await get_acl_rules(session)
+    kept = [
+        r for r in rules
+        if not any(
+            (r.get(side) or {}).get("kind") == "node"
+            and str((r.get(side) or {}).get("value")) == node_id
+            for side in ("src", "dst")
+        )
+    ]
+    if len(kept) != len(rules):
+        await set_acl_rules(session, kept)
+
+    directions = await get_routing(session)
+    left, touched = {}, False
+    for did, d in directions.items():
+        if str(d.get("via") or "") == node_id:
+            touched = True  # выход через удалённую ноду — направление мертво
+            continue
+        src = [s for s in (d.get("src") or []) if str(s) != node_id]
+        if src != (d.get("src") or []):
+            # у направления «из этих нод» не осталось источников — оно ни о чём
+            if not src and d.get("src_kind", "node") == "node":
+                touched = True
+                continue
+            d["src"] = src
+            touched = True
+        left[did] = d
+    if touched:
+        await set_routing(session, left)
+
+    agents = await get_agent_all(session)
+    if node_id in agents:
+        agents.pop(node_id)
+        await set_agent_all(session, agents)
+
+
 async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
     """Перевести всё, что ссылалось на ноду по id, на её новый id.
 

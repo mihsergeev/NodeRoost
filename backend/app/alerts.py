@@ -238,6 +238,9 @@ async def reconcile_agents(
         if nid in (muted or set()):  # «не беспокоить» по этой ноде
             _agent_silent.discard(nid)
             continue
+        if nid not in names:  # ноду удалили (в т.ч. мимо панели) — молчать не о ком
+            _agent_silent.discard(nid)
+            continue
         if not online.get(nid, True):  # нода лежит — про это уже отчитались
             continue
         if (now - last).total_seconds() > minutes * 60:
