@@ -435,3 +435,26 @@ def test_active_routes_do_not_depend_on_headscale_field():
     out = _map_node(n)
     assert out.subnet_routes == ["10.88.0.0/24"]  # 10.99 не одобрен, exit не в счёт
     assert out.is_exit_node is True
+
+
+def test_expired_key_means_offline():
+    """headscale держит online у ноды, которую сам отключил по истечении ключа.
+
+    Админ отзывал доступ, а панель показывала машину в сети — и алерт «сервер
+    упал» не приходил, потому что для него нода оставалась живой.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.nodekind import is_online
+
+    past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+    future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+
+    assert is_online({"online": True, "expiry": future}) is True
+    assert is_online({"online": True, "expiry": past}) is False
+    assert is_online({"online": True, "expiry": "0001-01-01T00:00:00Z"}) is True  # без срока
+    assert is_online({"online": False, "expiry": future}) is False
+
+    out = _map_node({"id": "3", "name": "db", "givenName": "db",
+                     "ipAddresses": ["100.64.0.3"], "online": True, "expiry": past})
+    assert out.online is False and out.key_expired is True
