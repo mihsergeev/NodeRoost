@@ -60,4 +60,47 @@ rm -f "$APP/data/_restore_panel.json"
 echo ">> поднимаю стек…"
 docker compose up -d
 
+# ── Ключ панели к восстановленному headscale ────────────────────────────────
+# В архиве приехала БАЗА headscale, а вместе с ней и его список API-ключей.
+# Ключ, которым ходит панель, лежит в .env — и если восстанавливаемся на другой
+# машине, он там свой, новый: в восстановленной базе его нет, и панель молча
+# показывает «headscale: down». Проверяем и, если ключ не подходит, выпускаем
+# новый прямо здесь.
+echo ">> проверяю ключ панели к headscale…"
+for _ in $(seq 1 30); do
+    docker compose exec -T headscale headscale apikeys list >/dev/null 2>&1 && break
+    sleep 2
+done
+KEY_OK=0
+if [ -f "$APP/.env" ]; then
+    CUR="$(sed -n 's/^NODEROOST_HEADSCALE_API_KEY=//p' "$APP/.env" | head -1)"
+    if [ -n "$CUR" ]; then
+        PFX="$(printf '%s' "$CUR" | cut -c1-14)"
+        docker compose exec -T headscale headscale apikeys list 2>/dev/null \
+            | grep -q "$PFX" && KEY_OK=1
+    fi
+fi
+if [ "$KEY_OK" != "1" ]; then
+    NEW_KEY="$(docker compose exec -T headscale headscale apikeys create --expiration 3650d 2>/dev/null | tail -1 | tr -d '\r')"
+    if [ -n "$NEW_KEY" ]; then
+        sed -i "s|^NODEROOST_HEADSCALE_API_KEY=.*|NODEROOST_HEADSCALE_API_KEY=$NEW_KEY|" "$APP/.env"
+        docker compose up -d backend
+        echo "   ключ панели перевыпущен под восстановленную базу"
+    else
+        echo "   ВНИМАНИЕ: не удалось выпустить ключ — панель не увидит headscale"
+    fi
+fi
+
+# Восстановленный config.yaml несёт server_url ТОЙ машины, с которой снят архив.
+# Если восстанавливаемся на другую, ноды продолжат ходить по старому адресу.
+SRV="$(sed -n 's/^server_url: *//p' "$APP/data/headscale/config/config.yaml" | head -1)"
+HSD="$(sed -n 's/^NODEROOST_HS_DOMAIN=//p' "$APP/.env" | head -1)"
+if [ -n "$HSD" ] && [ -n "$SRV" ] && [ "${SRV#*//}" != "$HSD" ]; then
+    echo
+    echo "   ВНИМАНИЕ: в восстановленном конфиге server_url = $SRV,"
+    echo "   а этот сервер обслуживает $HSD. Ноды помнят СТАРЫЙ адрес и придут"
+    echo "   именно на него. Либо направьте старое имя на этот сервер, либо"
+    echo "   переподключите ноды на новое (в панели: «Переподключить»)."
+fi
+
 echo ">> ГОТОВО. Проверь: docker compose ps ; вход в панель ; docker compose exec headscale headscale nodes list"
