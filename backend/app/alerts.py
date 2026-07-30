@@ -152,8 +152,8 @@ def _plural_ru(n: int, one: str, few: str, many: str) -> str:
 
 def _fmt_group(node_names: list[str], online: bool) -> str:
     """Одно сгруппированное сообщение о падении/восстановлении серверов.
-    Слово «NodeRoost» станет ссылкой на панель в send_alert (см. link)."""
-    icon = "✅" if online else "🔴"
+    Слово «NodeRoost» станет ссылкой в send_alert (см. link)."""
+    icon = "✅" if online else "🔥"
     verb = "снова онлайн" if online else "офлайн"
     if len(node_names) == 1:
         return f"{icon} NodeRoost: сервер «{node_names[0]}» {verb}"
@@ -192,7 +192,7 @@ async def reconcile_selfcheck(
             return None  # уже отчитались / ещё дребезг
         _hs_up = False
         text = (
-            "🔴 NodeRoost: control-сервер headscale недоступен — ноды не "
+            "🔥 NodeRoost: control-сервер headscale недоступен — ноды не "
             "опрашиваются, статусы устарели"
         )
 
@@ -338,9 +338,21 @@ async def reconcile_nodes(
         for nid, on in transitions
         if on and km.get(nid, "server") == "server" and nid not in mt
     ]
-    link = settings.panel_url or None
+    base = settings.panel_url or None
+
+    def _link(ids: list[str]) -> str | None:
+        """Одна нода в алерте — ведём сразу в её карточку, а не на список.
+        Панель ловит #node-<id> при загрузке (frontend/src/App.tsx)."""
+        if base and len(ids) == 1:
+            return f"{base.rstrip('/')}/#node-{ids[0]}"
+        return base
+
+    down_ids = [nid for nid, on in transitions
+                if not on and km.get(nid, "server") == "server" and nid not in mt]
+    up_ids = [nid for nid, on in transitions
+              if on and km.get(nid, "server") == "server" and nid not in mt]
     if down:
-        await send_alert(cfg, _fmt_group(down, False), link)
+        await send_alert(cfg, _fmt_group(down, False), _link(down_ids))
     if up:
-        await send_alert(cfg, _fmt_group(up, True), link)
+        await send_alert(cfg, _fmt_group(up, True), _link(up_ids))
     return transitions

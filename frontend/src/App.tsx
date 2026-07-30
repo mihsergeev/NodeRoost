@@ -24,6 +24,12 @@ function App() {
   // растёт при каждом клике по навигации — используется как key, чтобы страница
   // пересоздавалась (сбрасывала внутреннее состояние, напр. открытую деталь ноды)
   const [navSeq, setNavSeq] = useState(0)
+  // Ссылка из алерта ведёт прямо в ноду: panel/#node-<id>. Роутера в панели нет,
+  // поэтому разбираем хеш один раз при загрузке и передаём id странице серверов.
+  const [deepNodeId, setDeepNodeId] = useState<string | null>(() => {
+    const m = /^#node-(\d+)$/.exec(window.location.hash)
+    return m ? m[1] : null
+  })
   const [version, setVersion] = useState<string | null>(null)
   // статус control-сервера: раньше занимал целую карточку на страницах нод —
   // это фон, а не действие, поэтому живёт точкой в шапке
@@ -200,7 +206,16 @@ function App() {
         ) : view === 'devices' ? (
           <NodesPage key={navSeq} kind="device" onUnauthorized={logout} />
         ) : (
-          <NodesPage key={navSeq} kind="server" onUnauthorized={logout} />
+          <NodesPage
+            key={navSeq}
+            kind="server"
+            onUnauthorized={logout}
+            openNodeId={deepNodeId}
+            onOpened={() => {
+              setDeepNodeId(null)
+              history.replaceState(null, '', window.location.pathname)
+            }}
+          />
         )
       ) : (
         <LoginPage onLogin={() => setAuthed(true)} />
