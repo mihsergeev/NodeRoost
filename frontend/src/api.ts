@@ -347,6 +347,7 @@ export function setHsDns(dns: {
   magic_dns: boolean
   base_domain: string
   nameservers: string[]
+  override_local_dns: boolean
 }): Promise<HsInfo> {
   return api<HsInfo>('/api/hs-info/dns', {
     method: 'PUT',
