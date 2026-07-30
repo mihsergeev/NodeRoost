@@ -74,7 +74,25 @@ async def _apply(session) -> str:
     if err:
         return err
     try:
-        await routing.approve_for(client, await settings_store.get_routing(session))
+        done = await routing.approve_for(
+            client, await settings_store.get_routing(session)
+        )
+        # Отмечаем одобренное как СВОЁ: иначе коллектор не снимет маршрут, когда
+        # направление удалят, и на ноде-выходе накопятся мёртвые /32.
+        if done:
+            agents = await settings_store.get_agent_all(session)
+            changed = False
+            for nid, routes in done.items():
+                cfg = agents.get(nid)
+                if cfg is None:
+                    continue
+                mine = set(cfg.get("panel_approved") or [])
+                if not set(routes) <= mine:
+                    cfg["panel_approved"] = sorted(mine | set(routes))
+                    agents[nid] = cfg
+                    changed = True
+            if changed:
+                await settings_store.set_agent_all(session, agents)
     except HeadscaleError as exc:
         log.warning("не удалось одобрить маршруты направлений: %s", exc)
     return ""
