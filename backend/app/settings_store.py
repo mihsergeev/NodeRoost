@@ -104,18 +104,22 @@ async def set_node_meta(
 PENDING_META_KEY = "node_meta_pending"
 
 
-async def stash_node_meta(session: AsyncSession, name: str, entry: dict) -> None:
+async def stash_node_meta(
+    session: AsyncSession, name: str, entry: dict, old_id: str = ""
+) -> None:
     """Отложить заметку о ноде по её ИМЕНИ — на время переподключения.
 
     Переподключение удаляет ноду в headscale и заводит заново, с новым id;
     заметка панели привязана к id и осталась бы висеть в пустоте. Ключ — имя,
-    потому что это единственное, что переживает пересоздание.
+    потому что это единственное, что переживает пересоздание. Старый id тоже
+    запоминаем: на него ссылаются правила доступа и направления, и их придётся
+    перевести на новый (см. claim_pending_meta).
     """
-    if not name or not entry:
+    if not name or (not entry and not old_id):
         return
     raw = await _get_raw(session, PENDING_META_KEY)
     pending = json.loads(raw) if raw else {}
-    pending[name] = entry
+    pending[name] = {"meta": entry, "old_id": str(old_id)}
     await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
 
 
@@ -134,13 +138,60 @@ async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     for n in nodes or []:
         name = str(n.get("givenName") or n.get("name") or "")
         nid = str(n.get("id", ""))
-        if name in pending and nid and not meta.get(nid):
-            meta[nid] = pending.pop(name)
-            moved += 1
+        if name not in pending or not nid or meta.get(nid):
+            continue
+        entry = pending.pop(name)
+        # старый формат (только заметка) — переживает обновление панели
+        note = entry.get("meta", entry) if isinstance(entry, dict) else {}
+        old_id = str(entry.get("old_id", "")) if isinstance(entry, dict) else ""
+        if note:
+            meta[nid] = note
+        if old_id and old_id != nid:
+            await _repoint_node_id(session, old_id, nid)
+        moved += 1
     if moved:
         await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
         await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
     return moved
+
+
+async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
+    """Перевести всё, что ссылалось на ноду по id, на её новый id.
+
+    После переподключения нода — та же машина, но для headscale уже другая
+    запись. Правила доступа и направления держат именно id, поэтому без перевода
+    они остаются висеть на несуществующей ноде: в панели правило видно, а
+    доступа нет. Настройки агента переносим туда же — иначе сервер теряет свои
+    маршруты.
+    """
+    rules = await get_acl_rules(session)
+    touched = False
+    for r in rules:
+        for side in ("src", "dst"):
+            sel = r.get(side) or {}
+            if sel.get("kind") == "node" and str(sel.get("value")) == old:
+                sel["value"] = new
+                touched = True
+    if touched:
+        await set_acl_rules(session, rules)
+
+    directions = await get_routing(session)
+    touched = False
+    for d in directions.values():
+        if str(d.get("via") or "") == old:
+            d["via"] = new
+            touched = True
+        src = [new if str(s) == old else s for s in (d.get("src") or [])]
+        if src != (d.get("src") or []):
+            d["src"] = src
+            touched = True
+    if touched:
+        await set_routing(session, directions)
+
+    agents = await get_agent_all(session)
+    if old in agents and new not in agents:
+        agents[new] = agents.pop(old)
+        await set_agent_all(session, agents)
 
 
 async def clear_node_meta(session: AsyncSession, node_id: str) -> None:
