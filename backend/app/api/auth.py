@@ -153,8 +153,13 @@ async def twofa_enable(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Сначала запросите настройку (setup)"
         )
-    if not totp.verify(user.totp_secret, body.otp):
+    # Код засчитываем ТАК ЖЕ, как при входе: одноразово. Иначе код, введённый
+    # при включении, оставался годным ещё полминуты — и подсмотренный через
+    # плечо (или снятый вместе с QR на скриншот) пускал в панель.
+    counter = totp.matched_counter(user.totp_secret, body.otp)
+    if counter is None or counter <= user.totp_last_counter:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный код")
+    user.totp_last_counter = counter
     user.totp_enabled = True
     await session.commit()
     await audit.record(session, user.username, "2fa_enable", user.username)
@@ -167,8 +172,10 @@ async def twofa_disable(
 ) -> TwoFAStatusOut:
     if not user.totp_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA не включена")
-    if not totp.verify(user.totp_secret, body.otp):
+    counter = totp.matched_counter(user.totp_secret, body.otp)
+    if counter is None or counter <= user.totp_last_counter:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный код")
+    user.totp_last_counter = counter
     user.totp_enabled = False
     user.totp_secret = ""
     await session.commit()
