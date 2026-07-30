@@ -167,6 +167,12 @@ def _write_dns_config(
             ns = {}
             dns["nameservers"] = ns
         ns["global"] = list(nameservers)
+        # headscale НЕ СТАРТУЕТ с пустым списком серверов при override_local_dns:
+        # «dns.nameservers.global must be set when dns.override_local_dns is true».
+        # По умолчанию флаг включён, поэтому очистка списка в панели роняла
+        # control-сервер целиком — и сама панель теряла с ним связь. Пустой список
+        # означает «пусть клиенты пользуются своим DNS», это и записываем.
+        dns["override_local_dns"] = bool(nameservers)
 
     _edit_hs_config(config_path, mut)
 
