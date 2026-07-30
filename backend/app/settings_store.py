@@ -101,6 +101,48 @@ async def set_node_meta(
     await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
 
 
+PENDING_META_KEY = "node_meta_pending"
+
+
+async def stash_node_meta(session: AsyncSession, name: str, entry: dict) -> None:
+    """Отложить заметку о ноде по её ИМЕНИ — на время переподключения.
+
+    Переподключение удаляет ноду в headscale и заводит заново, с новым id;
+    заметка панели привязана к id и осталась бы висеть в пустоте. Ключ — имя,
+    потому что это единственное, что переживает пересоздание.
+    """
+    if not name or not entry:
+        return
+    raw = await _get_raw(session, PENDING_META_KEY)
+    pending = json.loads(raw) if raw else {}
+    pending[name] = entry
+    await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
+
+
+async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
+    """Вернуть отложенные заметки нодам, которые уже переподключились.
+
+    Забираем только если у ноды с этим именем заметки ещё нет — чтобы не затереть
+    то, что администратор успел выставить руками.
+    """
+    raw = await _get_raw(session, PENDING_META_KEY)
+    pending = json.loads(raw) if raw else {}
+    if not pending:
+        return 0
+    meta = await get_node_meta(session)
+    moved = 0
+    for n in nodes or []:
+        name = str(n.get("givenName") or n.get("name") or "")
+        nid = str(n.get("id", ""))
+        if name in pending and nid and not meta.get(nid):
+            meta[nid] = pending.pop(name)
+            moved += 1
+    if moved:
+        await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
+        await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
+    return moved
+
+
 async def clear_node_meta(session: AsyncSession, node_id: str) -> None:
     """Убрать заметку о ноде целиком (нода удалена). Отдельно от set_node_meta:
     та теперь СЛИВАЕТ поля, и «передать всё пустым» больше не значит «стереть»."""
