@@ -17,6 +17,12 @@ from __future__ import annotations
 
 GATEWAY_TAG_PREFIX = "tag:xgw-"
 
+# headscale 0.29 отказывается снимать с ноды ПОСЛЕДНИЙ тег: «cannot remove all
+# tags from a node». А снимать приходится — при выключении галки шлюза и при
+# удалении последней роли. Поэтому вместо пустого списка отдаём один служебный
+# тег: для headscale нода остаётся тегированной, для панели тег невидим.
+MARKER_TAG = "tag:noderoost"
+
 
 def gateway_tag(node_id: str) -> str:
     """Служебный тег сервера-шлюза. Уникален на ноду."""
@@ -25,7 +31,12 @@ def gateway_tag(node_id: str) -> str:
 
 def is_service_tag(tag: str) -> bool:
     """Служебный ли это тег (его не показываем как роль в UI)."""
-    return tag.startswith(GATEWAY_TAG_PREFIX)
+    return tag.startswith(GATEWAY_TAG_PREFIX) or tag == MARKER_TAG
+
+
+def keep_tagged(tags: list[str]) -> list[str]:
+    """Список тегов, который headscale примет: пустой заменяем маркером."""
+    return list(tags) if tags else [MARKER_TAG]
 
 
 def gateways(meta: dict) -> list[str]:

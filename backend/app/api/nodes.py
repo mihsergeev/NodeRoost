@@ -274,7 +274,7 @@ async def set_meta(
     else:
         cur = [t for t in node_tags(node) if t != tag]
         if cur != node_tags(node):
-            await hs_call(client.set_node_tags(node_id, cur))
+            await hs_call(client.set_node_tags(node_id, exitvia.keep_tagged(cur)))
         await _set_agent_exit(session, node_id, False)
         # перестал быть шлюзом — снимаем принудительный выход у зависимых нод,
         # иначе у них остался бы exit-node без гранта (интернет молча умрёт)
@@ -493,7 +493,12 @@ async def set_tags(
     # поэтому СНАЧАЛА объявляем его там, и только потом вешаем на ноду.
     if tags:
         await declare_tags(session, client, settings, tags)
-    node = await hs_call(client.set_node_tags(node_id, tags + keep))
+    # Пустой список headscale отвергает («последний тег снять нельзя»), поэтому
+    # снятие ПОСЛЕДНЕЙ роли оставляет служебный маркер — в ролях он не виден.
+    want = exitvia.keep_tagged(tags + keep)
+    if exitvia.MARKER_TAG in want:
+        await declare_tags(session, client, settings, [exitvia.MARKER_TAG])
+    node = await hs_call(client.set_node_tags(node_id, want))
     await audit.record(session, user.username, "node_tags", node_id, ", ".join(tags))
     meta = await settings_store.get_node_meta(session)
     hinfo = hostinfo.read_all(get_settings().headscale_db_path)
