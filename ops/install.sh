@@ -211,12 +211,20 @@ ok "the panel is answering"
 # после правки его config.yaml и снятие логов делает хост: systemd видит флаг
 # от панели и запускает скрипт. Без этого «Настройки → DNS» и «Логи headscale»
 # в панели не работают.
-say "Installing the host helpers (DNS apply, headscale logs)"
+say "Installing the host helpers (DNS apply, headscale logs, watchdog)"
 install -d /lib65/noderoost
 for f in hs-apply.sh hs-logs.sh; do
     sed "s|^APP_DIR=.*|APP_DIR=$DIR|" "ops/$f" > "/lib65/noderoost/$f"
     chmod 755 "/lib65/noderoost/$f"
 done
+# Сторож панели: единственный, кто заметит смерть самой панели — она не может
+# сообщить о ней своим же каналом. Путь к установке вписываем: скрипт лежит вне её.
+sed "s|^APP_ROOT=.*|APP_ROOT=\"\${NODEROOST_APP:-$DIR}\"|" \
+    ops/panel-watchdog.sh > /lib65/noderoost/panel-watchdog.sh
+chmod 755 /lib65/noderoost/panel-watchdog.sh
+echo '*/5 * * * * root /lib65/noderoost/panel-watchdog.sh' \
+    > /etc/cron.d/noderoost-watchdog
+chmod 644 /etc/cron.d/noderoost-watchdog
 for u in noderoost-hs-apply noderoost-hs-logs; do
     for ext in path service; do
         sed "s|/app/noderoost|$DIR|g" "ops/$u.$ext" > "/etc/systemd/system/$u.$ext"
@@ -224,7 +232,7 @@ for u in noderoost-hs-apply noderoost-hs-logs; do
 done
 systemctl daemon-reload
 systemctl enable --now noderoost-hs-apply.path noderoost-hs-logs.path >/dev/null 2>&1 || true
-ok "helpers in /lib65/noderoost, systemd is watching for flags"
+ok "helpers in /lib65/noderoost, systemd is watching for flags, watchdog every 5 min"
 
 # ── 6. Фаервол (по желанию) ───────────────────────────────────────────────
 if [ "$UFW" = 1 ]; then
