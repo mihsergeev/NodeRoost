@@ -12,7 +12,7 @@ def test_linux_script():
     assert "authkey-abc" in s
     assert "web-1" in s
     assert "pkgs.tailscale.com/stable/tailscale_" in s
-    assert "tailscale up --login-server=" in s
+    assert "tailscale up --reset --login-server=" in s
     # без --accept-routes источник молча игнорирует направления/полный туннель
     assert "--accept-routes" in s
 
@@ -46,3 +46,17 @@ async def test_enroll_503_without_key(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 503
+
+
+def test_scripts_reset_previous_tailscale_settings():
+    """Без --reset `tailscale up` отказывается менять настройки на машине, где
+    уже был задан хоть один неявный флаг (например --exit-node-allow-lan-access
+    после выхода через шлюз): «requires mentioning all non-default flags».
+    Подключение и переподключение молча падали."""
+    from app.config import Settings
+    from app import enroll
+
+    st = Settings(headscale_server_url="https://hs.example")
+    for os_name in ("linux", "windows"):
+        script = enroll.build_script(os_name, st, "hskey-auth-x", "node-1")
+        assert "--reset" in script, os_name
