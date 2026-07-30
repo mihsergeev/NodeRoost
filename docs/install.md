@@ -234,10 +234,13 @@ with the command shown there.
 ## Updating and removing
 
 ```bash
-cd /opt/noderoost
-sudo git pull
-sudo docker compose pull && sudo docker compose up -d
+cd /opt/noderoost && sudo ops/update.sh
 ```
+
+It fetches the new code, carries the version number into `.env` and brings the
+stack up. A plain `git pull` is not enough: image tags come from
+`NODEROOST_VERSION` in `.env`, which is yours and git leaves it alone — every
+command succeeds and the panel stays on the old build.
 
 Remove everything including the data:
 
