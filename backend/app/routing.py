@@ -99,9 +99,9 @@ async def resolve_dst(dst: str) -> tuple[list[str], str]:
     # последним рубежом та же проверка стоит в _dst_ips.
     from app.aclgen import touches_mesh
 
-    ips = [ip for ip in raw if not touches_mesh(ip)]
+    ips = [ip for ip in raw if not touches_mesh(ip) and not is_machine_local(ip)]
     if raw and not ips:
-        return [], "адрес указывает внутрь меша — так маршрут не заводим"
+        return [], "адрес указывает внутрь меша или на саму машину — так маршрут не заводим"
     return ips, "" if ips else "нет адресов"
 
 
@@ -116,6 +116,29 @@ def _as_cidr(ip: str) -> str:
 # «0.0.0.0/0» и «0.0.0.0/1» отсекает touches_mesh (они накрывают меш), но
 # «128.0.0.0/1» — пол-интернета — проходил насквозь.
 MIN_PUBLIC_PREFIX = 16
+
+
+def is_machine_local(dst: str) -> bool:
+    """Адрес, который у каждой машины СВОЙ, — такой нельзя вести через чужой шлюз.
+
+    127.0.0.1 — это сама машина. 169.254.0.0/16 — её собственный провод, и там же
+    живёт 169.254.169.254: служба метаданных облака, которая отдаёт токены
+    доступа к аккаунту. Направление на такой адрес заворачивает эти запросы на
+    ЧУЖУЮ ноду — она увидит и запрос, и всё, что клиент в него положит, а в
+    ответ может прислать что угодно. Мультикаст, 0.0.0.0 и зарезервированные
+    сети как цель маршрута просто не имеют смысла.
+    """
+    try:
+        net = ipaddress.ip_network(dst, strict=False)
+    except ValueError:
+        return False
+    return (
+        net.is_loopback
+        or net.is_link_local
+        or net.is_multicast
+        or net.is_unspecified
+        or net.is_reserved
+    )
 
 
 def too_broad(dst: str) -> bool:
@@ -160,7 +183,9 @@ def _dst_ips(d: dict) -> list[str]:
     return [
         ip
         for ip in (d.get("ips") or [])
-        if not too_broad(str(ip)) and not touches_mesh(str(ip))
+        if not too_broad(str(ip))
+        and not touches_mesh(str(ip))
+        and not is_machine_local(str(ip))
     ]
 
 
