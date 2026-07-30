@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import get_client
 from app.hs_util import hs_call, norm_ts, require_hs
-from app.nodekind import editable_tags, effective_kind, node_tags
+from app.nodekind import editable_tags, effective_kind, is_online, node_tags
 from app.policy_apply import apply_policy, declare_tags
 from app.schemas import (
     EnrollOut,
@@ -67,7 +67,8 @@ def _map_node(n: dict, meta: dict | None = None, hinfo: dict | None = None) -> N
         name=n.get("givenName") or n.get("name", ""),
         hostname=n.get("name", ""),
         ip_addresses=n.get("ipAddresses", []) or [],
-        online=bool(n.get("online", False)),
+        # истёкший ключ = нода не на связи, чем бы ни отвечал headscale
+        online=is_online(n),
         last_seen=norm_ts(n.get("lastSeen")),
         expiry=expiry,
         key_expired=key_expired,

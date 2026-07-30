@@ -13,7 +13,7 @@ from app import alerts, policy_apply, routing, settings_store
 from app.config import Settings
 from app.hs_client import HeadscaleError, get_client
 from app.models import NodeMetricSample, NodeStatus
-from app.nodekind import effective_kind
+from app.nodekind import effective_kind, is_online
 
 log = logging.getLogger("noderoost.collector")
 
@@ -36,7 +36,7 @@ def _fields(n: dict) -> dict:
     return {
         "id": str(n.get("id", "")),
         "name": n.get("givenName") or n.get("name", ""),
-        "online": bool(n.get("online", False)),
+        "online": is_online(n),
         "expiry": n.get("expiry"),
     }
 
