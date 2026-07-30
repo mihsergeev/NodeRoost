@@ -96,6 +96,9 @@ Telegram или на вебхук при падении сервера и ист
 
 ## Быстрый старт
 
+**Подробная инструкция:** [docs/install.ru.md](docs/install.ru.md) — установка одной
+командой, свой домен, список доверенных адресов, фаервол и разбор частых проблем.
+
 ```bash
 git clone https://github.com/mihsergeev/NodeRoost.git
 cd NodeRoost
