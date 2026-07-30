@@ -141,12 +141,12 @@
 
       <div class="case">
         <h3>A contractor gets exactly what they need</h3>
-        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">contractor</text><line x1="92" y1="46" x2="119" y2="46" stroke="#00E58A" stroke-width="1.5"/><path d="M118 42 L124 46 L118 50 Z" fill="#00E58A"/><rect x="124" y="4" width="176" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="136" y="20" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9.5" text-anchor="start">prod-db</text><rect x="136" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="172.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-1</text><rect x="216" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-2</text><rect x="136" y="58" width="152" height="22" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="72.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">+ new server</text></svg>
-        <p>A role is a group of servers, and access is granted to the role
-           rather than to one machine. The contractor reaches every server in it
-           and nothing else. Add another server to the role and it shows up for
-           them on its own. Job done — delete their device, and the access is
-           gone everywhere at once.</p>
+        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">contractor</text><line x1="92" y1="46" x2="119" y2="46" stroke="#00E58A" stroke-width="1.5"/><path d="M118 42 L124 46 L118 50 Z" fill="#00E58A"/><rect x="124" y="4" width="176" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="136" y="20" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9.5" text-anchor="start">prod-db</text><rect x="136" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="172.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-1:5432</text><rect x="216" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-2:5432</text><rect x="136" y="58" width="152" height="22" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="72.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">+ new server</text></svg>
+        <p>Access is granted to a port, not to the whole machine: give them 5432
+           and they see the database and nothing else — no SSH, no admin panel.
+           It can go to a role — a group of servers: add another one to it and it
+           shows up for them on its own. Job done — delete their device, and the
+           access is gone everywhere at once.</p>
       </div>
 
       <div class="case">
