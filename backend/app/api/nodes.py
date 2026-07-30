@@ -559,6 +559,9 @@ async def delete_node(
     # остались бы с exit-node на удалённый узел (трафик в никуда)
     await _clear_dependent_force_exit(session, node_id)
     await settings_store.clear_node_meta(session, node_id)  # чистим мету целиком
+    # правила и направления держат id ноды, а запись агента — её токен: без
+    # уборки правило висит в списке как действующее, а агент «молчит» вечно
+    await settings_store.forget_node_refs(session, node_id)
     await audit.record(session, user.username, "node_delete", node_id, client_ip(request))
     # набор серверов мог измениться (удалили сервер) — пересобрать политику
     await apply_policy(session, client, settings)
