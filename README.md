@@ -3,9 +3,10 @@
 A self-hosted web panel for [headscale](https://github.com/juanfont/headscale) —
 the open-source implementation of the Tailscale coordination server.
 
-headscale runs your tailnet; it talks to you in HuJSON policy. NodeRoost restates
-that in the terms you already think in — servers, devices, grants, routes — and
-assembles the policy for you.
+Your own Tailscale control server, with a real admin panel. Add a machine, grant
+access, send traffic through a chosen node — no editing `policy.hujson`, no SSH
+into nodes. The panel does not replace headscale and does not proxy traffic: it
+takes over the part that is otherwise done by hand.
 
 [Русская версия](README.ru.md) · [noderoost.ru](https://noderoost.ru)
 
@@ -15,6 +16,10 @@ assembles the policy for you.
 <tr>
 <td width="50%"><a href="docs/screenshots/access.png"><img src="docs/screenshots/access.png" alt="Access"></a><br><sub>Access — who reaches which server, on which port</sub></td>
 <td width="50%"><a href="docs/screenshots/routing.png"><img src="docs/screenshots/routing.png" alt="Routing"></a><br><sub>Routing — who goes where, through which node</sub></td>
+</tr>
+<tr>
+<td width="50%"><a href="docs/screenshots/node.png"><img src="docs/screenshots/node.png" alt="Server detail"></a><br><sub>Server detail — roles, subnets, exit gateway, agent</sub></td>
+<td width="50%"><a href="docs/screenshots/login.png"><img src="docs/screenshots/login.png" alt="Sign-in"></a><br><sub>Sign-in — password and a second factor</sub></td>
 </tr>
 </table>
 
@@ -52,6 +57,11 @@ also be forced through a gateway while the node stays reachable on its public IP
 node what to advertise, so NodeRoost ships a small POSIX-sh agent: a systemd timer
 pulls the desired state, applies it with `tailscale set`, and reports the hash of
 what it actually applied.
+
+**Where a server sits.** A country flag next to the node name, resolved from the
+node's public address **offline** against a table in the repository: no need to
+send every address in your fleet to a geo service for the sake of a flag, and no
+internet required. The node's name plays no part in it.
 
 **Backups, monitoring, alerts.** Consistent snapshots of the headscale database and
 panel settings with a self-test and a rehearsed restore; uptime history; Telegram or
