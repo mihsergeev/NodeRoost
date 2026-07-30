@@ -141,17 +141,19 @@
       <div class="case">
         <h3>Подрядчику — только то, что нужно</h3>
         <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">подрядчик</text><line x1="92" y1="46" x2="119" y2="46" stroke="#00E58A" stroke-width="1.5"/><path d="M118 42 L124 46 L118 50 Z" fill="#00E58A"/><rect x="124" y="4" width="176" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="136" y="20" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9.5" text-anchor="start">prod-db</text><rect x="136" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="172.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-1</text><rect x="216" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-2</text><rect x="136" y="58" width="152" height="22" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="72.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">+ новый сервер</text></svg>
-        <p>Доступ выдаёте на роль, а не на конкретную машину. Добавили в эту
-           роль ещё один сервер — подрядчик получил его сам. Работа кончилась —
-           удаляете устройство, и доступ пропадает везде сразу.</p>
+        <p>Роль — это группа серверов, и доступ выдаётся на неё, а не на
+           отдельную машину. Подрядчик попадает на все серверы роли и никуда
+           больше. Добавили в роль ещё один — он появился у подрядчика сам.
+           Закончил работу — удалили его устройство, и доступ исчез везде сразу.</p>
       </div>
 
       <div class="case">
-        <h3>Интернет через тот узел, который выберете</h3>
+        <h3>Интернет через выбранный сервер</h3>
         <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">устройство</text><line x1="92" y1="42" x2="116" y2="42" stroke="#00E58A" stroke-width="2"/><rect x="116" y="26" width="80" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="156.0" y="45.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-de</text><line x1="196" y1="42" x2="211" y2="42" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M210 38 L216 42 L210 46 Z" fill="#3A4557"/><rect x="216" y="26" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="258.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text></svg>
-        <p>Отмечаете сервер шлюзом и говорите, кому им можно пользоваться.
-           Человек включает его сам в Tailscale, но в списке у него только то,
-           что вы разрешили.</p>
+        <p>Помечаете сервер шлюзом — и трафик тех, кому вы его разрешили,
+           выходит в интернет с его адреса. Переключается это в клиенте
+           Tailscale самим человеком, но в списке у него только те шлюзы,
+           которые вы ему дали.</p>
       </div>
 
       <div class="case">
@@ -166,9 +168,10 @@
       <div class="case">
         <h3>Сервис пускает только с одного адреса</h3>
         <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="28" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="47.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="84" y1="44" x2="106" y2="44" stroke="#00E58A" stroke-width="2"/><rect x="106" y="28" width="76" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="144.0" y="47.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">edge-1</text><line x1="182" y1="44" x2="199" y2="44" stroke="#3A4557" stroke-width="1.5"/><path d="M198 40 L204 44 L198 48 Z" fill="#3A4557"/><rect x="204" y="18" width="96" height="52" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="47.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">api.example</text><text x="252" y="58" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">белый список IP</text></svg>
-        <p>Партнёрский API, платёжка или админка с белым списком IP. Говорите:
-           на этот адрес ходить через такой-то сервер — и запросы приходят туда
-           с его адреса. Остальной трафик идёт как шёл.</p>
+        <p>Партнёр пускает только с одного IP, а ходить к нему нужно с ноутбука.
+           Указываете в панели: к этому адресу — через edge-1, чей IP у партнёра
+           в списке. Запросы приходят к нему уже от edge-1, а весь остальной
+           трафик ноутбука идёт напрямую.</p>
       </div>
 
       <div class="case">
