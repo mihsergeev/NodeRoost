@@ -15,7 +15,6 @@ DIR="/opt/noderoost"
 PANEL_DOMAIN=""
 HS_DOMAIN=""
 ALLOW_IPS="0.0.0.0/0 ::/0"
-ACME_EMAIL=""
 VERSION=""
 BUILD=0
 UFW=0
@@ -37,7 +36,6 @@ usage() {
 Необязательное:
   --allow-ips "СПИСОК"   с каких адресов пускать в панель, через пробел
                          (по умолчанию отовсюду: "0.0.0.0/0 ::/0")
-  --acme-email ПОЧТА     Let's Encrypt пришлёт на неё предупреждение об истечении
   --dir ПУТЬ             куда ставить (по умолчанию /opt/noderoost)
   --version ТЕГ          версия образов (по умолчанию последний релиз)
   --build                собрать образы из исходников вместо готовых
@@ -56,7 +54,6 @@ while [ $# -gt 0 ]; do
         --panel-domain) PANEL_DOMAIN="${2:-}"; shift 2 ;;
         --hs-domain)    HS_DOMAIN="${2:-}"; shift 2 ;;
         --allow-ips)    ALLOW_IPS="${2:-}"; shift 2 ;;
-        --acme-email)   ACME_EMAIL="${2:-}"; shift 2 ;;
         --dir)          DIR="${2:-}"; shift 2 ;;
         --version)      VERSION="${2:-}"; shift 2 ;;
         --public-ip)    PUBLIC_IP="${2:-}"; shift 2 ;;
@@ -149,7 +146,6 @@ NODEROOST_HS_DOMAIN_ALIASES=
 # С каких адресов пускать в ПАНЕЛЬ. Control-сервер это не ограничивает —
 # ноды подключаются откуда угодно.
 NODEROOST_ALLOW_IPS=$ALLOW_IPS
-NODEROOST_ACME_EMAIL=$ACME_EMAIL
 
 NODEROOST_VERSION=$VERSION
 NODEROOST_PANEL_IP=$PUBLIC_IP
