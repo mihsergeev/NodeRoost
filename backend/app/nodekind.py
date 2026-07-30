@@ -53,7 +53,12 @@ def guess_kind(node: dict) -> str:
     approved = node.get("approvedRoutes", []) or []
     approved_nonexit = [r for r in approved if r not in EXIT_ROUTES]
     is_exit = "0.0.0.0/0" in approved
-    if node_tags(node) or is_exit or approved_nonexit:
+    # Служебные теги панели (маркер, тег шлюза) — не признак «сервера»: маркер
+    # остаётся на ноде просто потому, что headscale не даёт снять последний тег.
+    from app import exitvia
+
+    real_tags = [t for t in node_tags(node) if not exitvia.is_service_tag(t)]
+    if real_tags or is_exit or approved_nonexit:
         return "server"
     return "device"
 
