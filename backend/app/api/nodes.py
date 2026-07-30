@@ -263,6 +263,12 @@ async def set_meta(
         body.group, body.subgroup, body.muted, body.exit_gateway, eff_via,
         body.force_exit,
     )
+    # Сняли «шлюз выхода» — снимаем и выбор этого шлюза у устройств: иначе связь
+    # висит в карточке как рабочая, а принудительный выход гонит трафик на ноду,
+    # которой политика выходить наружу уже не разрешает.
+    if stored.get("exit_gateway") and not eff_gateway:
+        for nid in await settings_store.drop_gateway(session, node_id):
+            await _set_agent_use_exit(session, nid, "")
     await audit.record(session, user.username, "node_meta", node_id, body.kind or "")
     # Принудительный выход: кладём тайнет-IP шлюза в конфиг агента этой ноды —
     # агент поставит `tailscale set --exit-node`. Это exit-node, а не subnet-

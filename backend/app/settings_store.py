@@ -247,6 +247,48 @@ async def clear_node_meta(session: AsyncSession, node_id: str) -> None:
         await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
 
 
+async def drop_gateway(session: AsyncSession, gateway_id: str) -> list[str]:
+    """Нода перестала быть шлюзом выхода — убрать её из выбора всех устройств.
+
+    Связь «устройство → шлюз» жила отдельно от галки на самом шлюзе и снятие
+    галки переживала. В карточке устройства так и оставалось «через шлюзы:
+    web-fra», хотя грант в политике уже исчез; а если выход был принудительным,
+    агент устройства продолжал гнать ВЕСЬ трафик на ноду, которой политика
+    выходить в интернет больше не разрешает, — устройство просто теряло сеть,
+    и панель об этом молчала. Плюс повторная установка галки молча возвращала
+    старые разрешения.
+
+    Возвращает id нод, у которых снят принудительный выход: их агентам надо
+    сбросить use_exit.
+    """
+    gateway_id = str(gateway_id)
+    meta = await get_node_meta(session)
+    unforced: list[str] = []
+    changed = False
+    for nid, entry in list(meta.items()):
+        if not isinstance(entry, dict):
+            continue
+        via = [str(i) for i in (entry.get("exit_via") or [])]
+        if gateway_id in via:
+            via = [v for v in via if v != gateway_id]
+            changed = True
+            if via:
+                entry["exit_via"] = via
+            else:
+                entry.pop("exit_via", None)
+        if str(entry.get("force_exit") or "") == gateway_id:
+            entry.pop("force_exit", None)
+            unforced.append(str(nid))
+            changed = True
+        if entry:
+            meta[nid] = entry
+        else:
+            meta.pop(nid, None)
+    if changed:
+        await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
+    return unforced
+
+
 async def set_gateway_clients(
     session: AsyncSession,
     gateway_id: str,
