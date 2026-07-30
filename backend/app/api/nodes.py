@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app import aclgen, audit, enroll, exitvia, hostinfo, settings_store
+from app import aclgen, audit, enroll, exitvia, geoip, hostinfo, settings_store
 from app.clientip import client_ip
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
@@ -74,6 +74,8 @@ def _map_node(n: dict, meta: dict | None = None, hinfo: dict | None = None) -> N
         arch=hi.get("arch", ""),
         container=bool(hi.get("container", False)),
         endpoint=hi.get("endpoint", ""),
+        # страна — по адресу из endpoint, а не по имени ноды: имя может быть любым
+        country=geoip.country_of(str(hi.get("endpoint", "")).rsplit(":", 1)[0]),
         direct_ok=bool(hi.get("direct_ok", False)),
         available_routes=available,
         approved_routes=approved,
