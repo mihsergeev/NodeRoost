@@ -127,6 +127,33 @@ def normalize_node_name(v: str) -> str:
     return name
 
 
+_PORTS_RE = re.compile(r"^(\*|\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*)$")
+
+
+def validate_ports(v: str) -> str:
+    """Порты правила: «*», номера и диапазоны через запятую.
+
+    Одной регулярки мало — она пропускала «0», «70000» и «22-10». Такое значение
+    уходит в HuJSON, headscale отвергает политику ЦЕЛИКОМ, и админ получает
+    четыре строки его парсера вместо «порт вне диапазона». Хуже того: политику
+    после этого перестают принимать и последующие пуши, пока плохое правило
+    лежит в панели.
+    """
+    v = str(v or "").strip()
+    if not _PORTS_RE.match(v):
+        raise ValueError("Порты: «*», номера и диапазоны через запятую (напр. 22,80,8000-8080)")
+    if v == "*":
+        return v
+    for part in v.split(","):
+        bounds = [int(x) for x in part.split("-")]
+        for n in bounds:
+            if not 1 <= n <= 65535:
+                raise ValueError(f"Порт {n} вне диапазона 1–65535")
+        if len(bounds) == 2 and bounds[0] > bounds[1]:
+            raise ValueError(f"Диапазон «{part}» задом наперёд: начало больше конца")
+    return v
+
+
 class NodeRenameIn(BaseModel):
     name: str = Field(min_length=1, max_length=63)
 
@@ -350,11 +377,9 @@ class AclRule(BaseModel):
     src: AclSelector
     dst: AclSelector
     # порт(ы): «*», «22», «5430», «80,443», «1000-2000»
-    ports: str = Field(
-        default="*",
-        max_length=200,
-        pattern=r"^(\*|\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*)$",
-    )
+    ports: str = Field(default="*", max_length=200)
+
+    _ports = field_validator("ports")(validate_ports)
 
 
 class AclRulesIn(BaseModel):
@@ -645,11 +670,9 @@ class DirectionIn(BaseModel):
     # прямо в HuJSON-политику. Непроходной порт headscale отвергает целиком —
     # а поскольку направление уже сохранено, отвергаться начнут ВСЕ последующие
     # пуши политики, и ACL замрёт на последней удачной версии.
-    ports: str = Field(
-        default="*",
-        max_length=200,
-        pattern=r"^(\*|\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*)$",
-    )
+    ports: str = Field(default="*", max_length=200)
+
+    _ports = field_validator("ports")(validate_ports)
 
     @model_validator(mode="after")
     def _check_src(self) -> "DirectionIn":

@@ -348,3 +348,17 @@ def test_rule_role_name_charset_is_enforced():
     # законные имена по-прежнему проходят
     for good in ("web", "db-1", "web.prod", "a_b"):
         assert AclSelector(kind="tag", value=good).value == good
+
+
+def test_ports_out_of_range_are_refused_here():
+    """Плохой порт уходил в HuJSON, и headscale отвергал политику целиком —
+    вместе со всеми следующими пушами, пока правило лежало в панели."""
+    import pytest
+
+    from app.schemas import validate_ports
+
+    assert validate_ports("*") == "*"
+    assert validate_ports(" 22,80,8000-8080 ") == "22,80,8000-8080"
+    for bad in ("0", "70000", "22-10", "1-65536", "22,0"):
+        with pytest.raises(ValueError):
+            validate_ports(bad)
