@@ -128,6 +128,9 @@ const EN: Record<string, string> = {
   'Ждём подключения ноды — статус обновится сам…':
     'Waiting for the node to connect — this updates automatically…',
   'Нода подключена ✓': 'Node connected ✓',
+  'Эта машина уже была в сети под именем': 'This machine was already on the network as',
+  'её запись переиспользована и переименована. Прежние настройки доступа и маршруты сохранены.':
+    'its record has been reused and renamed. Its access settings and routes are kept.',
 
   // --- маршруты / exit-node ---
   'Маршруты': 'Routes',
