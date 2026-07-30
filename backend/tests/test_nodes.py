@@ -412,3 +412,9 @@ async def test_headscale_input_errors_are_not_502():
     with pytest.raises(HTTPException) as e:
         await hs_call(boom("headscale 500: internal database failure"))
     assert e.value.status_code == 502   # настоящая поломка остаётся 502
+
+
+def test_roles_are_lowercase():
+    """headscale принимает только теги в нижнем регистре, и «PROD» с «prod» —
+    одна и та же роль, а не две."""
+    assert _normalize_tags([" PROD ", "prod", "tag:Web"]) == ["tag:prod", "tag:web"]
