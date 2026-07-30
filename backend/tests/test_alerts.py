@@ -277,3 +277,41 @@ async def test_muted_agent_silence_is_not_reported(session, monkeypatch):
         await alerts.reconcile_agents(session, st, agents, {"1": "a"}, {"1": True}, {"1"})
         == []
     )
+
+
+async def test_single_node_alert_links_to_that_node(session, monkeypatch):
+    """Алерт про ОДНУ ноду ведёт в её карточку, а не на общий список: искать
+    упавшую ноду глазами в тревоге — лишний шаг. И иконка падения — огонёк."""
+    from app import settings_store
+
+    alerts._down_streak.clear()
+    st = Settings(node_down_misses=1, panel_url="https://panel.example/")
+
+    async def fake_cfg(*a, **k):
+        return {"webhook": "https://hook.example"}
+
+    monkeypatch.setattr(settings_store, "get_alert_config", fake_cfg)
+    sent: list[tuple[str, str | None]] = []
+
+    async def fake_send(cfg, text, link=None):
+        sent.append((text, link))
+        return []
+
+    monkeypatch.setattr(alerts, "send_alert", fake_send)
+
+    names, kinds = {"7": "db-1", "9": "db-2"}, {"7": "server", "9": "server"}
+    await alerts.reconcile_nodes(session, st, {"7": True, "9": True}, names, kinds)
+    sent.clear()
+
+    await alerts.reconcile_nodes(session, st, {"7": False, "9": True}, names, kinds)
+    text, link = sent[-1]
+    assert text.startswith("🔥"), text
+    assert link == "https://panel.example/#node-7"
+
+    # упали двое разом — одной карточки мало, ведём на список
+    pair = {"11": "app-1", "12": "app-2"}
+    kinds2 = {"11": "server", "12": "server"}
+    await alerts.reconcile_nodes(session, st, {"11": True, "12": True}, pair, kinds2)
+    sent.clear()
+    await alerts.reconcile_nodes(session, st, {"11": False, "12": False}, pair, kinds2)
+    assert sent[-1][1] == "https://panel.example/"
