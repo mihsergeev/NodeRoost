@@ -61,22 +61,19 @@ async def get_policy(_: CurrentUser) -> PolicyOut:
 async def put_policy(
     body: PolicyIn, request: Request, user: CurrentUser, session: SessionDep
 ) -> PolicyOut:
-    settings = get_settings()
-    require_hs(settings)
-    client = get_client(settings)
-    try:
-        data = await client.set_policy(body.policy)
-    except HeadscaleError as exc:
-        msg = str(exc)
-        # 400/422 от headscale = ошибка валидации политики (user error)
-        if " 400:" in msg or " 422:" in msg or "policy" in msg.lower():
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, msg)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, msg)
-    await audit.record(session, user.username, "policy_set", "acl")
-    return PolicyOut(
-        policy=data.get("policy", "") or "",
-        updated_at=norm_ts(data.get("updatedAt")),
-        exists=True,
+    """Политику панель собирает сама — писать её руками нельзя.
+
+    Раньше запись принималась и отвечала 200, а через минуту коллектор сверял
+    действующую политику с той, что следует из правил панели, видел расхождение
+    и возвращал свою (это самоисцеление: оно же чинит политику, изменённую в
+    обход панели). Правило, написанное руками, просто исчезало — без ошибки и
+    без следа, и админ был уверен, что доступ выдан.
+    """
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        "Политику собирает сама панель из правил в разделе «Доступы» "
+        "(API: /api/policy/rules) и возвращает её при любом расхождении. "
+        "Ручная правка была бы отменена в течение минуты, поэтому не принимается.",
     )
 
 
