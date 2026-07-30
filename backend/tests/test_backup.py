@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app import backup
 from app.config import Settings
+from tests.conftest import ADMIN_PASSWORD
 
 
 def _fake_headscale(root: Path) -> None:
@@ -80,3 +81,24 @@ def test_policy_comparison_ignores_formatting():
 
     assert _same_policy('{"acls": []}', '{\n  "acls": []\n}')
     assert not _same_policy('{"acls": []}', '{"acls": [{"action": "accept"}]}')
+
+
+async def test_failed_manual_backup_says_why(client, monkeypatch):
+    """«500 Internal Server Error» не говорит админу ничего — а бэкап не записан."""
+    from app import backup as backup_mod
+    from app.api import backup as api_backup
+
+    async def boom(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(api_backup.backup, "write_backup", boom)
+    monkeypatch.setattr(backup_mod, "write_backup", boom, raising=False)
+
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    tok = r.json()["access_token"]
+    resp = await client.post("/api/backup/run", json={},
+                             headers={"Authorization": f"Bearer {tok}"})
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert "No space left" in detail and "data/backups" in detail
