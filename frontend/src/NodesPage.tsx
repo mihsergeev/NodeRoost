@@ -33,9 +33,14 @@ function fmtAgo(iso: string, t: Tr): string {
 export function NodesPage({
   kind,
   onUnauthorized,
+  openNodeId,
+  onOpened,
 }: {
   kind: 'server' | 'device'
   onUnauthorized: () => void
+  // id ноды из ссылки в алерте — открыть её карточку сразу при загрузке
+  openNodeId?: string | null
+  onOpened?: () => void
 }) {
   const { t } = useI18n()
   const [nodes, setNodes] = useState<Node[] | null>(null)
@@ -48,7 +53,12 @@ export function NodesPage({
   const [editNode, setEditNode] = useState<Node | null>(null)
   const [routesNode, setRoutesNode] = useState<Node | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [detailNodeId, setDetailNodeId] = useState<string | null>(null)
+  const [detailNodeId, setDetailNodeId] = useState<string | null>(openNodeId ?? null)
+  useEffect(() => {
+    if (openNodeId) onOpened?.()
+    // один раз: дальше карточкой управляет сам пользователь
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // перетаскивание ноды между группами (как в соседней панели): ref переживает
   // ре-рендеры, state нужен только для подсветки
   const dragRef = useRef<string | null>(null)
