@@ -63,7 +63,12 @@ if ! command -v tailscale >/dev/null 2>&1; then
   fi
 fi
 @@EXITSETUP@@
-tailscale up --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
+# --reset обязателен: если на машине уже стояли какие-то настройки Tailscale
+# (например --exit-node-allow-lan-access от прошлого выхода через шлюз),
+# `tailscale up` отказывается их менять — «requires mentioning all non-default
+# flags» — и подключение падает. Мы задаём состояние ноды целиком, поэтому
+# сбрасываем прежнее.
+tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
 echo "NodeRoost: нода \"$NAME\" подключена."
 # возвращаем запись истории (если скрипт упал раньше — просто откройте новый шелл)
 set -o history 2>/dev/null || true
@@ -102,7 +107,9 @@ try { Invoke-WebRequest "@@PKGBASE@@/tailscale-setup-$ver-$arch.msi" -OutFile $m
 catch { Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
 Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/quiet', '/norestart' -Wait
 $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
-& $ts up --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@
+# --reset: см. пояснение в linux-шаблоне — без него `tailscale up` не меняет
+# настройки на машине, где уже был задан любой неявный флаг.
+& $ts up --reset --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@
 Write-Host "NodeRoost: нода `"$name`" подключена."
 """
 
@@ -135,7 +142,12 @@ if ! command -v tailscale >/dev/null 2>&1; then
   sleep 2
 fi
 
-tailscale up --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
+# --reset обязателен: если на машине уже стояли какие-то настройки Tailscale
+# (например --exit-node-allow-lan-access от прошлого выхода через шлюз),
+# `tailscale up` отказывается их менять — «requires mentioning all non-default
+# flags» — и подключение падает. Мы задаём состояние ноды целиком, поэтому
+# сбрасываем прежнее.
+tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
 echo "NodeRoost: нода \"$NAME\" подключена."
 """
 
