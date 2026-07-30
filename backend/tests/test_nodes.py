@@ -418,3 +418,20 @@ def test_roles_are_lowercase():
     """headscale принимает только теги в нижнем регистре, и «PROD» с «prod» —
     одна и та же роль, а не две."""
     assert _normalize_tags([" PROD ", "prod", "tag:Web"]) == ["tag:prod", "tag:web"]
+
+
+def test_active_routes_do_not_depend_on_headscale_field():
+    """headscale 0.29 отдаёт subnetRoutes пустым, когда спрашиваешь ОДНУ ноду.
+
+    Карточка ноды показывала работающий маршрут как неработающий. Считаем сами:
+    действует то, что одобрено И анонсируется.
+    """
+    n = {
+        "id": "3", "name": "db", "givenName": "db", "ipAddresses": ["100.64.0.3"],
+        "availableRoutes": ["10.88.0.0/24", "10.99.0.0/24"],
+        "approvedRoutes": ["10.88.0.0/24", "0.0.0.0/0"],
+        "subnetRoutes": [],                      # как отвечает headscale
+    }
+    out = _map_node(n)
+    assert out.subnet_routes == ["10.88.0.0/24"]  # 10.99 не одобрен, exit не в счёт
+    assert out.is_exit_node is True
