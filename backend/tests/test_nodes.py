@@ -228,3 +228,31 @@ def test_marker_tag_does_not_make_a_node_a_server():
 
     assert guess_kind({"tags": ["tag:noderoost"]}) == "device"
     assert guess_kind({"tags": ["tag:db"]}) == "server"
+
+
+async def test_reconnect_keeps_panel_notes(session):
+    """«Переподключить» удаляет ноду в headscale и заводит заново — с новым id.
+    Заметки панели привязаны к id, поэтому нода возвращалась чистой: сервер
+    считался устройством, админ-устройство теряло права, описание пропадало."""
+    from app import settings_store
+
+    await settings_store.set_node_meta(session, "7", kind="server", admin=True,
+                                       description="прод-сервер")
+    meta = await settings_store.get_node_meta(session)
+    await settings_store.stash_node_meta(session, "db-1", meta["7"])
+    await settings_store.clear_node_meta(session, "7")
+
+    # нода вернулась под другим id
+    moved = await settings_store.claim_pending_meta(
+        session, [{"id": "42", "givenName": "db-1"}]
+    )
+    assert moved == 1
+    meta = await settings_store.get_node_meta(session)
+    assert meta["42"]["kind"] == "server"
+    assert meta["42"]["admin"] is True
+    assert meta["42"]["description"] == "прод-сервер"
+
+    # повторный вызов ничего не дублирует и не затирает
+    assert await settings_store.claim_pending_meta(
+        session, [{"id": "42", "givenName": "db-1"}]
+    ) == 0

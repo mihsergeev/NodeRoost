@@ -422,6 +422,14 @@ async def reconnect_node(
         )
     )
     # только теперь удаляем старую запись (если создание ключа упало — нода цела)
+    # Заметки панели привязаны к id, а переподключение заводит ноду заново —
+    # откладываем их по имени, иначе нода вернётся без типа, админ-флага
+    # и описания (см. settings_store.claim_pending_meta).
+    meta_now = await settings_store.get_node_meta(session)
+    await settings_store.stash_node_meta(
+        session, str(node.get("givenName") or node.get("name") or ""),
+        meta_now.get(str(node_id)) or {},
+    )
     await hs_call(client.delete_node(node_id))
     # мета была привязана к старому id — чистим (панель перенесёт тип/описание/
     # админ/роли на новую ноду при переподключении)
