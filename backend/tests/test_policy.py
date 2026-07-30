@@ -166,3 +166,16 @@ async def test_auto_approve_revokes_only_what_the_panel_approved(monkeypatch, tm
 
 async def _async(v):
     return v
+
+
+async def test_manual_policy_push_is_refused(client):
+    """Принять ручную политику значило соврать: через минуту самоисцеление
+    возвращало собранную панелью, и правило исчезало без следа."""
+    token = await _login(client)
+    r = await client.put(
+        "/api/policy",
+        json={"policy": '{"acls": []}'},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
+    assert "Доступы" in r.json()["detail"]

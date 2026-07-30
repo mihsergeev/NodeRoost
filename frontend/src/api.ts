@@ -182,13 +182,6 @@ export function getPolicy(): Promise<Policy> {
   return api<Policy>('/api/policy')
 }
 
-export function putPolicy(policy: string): Promise<Policy> {
-  return api<Policy>('/api/policy', {
-    method: 'PUT',
-    body: JSON.stringify({ policy }),
-  })
-}
-
 // --- визуальный конструктор ACL ---
 
 export type AclSelector = {
