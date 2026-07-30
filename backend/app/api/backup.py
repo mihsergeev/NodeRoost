@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -6,6 +7,8 @@ from app import audit, backup, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.schemas import BackupConfig, BackupFileInfo, BackupRunResult
+
+log = logging.getLogger("noderoost.backup")
 
 router = APIRouter(prefix="/backup", tags=["backup"])
 
@@ -23,7 +26,21 @@ async def run_backup(
     settings = get_settings()
     cfg = await settings_store.get_backup_config(session, settings)
     factory = request.app.state.session_factory
-    path, problems = await backup.write_backup(factory, settings, cfg["keep"])
+    try:
+        path, problems = await backup.write_backup(factory, settings, cfg["keep"])
+    except Exception as exc:  # noqa: BLE001
+        # Бэкап не записался — админ должен узнать ПОЧЕМУ. Раньше отсюда уходило
+        # голое «500 Internal Server Error»: ни места на диске, ни прав, ни пути.
+        # Автобэкап в такой же ситуации шлёт внятный алерт — здесь было молчание.
+        log.exception("ручной бэкап не удался")
+        await audit.record(
+            session, user.username, "backup_run", "", f"ошибка: {type(exc).__name__}"
+        )
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Не удалось записать бэкап: {type(exc).__name__}: {exc}. "
+            "Проверьте место на диске и каталог data/backups.",
+        ) from exc
     await audit.record(
         session, user.username, "backup_run", os.path.basename(path),
         "; ".join(problems) if problems else "ok",
