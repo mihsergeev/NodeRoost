@@ -512,7 +512,12 @@ export type EnrollResult = {
   expires_at: string
 }
 
-export type EnrollStatus = { connected: boolean; node: Node | null }
+export type EnrollStatus = {
+  connected: boolean
+  node: Node | null
+  // имя, под которым машина уже стояла в сети (запись переиспользована)
+  reused_from?: string | null
+}
 
 export function enrollNode(
   name: string,

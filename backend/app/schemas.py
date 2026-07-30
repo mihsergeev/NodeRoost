@@ -254,6 +254,8 @@ class TsMirrorOut(BaseModel):
 class EnrollStatusOut(BaseModel):
     connected: bool = False
     node: NodeOut | None = None
+    # Имя, под которым эта машина уже стояла в сети: запись переиспользована.
+    reused_from: str | None = None
 
 
 # --- ACL-политика ---

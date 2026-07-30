@@ -60,3 +60,50 @@ def test_scripts_reset_previous_tailscale_settings():
     for os_name in ("linux", "windows"):
         script = enroll.build_script(os_name, st, "hskey-auth-x", "node-1")
         assert "--reset" in script, os_name
+
+
+class _ReuseClient:
+    """headscale, который узнал машину и отдал её СТАРУЮ запись."""
+
+    def __init__(self):
+        self.renamed: tuple[str, str] | None = None
+
+    async def get_nodes(self):
+        return [
+            {"id": "4", "name": "new-net", "givenName": "laptop",
+             "ipAddresses": ["100.64.0.4"], "preAuthKey": {"id": "5"}},
+        ]
+
+    async def rename_node(self, node_id, new_name):
+        self.renamed = (node_id, new_name)
+        return {"node": {"id": node_id, "name": "new-net", "givenName": new_name,
+                         "ipAddresses": ["100.64.0.4"], "preAuthKey": {"id": "5"}}}
+
+
+async def _status(client, monkeypatch, hostname):
+    from app.api import enroll as api_enroll
+
+    hs = _ReuseClient()
+    monkeypatch.setattr(api_enroll, "get_client", lambda _s: hs)
+    monkeypatch.setattr(api_enroll, "require_hs", lambda _s: None)
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    tok = r.json()["access_token"]
+    resp = await client.get(f"/api/enroll/status?key_id=5&hostname={hostname}",
+                            headers={"Authorization": f"Bearer {tok}"})
+    return resp.json(), hs
+
+
+async def test_enroll_renames_reused_record(client, monkeypatch):
+    """Машина уже была в сети: запись переиспользована — переименовать и сказать."""
+    body, hs = await _status(client, monkeypatch, "new-net")
+    assert body["connected"] is True
+    assert body["reused_from"] == "laptop"       # чью запись заняли
+    assert hs.renamed == ("4", "new-net")        # имя стало запрошенным
+    assert body["node"]["name"] == "new-net"
+
+
+async def test_enroll_quiet_when_name_matches(client, monkeypatch):
+    body, hs = await _status(client, monkeypatch, "laptop")
+    assert body["connected"] is True and body["reused_from"] is None
+    assert hs.renamed is None                    # переименовывать нечего
