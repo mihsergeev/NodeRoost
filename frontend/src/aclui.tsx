@@ -29,7 +29,9 @@ export function selLabel(sel: AclSelector, nodes: Node[], t: Tr): string {
   if (sel.kind === 'internet') return t('🌐 интернет')
   if (sel.kind === 'cidr') return sel.value
   if (sel.kind === 'tag') return `#${sel.value}`
-  return nodes.find((n) => n.id === sel.value)?.name ?? `#${sel.value}`
+  // ноду могли удалить мимо панели (headscale CLI, истёкший ключ): правило
+  // ещё лежит, но не действует — так и пишем, а не голым «#5»
+  return nodes.find((n) => n.id === sel.value)?.name ?? t('удалённая нода')
 }
 
 // Список ролей (тегов) во всей сети — из forced_tags нод, без префикса «tag:».
