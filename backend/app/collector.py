@@ -96,7 +96,11 @@ async def collect_once(
     # перепушить политику, чтобы литеральный IP исчезнувшей ноды не завис в ACL и не
     # достался узлу, переиспользовавшему адрес. Пуш только при реальном изменении.
     async with session_factory() as session:
-        if await policy_apply.reconcile_policy(session, client, settings, raw):
+        # под тем же замком: иначе самоисцеление могло встрять между сохранением
+        # правил в запросе админа и его же пушем
+        async with policy_apply.write_lock():
+            healed = await policy_apply.reconcile_policy(session, client, settings, raw)
+        if healed:
             log.info("ACL самоисцелён: набор нод изменился — политика перепушена")
     return total
 
