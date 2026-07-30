@@ -1,10 +1,10 @@
 name: Release
 
-# Публикация образов в GHCR по тегу релиза. Тег — единственный триггер: образы
-# должны появляться только для того, что осознанно выпущено, а не для каждого
-# пуша в main. Ловим обе формы записи (v0.1.0 и 0.1.0): тег без «v» не собирал
-# ничего, а .env.example уже указывал на несуществующий образ — установка такой
-# версии падала на docker pull.
+# Publishes images to GHCR on a release tag. The tag is the only trigger: images
+# should appear for what was deliberately released, not for every push to main.
+# Both spellings are caught (v0.1.0 and 0.1.0) — a tag without the "v" built
+# nothing while .env.example already pointed installs at that missing image, so
+# installing that version died on docker pull.
 on:
   push:
     tags: ["v*", "[0-9]*"]
@@ -34,7 +34,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Версия без «v»: в compose NODEROOST_VERSION задаётся как 0.1.0
+      # Version without the "v": compose takes NODEROOST_VERSION as 0.1.0
       - id: ver
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
@@ -42,8 +42,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           push: true
-          # «latest» намеренно НЕ публикуем: compose требует явный тег релиза,
-          # чтобы прод не переезжал на другую сборку молча (см. .env.example)
+          # "latest" is deliberately NOT published: compose demands an explicit
+          # release tag so production never moves to another build in silence
+          # (see .env.example)
           tags: ghcr.io/${{ github.repository_owner }}/noderoost-${{ matrix.name }}:${{ steps.ver.outputs.value }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -58,13 +59,14 @@ jobs:
     needs: images
     runs-on: ubuntu-latest
     steps:
-      # Дайджесты — то, чем прод должен пиниться: тег переставляем мы сами,
-      # дайджест не меняется. Выводим их в сводку релиза, чтобы не искать руками.
-      - name: Дайджесты опубликованных образов
+      # Digests are what production should pin to: we move tags ourselves, a
+      # digest never changes. Printed into the release summary so nobody has to
+      # go looking for them.
+      - name: Digests of the published images
         run: |
           v="${GITHUB_REF_NAME#v}"
           {
-            echo "### Образы ${v}"
+            echo "### Images ${v}"
             echo
             for img in backend frontend; do
               ref="ghcr.io/${{ github.repository_owner }}/noderoost-${img}:${v}"
