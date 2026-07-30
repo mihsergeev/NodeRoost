@@ -1,0 +1,47 @@
+# Установка «всё в одном»: NodeRoost + headscale + свой Caddy с автоматическими
+# TLS-сертификатами. Ничего снаружи ставить не нужно — только домены в DNS.
+#
+#   docker compose -f compose.yml -f compose.tls.yml up -d
+#
+# или COMPOSE_FILE=compose.yml:compose.tls.yml в .env (так делает ops/install.sh).
+#
+# Если у вас уже есть обратный прокси (nginx, Traefik, caddy-docker-proxy) —
+# берите compose.caddy.yml или проксируйте на порт из NODEROOST_BIND сами.
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    # Якорь *default-logging из compose.yml тут недоступен — YAML-якоря живут
+    # внутри одного файла, поэтому ротация задана явно.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # 80 нужен не только для редиректа: по нему Let's Encrypt проверяет домен.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Выданные сертификаты и ключ ACME-аккаунта. Переживают пересоздание
+      # контейнера — иначе при каждом up -d запрашивался бы новый сертификат,
+      # а у Let's Encrypt на это недельный лимит.
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+    environment:
+      NODEROOST_DOMAIN: ${NODEROOST_DOMAIN}
+      NODEROOST_HS_DOMAIN: ${NODEROOST_HS_DOMAIN}
+      NODEROOST_ALLOW_IPS: ${NODEROOST_ALLOW_IPS:-127.0.0.1}
+      NODEROOST_ACME_EMAIL: ${NODEROOST_ACME_EMAIL:-}
+    networks:
+      - internal
+    depends_on:
+      - frontend
+      - headscale
+
+  frontend:
+    # Наружу фронтенд смотрит только через Caddy — host-порт из базового
+    # compose снимаем, иначе панель окажется доступна по IP:8080 в обход TLS
+    # и списка адресов.
+    ports: !reset []
