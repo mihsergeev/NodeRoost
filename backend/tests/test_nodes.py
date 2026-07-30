@@ -256,3 +256,53 @@ async def test_reconnect_keeps_panel_notes(session):
     assert await settings_store.claim_pending_meta(
         session, [{"id": "42", "givenName": "db-1"}]
     ) == 0
+
+
+async def test_reconnect_repoints_rules_and_routes(session):
+    """Переподключение меняет id ноды — а на него ссылаются правила доступа.
+
+    Без перевода ссылок правило остаётся в панели видимым, но указывает на
+    несуществующую ноду: админ уверен, что доступ есть, а его нет.
+    """
+    from app import settings_store
+
+    await settings_store.set_acl_rules(session, [
+        {"src": {"kind": "node", "value": "7"},
+         "dst": {"kind": "node", "value": "9"}, "ports": "22"},
+        {"src": {"kind": "node", "value": "9"},
+         "dst": {"kind": "node", "value": "7"}, "ports": "443"},
+    ])
+    await settings_store.set_routing(session, {
+        "d1": {"src_kind": "node", "src": ["7", "9"], "dst": "1.2.3.4", "via": "9"},
+        "d2": {"src_kind": "node", "src": ["9"], "dst": "1.2.3.5", "via": "7"},
+    })
+    await settings_store.set_agent_all(session, {"7": {"token": "t", "routes": ["10.0.0.0/24"]}})
+    await settings_store.stash_node_meta(session, "db-1", {"kind": "server"}, old_id="7")
+
+    await settings_store.claim_pending_meta(session, [{"id": "42", "givenName": "db-1"}])
+
+    rules = await settings_store.get_acl_rules(session)
+    assert rules[0]["src"]["value"] == "42" and rules[0]["dst"]["value"] == "9"
+    assert rules[1]["src"]["value"] == "9" and rules[1]["dst"]["value"] == "42"
+
+    routing = await settings_store.get_routing(session)
+    assert routing["d1"]["src"] == ["42", "9"] and routing["d1"]["via"] == "9"
+    assert routing["d2"]["via"] == "42"
+
+    agents = await settings_store.get_agent_all(session)
+    assert "7" not in agents and agents["42"]["routes"] == ["10.0.0.0/24"]
+
+
+async def test_claim_pending_meta_reads_old_format(session):
+    """Заметки, отложенные до обновления панели, лежат в старом формате."""
+    from app import settings_store
+
+    await settings_store._set_raw(
+        session, settings_store.PENDING_META_KEY,
+        '{"db-1": {"kind": "server", "admin": true}}',
+    )
+    assert await settings_store.claim_pending_meta(
+        session, [{"id": "42", "givenName": "db-1"}]
+    ) == 1
+    meta = await settings_store.get_node_meta(session)
+    assert meta["42"]["kind"] == "server" and meta["42"]["admin"] is True
