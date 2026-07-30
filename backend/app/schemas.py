@@ -540,6 +540,9 @@ class DnsUpdateIn(BaseModel):
     magic_dns: bool = False
     base_domain: str = Field(default="", max_length=253)
     nameservers: list[str] = Field(default_factory=list, max_length=16)
+    # Подменять ли резолвер на самих нодах. Выключено: сервер может ходить во
+    # внутренний DNS, и отбирать его молча нельзя (см. _write_dns_config).
+    override_local_dns: bool = False
 
     @field_validator("base_domain")
     @classmethod

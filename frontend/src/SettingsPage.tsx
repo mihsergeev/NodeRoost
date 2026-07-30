@@ -62,6 +62,8 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   const [copied, setCopied] = useState(false)
   // редактор DNS
   const [dnsMagic, setDnsMagic] = useState(false)
+  // подменять ли резолвер на самих нодах (см. подпись у галочки)
+  const [dnsOverride, setDnsOverride] = useState(false)
   const [dnsDomain, setDnsDomain] = useState('')
   const [dnsServers, setDnsServers] = useState('')
   const [dnsBusy, setDnsBusy] = useState(false)
@@ -99,6 +101,7 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   // сети сбрасывала соседнюю форму.
   function seedForms(i: HsInfo) {
     setDnsMagic(i.dns.magic_dns)
+    setDnsOverride(i.dns.override_local_dns)
     setDnsDomain(i.dns.base_domain)
     setDnsServers(i.dns.nameservers.join(', '))
     setNetV4(i.ipv4_prefix)
@@ -146,6 +149,7 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   const dnsDirty =
     !!info &&
     (dnsMagic !== info.dns.magic_dns ||
+      dnsOverride !== info.dns.override_local_dns ||
       dnsDomain.trim() !== info.dns.base_domain ||
       parsedServers.join(',') !== info.dns.nameservers.join(','))
 
@@ -164,6 +168,7 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
     try {
       const updated = await setHsDns({
         magic_dns: dnsMagic,
+        override_local_dns: dnsOverride,
         base_domain: dnsDomain.trim(),
         nameservers: parsedServers,
       })
@@ -589,6 +594,19 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
                 placeholder="1.1.1.1, 1.0.0.1"
               />
             </label>
+            <label className="field field-check">
+              <input
+                type="checkbox"
+                className="field-checkbox"
+                checked={dnsOverride}
+                disabled={dnsLocked || parsedServers.length === 0}
+                onChange={(e) => setDnsOverride(e.target.checked)}
+              />
+              <span>{t('Использовать только эти серверы')}</span>
+            </label>
+            <p className="muted small settings-note">
+              {t('Без галочки ноды продолжают пользоваться своим DNS, а эти серверы добавляются к нему. С галочкой весь DNS ноды идёт только сюда — сервер перестанет видеть внутренние имена, которые знал его прежний резолвер.')}
+            </p>
             {dnsErr && <p className="form-error">{dnsErr}</p>}
             {dnsMsg && <p className="form-ok">{dnsMsg}</p>}
             <div className="dns-actions">
