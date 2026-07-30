@@ -175,21 +175,47 @@ async def test_hsinfo_ok_defaults(client, monkeypatch):
 
 def test_empty_nameservers_turn_off_override(tmp_path):
     """headscale не стартует, если список DNS-серверов пуст, а override_local_dns
-    включён — а он включён по умолчанию. Очистка списка в панели роняла
-    control-сервер: контейнер уходил в рестарт-луп, панель теряла с ним связь.
-    Пустой список = «клиенты пользуются своим DNS», флаг обязан выключиться."""
+    включён. Очистка списка в панели роняла control-сервер: контейнер уходил в
+    рестарт-луп, панель теряла с ним связь. Пустой список = «клиенты пользуются
+    своим DNS», флаг обязан выключиться, даже если галочка осталась стоять."""
     from app.api.settings import _write_dns_config
     import yaml
 
     cfg = tmp_path / "config.yaml"
     cfg.write_text("server_url: https://hs.example\ndns:\n  magic_dns: true\n", encoding="utf-8")
 
-    _write_dns_config(str(cfg), True, "mesh.internal", ["1.1.1.1"])
+    _write_dns_config(str(cfg), True, "mesh.internal", ["1.1.1.1"], override_local=True)
     data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
     assert data["dns"]["nameservers"]["global"] == ["1.1.1.1"]
     assert data["dns"]["override_local_dns"] is True
 
-    _write_dns_config(str(cfg), True, "mesh.internal", [])
+    # админ стёр список серверов, галочку снять забыл — флаг гаснет сам
+    _write_dns_config(str(cfg), True, "mesh.internal", [], override_local=True)
     data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
     assert data["dns"]["nameservers"]["global"] == []
     assert data["dns"]["override_local_dns"] is False
+
+
+def test_dns_override_is_not_a_side_effect_of_naming_servers(tmp_path):
+    """Подмена резолвера на нодах — отдельное решение, а не следствие.
+
+    Раньше флаг включался сам, стоило вписать DNS-серверы: сервер, ходивший во
+    внутренний DNS компании, молча переставал его видеть.
+    """
+    from app.api.settings import _write_dns_config
+    import yaml
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("server_url: https://hs.example\n", encoding="utf-8")
+
+    _write_dns_config(str(cfg), True, "example.internal", ["1.1.1.1"])
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["dns"]["override_local_dns"] is False
+
+    _write_dns_config(str(cfg), True, "example.internal", ["1.1.1.1"], override_local=True)
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["dns"]["override_local_dns"] is True
+
+    # без списка серверов флаг обязан гаснуть: с ним headscale не стартует
+    _write_dns_config(str(cfg), True, "example.internal", [], override_local=True)
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert data["dns"]["override_local_dns"] is False
+    assert data["dns"]["nameservers"]["global"] == []

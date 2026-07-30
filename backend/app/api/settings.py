@@ -153,7 +153,11 @@ def _edit_hs_config(config_path: str, mutate) -> None:
 
 
 def _write_dns_config(
-    config_path: str, magic_dns: bool, base_domain: str, nameservers: list[str]
+    config_path: str,
+    magic_dns: bool,
+    base_domain: str,
+    nameservers: list[str],
+    override_local: bool = False,
 ) -> None:
     def mut(data: dict) -> None:
         dns = data.get("dns")
@@ -169,10 +173,15 @@ def _write_dns_config(
         ns["global"] = list(nameservers)
         # headscale НЕ СТАРТУЕТ с пустым списком серверов при override_local_dns:
         # «dns.nameservers.global must be set when dns.override_local_dns is true».
-        # По умолчанию флаг включён, поэтому очистка списка в панели роняла
-        # control-сервер целиком — и сама панель теряла с ним связь. Пустой список
-        # означает «пусть клиенты пользуются своим DNS», это и записываем.
-        dns["override_local_dns"] = bool(nameservers)
+        # Поэтому без списка флаг обязан быть выключен: очистка списка в панели
+        # роняла control-сервер целиком, и панель теряла с ним связь.
+        #
+        # Сам флаг — отдельный выбор администратора. Он подменяет резолвер НА
+        # КАЖДОЙ ноде: сервер, который ходил во внутренний DNS компании или в
+        # DNS облака, перестаёт его видеть. Раньше он включался сам, стоило
+        # вписать резолверы, — вписать их и потерять внутренние имена оказывалось
+        # одним действием.
+        dns["override_local_dns"] = bool(nameservers) and bool(override_local)
 
     _edit_hs_config(config_path, mut)
 
@@ -209,7 +218,11 @@ async def update_dns(
         )
     try:
         _write_dns_config(
-            settings.headscale_config_path, body.magic_dns, bd, body.nameservers
+            settings.headscale_config_path,
+            body.magic_dns,
+            bd,
+            body.nameservers,
+            body.override_local_dns,
         )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(
