@@ -128,6 +128,20 @@ const EN: Record<string, string> = {
   'Ждём подключения ноды — статус обновится сам…':
     'Waiting for the node to connect — this updates automatically…',
   'Нода подключена ✓': 'Node connected ✓',
+  'Создайте бота через @BotFather, вставьте его токен и chat_id (свой ID узнаете у @userinfobot).':
+    'Create a bot with @BotFather, paste its token and a chat_id (@userinfobot tells you yours).',
+  'Выбор exit-ноды — на стороне клиента. Отдайте это пользователю.':
+    'Picking an exit node happens in the client. Hand this to the person using it.',
+  'Windows (PowerShell от администратора)':
+    'Windows (PowerShell as administrator)',
+  'То же самое мышкой: иконка Tailscale в трее → Exit nodes → «{name}»; выключить — «None».':
+    'The same by mouse: the Tailscale tray icon → Exit nodes → “{name}”; to switch off, “None”.',
+  'Android / iOS: в приложении Tailscale → меню → Exit Node → «{name}»; выключить — пункт «None».':
+    'Android / iOS: in the Tailscale app → menu → Exit Node → “{name}”; to switch off, “None”.',
+  'Все устройства':
+    'All devices',
+  'Порт':
+    'Port',
   'Использовать только эти серверы': 'Use these servers only',
   'Без галочки ноды продолжают пользоваться своим DNS, а эти серверы добавляются к нему. С галочкой весь DNS ноды идёт только сюда — сервер перестанет видеть внутренние имена, которые знал его прежний резолвер.':
     'Left unticked, nodes keep their own DNS and these servers are added to it. Ticked, all of a node’s DNS goes here only — the server stops seeing the internal names its previous resolver knew.',
