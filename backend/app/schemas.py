@@ -14,7 +14,19 @@ _DOMAIN_RE = re.compile(
 _ROLE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 
 
-class LoginRequest(BaseModel):
+class RequestModel(BaseModel):
+    """База для тел запросов: неизвестное поле — ошибка, а не тишина.
+
+    По умолчанию pydantic лишние поля молча выбрасывает. Из-за этого опечатка в
+    имени поля выглядела как успех: запрос отвечал 200, а настройка не менялась
+    (так, «node_offline_minutes» в алертах не существует вовсе, но принимался).
+    Тот, кто ходит в API скриптом, узнавал об этом в лучшем случае случайно.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class LoginRequest(RequestModel):
     username: str
     password: str
     otp: str | None = None
@@ -29,11 +41,11 @@ class TwoFASetupOut(BaseModel):
     otpauth_uri: str
 
 
-class TwoFAVerifyRequest(BaseModel):
+class TwoFAVerifyRequest(RequestModel):
     otp: str = Field(min_length=1, max_length=16)
 
 
-class PasswordChangeRequest(BaseModel):
+class PasswordChangeRequest(RequestModel):
     current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
 
@@ -154,17 +166,17 @@ def validate_ports(v: str) -> str:
     return v
 
 
-class NodeRenameIn(BaseModel):
+class NodeRenameIn(RequestModel):
     name: str = Field(min_length=1, max_length=63)
 
     _norm_name = field_validator("name")(normalize_node_name)
 
 
-class NodeTagsIn(BaseModel):
+class NodeTagsIn(RequestModel):
     tags: list[str] = Field(default_factory=list, max_length=64)
 
 
-class NodeMetaIn(BaseModel):
+class NodeMetaIn(RequestModel):
     # заметка панели о ноде: произвольное описание и тип (сервер/устройство).
     # kind="" — сбросить в авто-определение.
     # None = поле НЕ передано и не должно меняться. Иначе частичный вызов (напр.
@@ -184,7 +196,7 @@ class NodeMetaIn(BaseModel):
     subgroup: str = Field(default="", max_length=63)
 
 
-class NodeRoutesIn(BaseModel):
+class NodeRoutesIn(RequestModel):
     # полный список одобряемых маршрутов (CIDR); exit-node = 0.0.0.0/0 + ::/0
     routes: list[str] = Field(default_factory=list, max_length=256)
 
@@ -232,7 +244,7 @@ class NodeRoutesIn(BaseModel):
         return out
 
 
-class ExitClientsIn(BaseModel):
+class ExitClientsIn(RequestModel):
     # серверная сторона выбора выхода: id устройств, которым разрешён выход через
     # этот шлюз (обратная проекция device.exit_via)
     devices: list[str] = Field(default_factory=list, max_length=512)
@@ -240,7 +252,7 @@ class ExitClientsIn(BaseModel):
 
 # --- enroll (добавление ноды) ---
 
-class EnrollIn(BaseModel):
+class EnrollIn(RequestModel):
     # то же имя, что станет именем ноды в сети, — правила те же
     name: str = Field(min_length=1, max_length=63)
 
@@ -259,7 +271,7 @@ class EnrollOut(BaseModel):
     expires_at: str
 
 
-class ReconnectIn(BaseModel):
+class ReconnectIn(RequestModel):
     os: Literal["linux", "windows", "macos", "android"] = "linux"
 
 
@@ -270,7 +282,7 @@ class TsVersionOut(BaseModel):
     env_default: str = ""
 
 
-class TsVersionIn(BaseModel):
+class TsVersionIn(RequestModel):
     version: str = Field(pattern=r"^\d+\.\d+\.\d+$", max_length=20)
 
 
@@ -313,13 +325,13 @@ class PolicyOut(BaseModel):
     exists: bool = True  # False = политика ещё не задана (отдан дефолтный шаблон)
 
 
-class PolicyIn(BaseModel):
+class PolicyIn(RequestModel):
     policy: str = Field(max_length=1_000_000)
 
 
 # --- визуальный конструктор ACL ---
 
-class AclSelector(BaseModel):
+class AclSelector(RequestModel):
     # servers = все ноды-серверы (разворачивается в их IP); internet = выход в
     # интернет через exit-node (autogroup:internet); cidr = конкретный IP/подсеть.
     kind: Literal["any", "node", "tag", "servers", "internet", "cidr"] = "any"
@@ -373,7 +385,7 @@ class AclSelector(BaseModel):
         return self
 
 
-class AclRule(BaseModel):
+class AclRule(RequestModel):
     src: AclSelector
     dst: AclSelector
     # порт(ы): «*», «22», «5430», «80,443», «1000-2000»
@@ -382,11 +394,11 @@ class AclRule(BaseModel):
     _ports = field_validator("ports")(validate_ports)
 
 
-class AclRulesIn(BaseModel):
+class AclRulesIn(RequestModel):
     rules: list[AclRule] = Field(default_factory=list, max_length=500)
 
 
-class AgentIn(BaseModel):
+class AgentIn(RequestModel):
     # что нода должна анонсировать; применяет агент на самой ноде
     routes: list[str] = Field(default_factory=list, max_length=256)
     exit_node: bool = False
@@ -447,7 +459,7 @@ class AgentOut(BaseModel):
     remove_oneline: str = ""
 
 
-class ResolveHostIn(BaseModel):
+class ResolveHostIn(RequestModel):
     host: str = Field(min_length=1, max_length=253)
 
 
@@ -473,7 +485,7 @@ class ApiKeyOut(BaseModel):
     is_panel: bool = False  # ключ, которым ходит сама панель (не истекать!)
 
 
-class ApiKeyCreateIn(BaseModel):
+class ApiKeyCreateIn(RequestModel):
     expiration_days: int = Field(default=90, ge=1, le=3650)
 
 
@@ -483,7 +495,7 @@ class ApiKeyCreatedOut(BaseModel):
     expiration: str | None = None
 
 
-class ApiKeyExpireIn(BaseModel):
+class ApiKeyExpireIn(RequestModel):
     prefix: str = Field(min_length=1, max_length=64)
 
 
@@ -513,7 +525,7 @@ class HsInfoOut(BaseModel):
     restart_pending: bool = False
 
 
-class NetworkUpdateIn(BaseModel):
+class NetworkUpdateIn(RequestModel):
     # диапазон меша (headscale config.prefixes.v4) — обязательно внутри CGNAT
     # 100.64.0.0/10 (Tailscale). Тайлнет только IPv4 (v6 не используется).
     ipv4_prefix: str = Field(max_length=64)
@@ -565,7 +577,7 @@ class SummaryOut(BaseModel):
     last_backup_at: str | None = None
 
 
-class DnsUpdateIn(BaseModel):
+class DnsUpdateIn(RequestModel):
     magic_dns: bool = False
     base_domain: str = Field(default="", max_length=253)
     nameservers: list[str] = Field(default_factory=list, max_length=16)
@@ -617,7 +629,7 @@ class MetricsHistory(BaseModel):
     points: list[HistoryPoint] = []
 
 
-class AlertConfigIn(BaseModel):
+class AlertConfigIn(RequestModel):
     telegram_token: str = ""
     telegram_chat: str = ""
     telegram_api: str = ""
@@ -651,12 +663,12 @@ class BackupRunResult(BaseModel):
     problems: list[str] = []  # пусто = self-тест пройден
 
 
-class BackupConfig(BaseModel):
+class BackupConfig(RequestModel):
     interval_hours: int = Field(default=24, ge=0, le=24 * 30)
     keep: int = Field(default=7, ge=1, le=365)
 
 
-class DirectionIn(BaseModel):
+class DirectionIn(RequestModel):
     """Направление: кто → куда → через какую ноду."""
 
     # кто ходит: конкретные ноды (src) либо группа целиком. Группа хранится

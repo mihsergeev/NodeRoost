@@ -245,3 +245,26 @@ async def test_hs_info_admits_a_restart_that_never_happened(client, monkeypatch,
     # помощник снимает этот файл, перезапустив headscale; пока он лежит — не снял
     (tmp_path / ".restart-request").touch()
     assert (await client.get("/api/hs-info", headers=h)).json()["restart_pending"] is True
+
+
+async def test_unknown_field_in_a_request_is_an_error(client):
+    """Опечатка в имени поля не должна выглядеть как успешная настройка.
+
+    pydantic по умолчанию молча выбрасывает лишнее: запрос отвечал 200, а
+    настройка оставалась прежней. Так «node_offline_minutes» в алертах,
+    которого в коде нет вовсе, годами принимался бы за рабочую опцию.
+    """
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    good = {"telegram_token": "", "telegram_chat": "",
+            "telegram_api": "", "webhook": ""}
+    assert (await client.put("/api/alerts", json=good, headers=h)).status_code == 200
+
+    # ни «node_offline_minutes», ни «enabled» во входной модели нет: первого не
+    # существует вовсе, второе панель вычисляет сама по настроенным каналам
+    bad = dict(good, node_offline_minutes=5)
+    resp = await client.put("/api/alerts", json=bad, headers=h)
+    assert resp.status_code == 422
+    assert "node_offline_minutes" in resp.text
