@@ -50,6 +50,10 @@ function cidrInfo(cidr: string): { count: number; first: string; last: string } 
 
 const CIDR_EXAMPLES = ['100.64.0.0/10', '100.80.0.0/12', '100.100.0.0/16', '100.64.7.0/24']
 
+// Сообщение, когда правку записали, а перезапустить headscale некому.
+const HELPER_MISSING =
+  'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.'
+
 export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   const { t } = useI18n()
   const [keys, setKeys] = useState<ApiKey[] | null>(null)
@@ -181,6 +185,10 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
           .then((i) => {
             setInfo(i)
             seedForms(i)
+            // Перезапускает headscale хостовый помощник. Если флаг ещё на месте,
+            // значит помощника нет (или он сломан): правка записана, но не
+            // действует — и сказать об этом должна панель, а не тишина.
+            if (i.restart_pending) setDnsErr(t(HELPER_MISSING))
           })
           .catch(() => {})
       }, 9000)
@@ -222,6 +230,10 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
           .then((i) => {
             setInfo(i)
             seedForms(i)
+            // Перезапускает headscale хостовый помощник. Если флаг ещё на месте,
+            // значит помощника нет (или он сломан): правка записана, но не
+            // действует — и сказать об этом должна панель, а не тишина.
+            if (i.restart_pending) setNetErr(t(HELPER_MISSING))
           })
           .catch(() => {})
       }, 9000)
