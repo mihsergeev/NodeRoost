@@ -160,10 +160,13 @@
       <div class="case">
         <h3>Весь трафик сервера — через другой сервер</h3>
         <svg class="dia" viewBox="0 0 300 104" aria-hidden="true"><rect x="0" y="22" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="41.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text><line x1="88" y1="38" x2="110" y2="38" stroke="#00E58A" stroke-width="2"/><rect x="110" y="22" width="80" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="150.0" y="41.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-nl</text><line x1="190" y1="38" x2="207" y2="38" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M206 34 L212 38 L206 42 Z" fill="#3A4557"/><rect x="212" y="22" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="256.0" y="41.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><line x1="34" y1="92" x2="34" y2="60" stroke="#00E58A" stroke-width="2"/><path d="M30 60 L34 54 L38 60 Z" fill="#00E58A"/><text x="48" y="90" fill="#78859A" font-family="system-ui,sans-serif" font-size="9" text-anchor="start">вход по своему IP</text></svg>
-        <p>Иногда надо на время увести исходящий трафик машины в другую страну.
-           Включается кнопкой, и сервер при этом никуда не пропадает: SSH и сайт
-           на его белом адресе работают как работали. Панель сама следит, чтобы
-           ответ уходил тем же путём, которым пришёл запрос.</p>
+        <p>Сервер выходит в интернет через выбранный узел: его запросы приходят
+           наружу с адреса шлюза — например, из нужной страны. Включается и
+           выключается галкой в карточке сервера.</p>
+        <p>Обычно после такого сервер пропадает: ответы на входящие соединения
+           уходят в туннель и не доходят обратно — рвётся SSH, перестаёт
+           открываться сайт. Здесь этого нет: ответ уходит тем же путём, которым
+           пришёл запрос, и сервер остаётся доступен по своему адресу.</p>
       </div>
 
       <div class="case">
@@ -179,17 +182,19 @@
         <h3>Домашний NAS, камеры, Home Assistant</h3>
         <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">телефон</text><line x1="84" y1="46" x2="112" y2="46" stroke="#00E58A" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="206.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="124" y="20" fill="#78859A" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">дом</text><rect x="124" y="26" width="164" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="206.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">nas</text><rect x="124" y="50" width="78" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="163.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="210" y="50" width="78" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="249.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">hass</text></svg>
         <p>Ни белого IP, ни DDNS, ни проброса портов на роутере. Ставите ноду
-           на домашний сервер и заходите к нему с телефона из любой точки
-           так же, как заходили бы из дома.</p>
+           на домашний сервер и заходите к нему откуда угодно — с телефона,
+           ноутбука, рабочего компьютера — так же, как заходили бы из дома.</p>
       </div>
 
       <div class="case">
         <h3>Сервер ходит к серверу</h3>
         <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="20" width="96" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ci-runner</text><line x1="96" y1="36" x2="180" y2="36" stroke="#00E58A" stroke-width="2"/><text x="138" y="30" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:5432</text><rect x="180" y="20" width="120" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="240.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-fra-1</text><text x="150" y="76" fill="#78859A" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">белые списки на файрволе</text><line x1="78" y1="72" x2="222" y2="72" stroke="#78859A" stroke-width="1.2"/></svg>
-        <p>Раннер льёт в базу, бэкап уезжает в хранилище, приложение стучится
-           в соседний дата-центр. Раньше это был белый список адресов на
-           файрволе, который ломался при каждом переезде. Теперь это одно
-           правило в панели.</p>
+        <p>Машины стоят у разных провайдеров и в разных дата-центрах, общей
+           сети между ними нет: раннер льёт в базу, бэкап уезжает в хранилище,
+           приложение стучится в соседний ДЦ.</p>
+        <p>Раньше ради этого открывали порт наружу и держали белый список
+           адресов на файрволе, который ломался при каждом переезде. Теперь
+           машины видят друг друга напрямую, а доступ — одно правило в панели.</p>
       </div>
 
       <div class="case">
