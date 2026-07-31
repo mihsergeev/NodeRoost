@@ -165,6 +165,9 @@ on the machine itself.
   rule, nodes cannot see each other.
 - **Set up alerts** (⚙ → Alerts): Telegram or a webhook. They fire when a server
   goes down and when a key is about to expire.
+- **Treat a backup as a private key.** The archive carries the second-factor
+  secret, the admin's password hash, the agent tokens and headscale's own private
+  keys — see [SECURITY.md](../SECURITY.md).
 - **Backups** run daily on their own (⚙ → Backups). An archive is a consistent
   snapshot of the headscale database and the panel's settings; restoring is
   covered by `ops/restore.sh`. You can restore onto another machine too — the

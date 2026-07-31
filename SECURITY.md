@@ -10,6 +10,15 @@ public issue. We aim to acknowledge reports within a few days.
 
 ## Hardening notes
 
+**A backup archive is the network.** `data/backups/*.tar.gz` carries the
+second-factor secret in the clear, the admin's password hash, the node agents'
+tokens, headscale's database and its private keys — noise and DERP. Anyone holding
+the file can generate your 2FA codes, work on the password hash offline and stand up
+a control server with your identity. The panel writes archives `0600` inside a `0700`
+directory; keep them somewhere you would keep a private key. `ops/backup-offsite.sh`
+ships them into a restic repository, which is encrypted — mail attachments, object
+storage without encryption and ticket systems are not.
+
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at
 the next start — that is the recovery path for a locked-out administrator, and the
