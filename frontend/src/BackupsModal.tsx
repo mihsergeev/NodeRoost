@@ -103,6 +103,11 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
             'В бэкап входит снимок состояния headscale (база + config + ключи: ноды, пользователи, ключи, ACL) и настройки панели. Метрики/история — нет.',
           )}
         </p>
+        <p className="muted small">
+          {t(
+            'Храните архив как приватный ключ: внутри секрет второго фактора, хеш пароля администратора, токены агентов и ключи control-сервера. Кто получил файл — получил и сеть.',
+          )}
+        </p>
 
         <div className="modal-actions" style={{ justifyContent: 'flex-start' }}>
           <button onClick={create} disabled={busy}>

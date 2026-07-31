@@ -128,6 +128,8 @@ const EN: Record<string, string> = {
   'Ждём подключения ноды — статус обновится сам…':
     'Waiting for the node to connect — this updates automatically…',
   'Нода подключена ✓': 'Node connected ✓',
+  'Храните архив как приватный ключ: внутри секрет второго фактора, хеш пароля администратора, токены агентов и ключи control-сервера. Кто получил файл — получил и сеть.':
+    "Keep the archive as you would a private key: it holds the second-factor secret, the admin's password hash, the agent tokens and the control server's own keys. Whoever gets the file gets the network.",
   'headscale не принимает ключ панели — выпустите новый и впишите в .env':
     "headscale rejects the panel's key — issue a new one and put it in .env",
   'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.':

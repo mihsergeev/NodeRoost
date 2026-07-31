@@ -102,3 +102,37 @@ async def test_failed_manual_backup_says_why(client, monkeypatch):
     assert resp.status_code == 500
     detail = resp.json()["detail"]
     assert "No space left" in detail and "data/backups" in detail
+
+
+async def test_archive_is_written_for_its_owner_only(tmp_path, monkeypatch):
+    """Архив несёт секрет 2FA, хеш пароля и приватные ключи control-сервера.
+
+    Каталог закрыт правами, но файл живёт дольше каталога: его скачивают,
+    копируют, кладут в хранилище — и права уезжают вместе с ним.
+    """
+    import os
+    import stat
+
+    from app import backup as backup_mod
+
+    async def fake_archive(session, settings):
+        return b"x" * 32
+
+    def fake_verify(data):
+        return []
+
+    monkeypatch.setattr(backup_mod, "build_archive", fake_archive)
+    monkeypatch.setattr(backup_mod, "verify_archive", fake_verify)
+
+    class _Ctx:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *a):
+            return False
+
+    st = Settings(data_dir=str(tmp_path))
+    path, problems = await backup_mod.write_backup(lambda: _Ctx(), st, keep=3)
+    assert problems == []
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    assert mode == 0o600, oct(mode)
