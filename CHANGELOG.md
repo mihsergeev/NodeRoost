@@ -5,6 +5,23 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.8] — 2026-07-31
+
+### Added
+
+- **A way back in for a locked-out administrator.** Losing both the password and the
+  second factor left no path anyone could find: the break-glass switch has been in
+  `.env` since the first release and nothing mentioned it. The troubleshooting
+  section walks through it, and SECURITY.md states what it means — whoever can edit
+  `.env` owns the panel, so that file and the host under it are the trust boundary.
+
+### Fixed
+
+- **A rejected key was reported as a dead headscale.** With the panel's API key
+  expired or revoked, headscale is alive and answering 401: what it needs is a new
+  key, not a restart. The panel said "headscale unavailable" either way and sent the
+  admin to fix a service that was working.
+
 ## [0.2.7] — 2026-07-31
 
 ### Fixed
