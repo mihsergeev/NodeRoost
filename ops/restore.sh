@@ -33,7 +33,10 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"; rm -f "$APP/data/_restore_panel.json"' EXIT INT TERM
 # Распаковываем ДО остановки контейнеров: битый файл не должен ронять живую
 # панель. Своё сообщение — вместо «gzip: stdin: not in gzip format».
-tar -xzf "$ARCHIVE" -C "$TMP" 2>/dev/null \n  || { echo "не читается как архив бэкапа: $ARCHIVE (повреждён или это не .tar.gz)" >&2; exit 1; }
+if ! tar -xzf "$ARCHIVE" -C "$TMP" 2>/dev/null; then
+    echo "не читается как архив бэкапа: $ARCHIVE (повреждён или это не .tar.gz)" >&2
+    exit 1
+fi
 
 # минимальная комплектность
 [ -f "$TMP/panel.json" ] || { echo "в архиве нет panel.json" >&2; exit 1; }
