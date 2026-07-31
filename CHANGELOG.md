@@ -5,6 +5,25 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.12] — 2026-07-31
+
+### Security
+
+- **A backup archive is the network, and nothing said so.** It carries the
+  second-factor secret in the clear, the admin's password hash, the node agents'
+  tokens, headscale's database and its private keys — enough to generate the 2FA
+  codes, work on the hash offline and stand up a control server with that identity.
+  The panel, the install guide and SECURITY.md now say it plainly, and archives are
+  written `0600` rather than `0644`: the directory is closed, but the file outlives
+  the directory once it is downloaded or copied away.
+
+### Fixed
+
+- **Setting a node's routes left no trace in the audit log.** It decides what that
+  machine announces to the whole network — a subnet behind it, a way out to the
+  internet — and it was the only edit in the panel that went unrecorded. Starting a
+  two-factor setup is written down now as well.
+
 ## [0.2.11] — 2026-07-31
 
 ### Fixed
