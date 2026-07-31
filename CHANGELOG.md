@@ -5,6 +5,15 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.10] — 2026-07-31
+
+### Fixed
+
+- **A hung headscale reported itself as nothing at all.** A control server that has
+  stopped answering — rather than crashed — is its most common failure, and httpx
+  leaves a timeout with an empty message, so what reached the admin was "headscale
+  unavailable: ", a colon with nothing after it. It now says how long it waited.
+
 ## [0.2.9] — 2026-07-31
 
 ### Fixed
