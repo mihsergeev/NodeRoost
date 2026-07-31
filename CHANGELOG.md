@@ -5,6 +5,18 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.11] — 2026-07-31
+
+### Fixed
+
+- **An access rule that could never work was accepted and quietly dropped.** The
+  policy builder discards rules aimed at a device, at a role a device wears, or from
+  a node to itself — the first two would break the isolation of personal machines,
+  the third means nothing. That filter is right and stays; what was wrong is that
+  the panel answered 200 and kept the rule in its list, so the administrator saw
+  access granted that the network never had. Such a rule is refused now, with the
+  reason.
+
 ## [0.2.10] — 2026-07-31
 
 ### Fixed
