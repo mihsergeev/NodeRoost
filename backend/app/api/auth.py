@@ -136,6 +136,7 @@ async def twofa_setup(user: CurrentUser, session: SessionDep) -> TwoFASetupOut:
         )
     secret = totp.random_secret()
     user.totp_secret = secret  # ожидающий подтверждения секрет (enabled ещё False)
+    await audit.record(session, user.username, "2fa_setup", user.username)
     await session.commit()
     return TwoFASetupOut(
         secret=secret,

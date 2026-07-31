@@ -9,7 +9,7 @@ import secrets
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app import agent, routing, settings_store
+from app import agent, audit, routing, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, PublicRateLimit, SessionDep
 from app.schemas import AgentIn, AgentOut
@@ -83,7 +83,7 @@ async def get_agent(node_id: str, _: CurrentUser, session: SessionDep) -> AgentO
 
 @router.put("/{node_id}", response_model=AgentOut)
 async def put_agent(
-    node_id: str, body: AgentIn, _: CurrentUser, session: SessionDep
+    node_id: str, body: AgentIn, user: CurrentUser, session: SessionDep
 ) -> AgentOut:
     all_cfg = await settings_store.get_agent_all(session)
     cfg = all_cfg.get(node_id, {})
@@ -93,6 +93,16 @@ async def put_agent(
     cfg["exit"] = body.exit_node
     all_cfg[node_id] = cfg
     await settings_store.set_agent_all(session, all_cfg)
+    # Это меняет то, ЧТО НОДА ОБЪЯВЛЯЕТ ВСЕЙ СЕТИ: подсеть за ней и выход в
+    # интернет через неё. Такое обязано попадать в журнал наравне с правилами
+    # доступа — раньше единственное изменение, которое не оставляло следа.
+    await audit.record(
+        session,
+        user.username,
+        "agent_set",
+        node_id,
+        f"маршруты: {', '.join(cfg['routes']) or 'нет'}; exit: {'да' if cfg['exit'] else 'нет'}",
+    )
     return _out(cfg, await _wanted_hash(session, node_id, cfg))
 
 
