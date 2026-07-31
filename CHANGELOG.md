@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.6] — 2026-07-31
+
+### Changed
+
+- **English is now the repository's primary language.** The reasons, the goals and
+  the use cases from the site moved into [docs/why.md](docs/why.md), this changelog
+  is in English with the Russian one alongside it in
+  [CHANGELOG.ru.md](CHANGELOG.ru.md), and the CI step names people read on the
+  Actions tab are no longer Russian.
+
+### Fixed
+
+- **The join command reported success when nothing had happened.** On a machine
+  already on the network `tailscale up` returns 0 whatever key it is handed — it does
+  not need one — so running the command after its key had expired printed "node
+  connected" while the panel gained nothing. The script now reads back the name the
+  control server gave and says either that, or that the machine was already here
+  under another name.
+- **The by-hand install broke on its third command.** It redirects the headscale
+  config into a directory a fresh clone does not have. The two-phase start it
+  described was fiction as well: bringing up the frontend brings the backend with it.
+- Seven strings in the interface still fell back to Russian for an English reader.
+
 ## [0.2.5] — 2026-07-31
 
 ### Fixed
