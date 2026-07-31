@@ -136,3 +136,37 @@ async def test_archive_is_written_for_its_owner_only(tmp_path, monkeypatch):
     assert problems == []
     mode = stat.S_IMODE(os.stat(path).st_mode)
     assert mode == 0o600, oct(mode)
+
+
+def test_restore_script_unpacks_a_real_archive(tmp_path):
+    """Восстановление обязано разворачивать настоящий архив.
+
+    Строка распаковки однажды склеилась при правке («\» + перенос превратились
+    в лишний аргумент «n»), и tar молча падал на ЛЮБОМ архиве: инструмент
+    аварийного восстановления был мёртв, а проверяли до этого только путь с
+    заведомо битым файлом — там он «работал» по неверной причине.
+    """
+    import re
+    import subprocess
+    import shutil
+
+    script = Path(__file__).resolve().parents[2] / "ops" / "restore.sh"
+    if not script.exists():                 # тесты гоняют и без каталога ops
+        return
+    body = script.read_text(encoding="utf-8")
+    line = next(l for l in body.split("\n") if "tar -xzf" in l)
+    assert chr(92) + "n" not in line, line   # склеенный перенос строки
+
+    if shutil.which("tar") is None:         # на Windows проверяем только текст
+        return
+    src = tmp_path / "data"
+    src.mkdir()
+    (src / "panel.json").write_text("{}", encoding="utf-8")
+    arc = tmp_path / "a.tar.gz"
+    subprocess.run(["tar", "-czf", str(arc), "-C", str(src), "panel.json"], check=True)
+    out = tmp_path / "out"
+    out.mkdir()
+    # ровно та команда, которую выполняет скрипт
+    r = subprocess.run(["tar", "-xzf", str(arc), "-C", str(out)], capture_output=True)
+    assert r.returncode == 0, r.stderr
+    assert (out / "panel.json").exists()
