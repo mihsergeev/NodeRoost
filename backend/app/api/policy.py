@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import HeadscaleError, get_client
 from app.hs_util import hs_call, norm_ts, require_hs
+from app.nodekind import effective_kind, node_tags
 from app.schemas import (
     AclRule,
     AclRulesIn,
@@ -93,6 +94,55 @@ async def get_rules(_: CurrentUser, session: SessionDep) -> AclRulesOut:
     )
 
 
+async def _refuse_inert_rules(rules, nodes: list[dict], meta: dict) -> None:
+    """Отказать в правиле, которое ничего не даст, — вместо тихого выбрасывания.
+
+    Сборщик политики отбрасывает правила, ведущие к устройству, к роли, висящей
+    на устройстве, и ноды на саму себя: первые два нарушили бы изоляцию личных
+    машин, третье бессмысленно. Это правильно и остаётся последним рубежом. Но
+    панель при этом отвечала 200 и хранила такое правило в списке: администратор
+    видел выданный доступ, которого в сети нет.
+    """
+    by_id = {str(n.get("id", "")): n for n in nodes}
+    device_tags: set[str] = set()
+    for n in nodes:
+        if effective_kind(n, meta) != "server":
+            device_tags.update(node_tags(n))
+
+    def name_of(nid: str) -> str:
+        n = by_id.get(nid) or {}
+        return str(n.get("givenName") or n.get("name") or nid)
+
+    for r in rules:
+        src, dst = r.src.model_dump(), r.dst.model_dump()
+        if dst.get("kind") == "node":
+            nid = str(dst.get("value") or "")
+            node = by_id.get(nid)
+            if node is not None and effective_kind(node, meta) != "server":
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"«{name_of(nid)}» — устройство, а к устройствам доступ не "
+                    "открывают: они видят серверы, но не видны никому. Сделайте его "
+                    "сервером, если к нему нужно ходить.",
+                )
+            if src.get("kind") == "node" and str(src.get("value") or "") == nid:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"«{name_of(nid)}» и источник, и цель: сама с собой нода и так "
+                    "разговаривает, такое правило ничего не меняет.",
+                )
+        if dst.get("kind") == "tag":
+            tag = str(dst.get("value") or "")
+            full = tag if tag.startswith("tag:") else f"tag:{tag}"
+            if full in device_tags:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Роль «{tag}» висит и на устройстве, поэтому целью быть не "
+                    "может: иначе доступ открылся бы и к личной машине. Снимите "
+                    "роль с устройства или выберите другую.",
+                )
+
+
 @router.put("/rules", response_model=AclRulesOut)
 async def put_rules(
     body: AclRulesIn, request: Request, user: CurrentUser, session: SessionDep
@@ -101,6 +151,8 @@ async def put_rules(
     require_hs(settings)
     client = get_client(settings)
     nodes = await hs_call(client.get_nodes())
+    meta = await settings_store.get_node_meta(session)
+    await _refuse_inert_rules(body.rules, nodes, meta)
     rules_dicts = [r.model_dump() for r in body.rules]
     # Сохраняем, пушим ЕДИНЫМ сборщиком и откатываем при отказе headscale — так
     # запушенное всегда совпадает с хранимым и с кэшем _last_pushed (иначе
