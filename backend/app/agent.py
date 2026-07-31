@@ -39,6 +39,10 @@ cat > "$DIR/apply.sh" <<EOF
 # иначе tailscale set дёргался бы каждую минуту без нужды.
 set -e
 TMP=\$(mktemp)
+# Демон не запущен — значит, его остановили намеренно. Не поднимаем и не шумим.
+systemctl is-active --quiet tailscaled 2>/dev/null || {
+  command -v systemctl >/dev/null 2>&1 && exit 0
+}
 # Панель недоступна — молча выходим: это её дело, а не ноды. Но 404 значит другое:
 # такого узла панель больше не знает (его удалили). Тогда сообщаем по-человечески,
 # а не сыплем в журнал сырым «curl: (22) … 404» каждую минуту.
@@ -118,8 +122,11 @@ chmod +x "$DIR/apply.sh"
 cat > /etc/systemd/system/noderoost-agent.service <<EOF
 [Unit]
 Description=NodeRoost agent (apply routes from panel)
+# Только порядок, без Wants: с Wants systemd ПОДНИМАЛ tailscaled каждый раз,
+# когда срабатывал таймер агента. Админ останавливал VPN на своей машине — и
+# через минуту он оказывался запущен снова, без объяснений. Панель распоряжается
+# настройками сети, а не питанием демона на чужом сервере.
 After=tailscaled.service network-online.target
-Wants=tailscaled.service
 [Service]
 Type=oneshot
 ExecStart=$DIR/apply.sh
