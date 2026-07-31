@@ -225,6 +225,41 @@
            Revoking means deleting a device, not reissuing configs for
            everyone else.</p>
       </div>
+
+      <div class="case">
+        <h3>SSH closed to the internet for good</h3>
+        <svg class="dia" viewBox="0 0 300 100" aria-hidden="true"><rect x="0" y="8" width="92" height="28" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="46.0" y="26.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text><line x1="92" y1="22" x2="152" y2="22" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="158" y1="16" x2="170" y2="28" stroke="#78859A" stroke-width="1.6"/><line x1="170" y1="16" x2="158" y2="28" stroke="#78859A" stroke-width="1.6"/><text x="150" y="44" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">22/tcp closed</text><rect x="0" y="60" width="92" height="28" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="78.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><line x1="92" y1="74" x2="196" y2="74" stroke="#00E58A" stroke-width="2"/><text x="144" y="68" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:22</text><rect x="196" y="30" width="104" height="52" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="248.0" y="60.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text></svg>
+        <p>While the server answers on port 22, strangers&#39; bots pick at it around
+           the clock. With a node on it, that port can be closed on the public
+           interface for good — you come in on the network address instead, by a
+           rule from the panel.</p>
+        <p>There is nothing left outside to knock on, and the list of who may come
+           in sits in one place and changes by clicking.</p>
+      </div>
+
+      <div class="case">
+        <h3>A way in when the usual one is shut</h3>
+        <svg class="dia" viewBox="0 0 300 100" aria-hidden="true"><rect x="0" y="36" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="55.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><path d="M88 46 C130 46, 152 24, 196 24" fill="none" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="136" y1="24" x2="148" y2="36" stroke="#78859A" stroke-width="1.6"/><line x1="148" y1="24" x2="136" y2="36" stroke="#78859A" stroke-width="1.6"/><text x="120" y="16" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">public IP</text><path d="M88 58 C130 58, 152 78, 196 78" fill="none" stroke="#00E58A" stroke-width="2"/><text x="130" y="94" fill="#00E58A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">over the network</text><rect x="196" y="10" width="104" height="80" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="248.0" y="54.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">srv-01</text></svg>
+        <p>The provider blocked the port, the public address is under attack,
+           somebody rewrote the firewall rules, the corporate VPN is down — and you
+           need to get in now. A node needs no more than outbound access to stay in
+           touch, so the machine is still reachable when nothing gets to it from
+           outside.</p>
+        <p>The panel is not part of the connection: even while it is unavailable,
+           the sessions already running carry on.</p>
+      </div>
+
+      <div class="case">
+        <h3>Hardware that takes no client</h3>
+        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><line x1="84" y1="46" x2="112" y2="46" stroke="#00E58A" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="124" y="20" fill="#78859A" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">server room</text><rect x="124" y="26" width="76" height="20" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="162.0" y="39.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-01</text><rect x="208" y="26" width="80" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="248.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ipmi</text><rect x="124" y="50" width="76" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="162.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="208" y="50" width="80" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="248.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">switch</text></svg>
+        <p>An IPMI board, cameras, a printer, a managed switch, an old NAS —
+           nothing can be installed on them, and you still have to reach them. Put
+           a node on any machine in that network, it advertises the subnet, you
+           approve it, and you work with all of it on internal addresses as if you
+           were sitting next to it.</p>
+        <p>Access is granted the same way as everywhere else: to whom, and on which
+           port.</p>
+      </div>
     </div>
   </div>
 </section>
