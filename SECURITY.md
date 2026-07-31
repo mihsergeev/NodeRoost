@@ -10,6 +10,15 @@ public issue. We aim to acknowledge reports within a few days.
 
 ## Hardening notes
 
+**Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
+the admin password back to the one in `.env` and switches the second factor off at
+the next start — that is the recovery path for a locked-out administrator, and the
+reason `.env` and the host it sits on are the real trust boundary. Keep the file
+readable by root only, and treat shell access to that host as equivalent to full
+access to the network the panel governs.
+
+
+
 - The panel refuses to start with a weak/empty `NODEROOST_JWT_SECRET` or a
   default admin password.
 - Login is protected by JWT + optional TOTP 2FA, brute-force rate limiting, and
