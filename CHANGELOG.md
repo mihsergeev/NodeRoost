@@ -5,6 +5,21 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.9] — 2026-07-31
+
+### Fixed
+
+- **The agent switched a node's VPN back on behind its owner.** Its systemd unit
+  *wanted* `tailscaled`, so every time the timer fired systemd started the daemon
+  again: an admin who stopped Tailscale on their own machine found it running a
+  minute later with nothing to explain it. The ordering stays, the starting does
+  not, and an agent that finds the daemon stopped now leaves quietly instead of
+  failing once a minute.
+- **A request field that does not exist was accepted in silence.** pydantic drops
+  unknown fields by default, so a typo answered 200 and changed nothing —
+  `node_offline_minutes`, a field this panel has never had, was accepted for days
+  of testing. Request bodies now name the field they did not recognise.
+
 ## [0.2.8] — 2026-07-31
 
 ### Added
