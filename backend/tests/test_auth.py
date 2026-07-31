@@ -79,3 +79,51 @@ async def test_totp_code_used_to_enable_cannot_log_in(client):
     off = await client.post("/api/auth/2fa/disable",
                             json={"otp": code_at(secret, 1)}, headers=h)
     assert off.status_code == 200 and off.json()["enabled"] is False
+
+
+async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
+    """Потерян и пароль, и второй фактор — вернуть панель можно только с сервера.
+
+    Механизм есть с самого начала, но о нём нигде не было написано: запертый
+    администратор о нём не узнавал.
+    """
+    from app.bootstrap import ensure_admin
+    from app.config import Settings
+    from app.models import User
+    from app.security import hash_password, verify_password
+    from sqlalchemy import select
+
+    st = Settings(admin_user="admin", admin_password="FromEnvPass123",
+                  admin_password_reset=True)
+
+    user = await session.scalar(select(User).where(User.username == "admin"))
+    if user is None:                      # фикстура session заводит пустую базу
+        user = User(username="admin", password_hash=hash_password("forgotten"))
+        session.add(user)
+        await session.commit()
+    user.password_hash = hash_password("forgotten")
+    user.totp_enabled = True
+    user.totp_secret = "ABCDEFGHIJKLMNOP"
+    before = user.token_version
+    await session.commit()
+
+    class _Factory:
+        def __call__(self):
+            return _Ctx(session)
+
+    class _Ctx:
+        def __init__(self, s):
+            self.s = s
+
+        async def __aenter__(self):
+            return self.s
+
+        async def __aexit__(self, *a):
+            return False
+
+    await ensure_admin(_Factory(), st)
+
+    await session.refresh(user)
+    assert verify_password("FromEnvPass123", user.password_hash)
+    assert user.totp_enabled is False and user.totp_secret == ""
+    assert user.token_version == before + 1      # старые сессии больше не годятся

@@ -212,6 +212,22 @@ control-сервера повторите правила из `deploy/Caddyfile`
 резолвятся в этот сервер и что 80/443 доступны снаружи — Let's Encrypt
 проверяет домен по 80 порту. Логи: `docker compose logs caddy --tail 30`.
 
+**Заперты: потерян пароль, второй фактор или и то и другое.** Ссылки «забыли
+пароль» в панели нет намеренно — она была бы входом. Восстановление идёт через
+сервер, потому что у того, кто держит сервер, панель и так в руках:
+
+```bash
+cd /opt/noderoost
+sed -i 's/^NODEROOST_ADMIN_PASSWORD_RESET=.*/NODEROOST_ADMIN_PASSWORD_RESET=1/' .env
+sudo docker compose up -d backend      # вернёт пароль из NODEROOST_ADMIN_PASSWORD
+                                       # и выключит второй фактор
+sed -i 's/^NODEROOST_ADMIN_PASSWORD_RESET=.*/NODEROOST_ADMIN_PASSWORD_RESET=0/' .env
+sudo docker compose up -d backend      # верните выключатель, иначе сброс повторится
+```
+
+Войдите паролем из `.env`, смените его и снова включите второй фактор. Все выданные
+раньше сессии перестают работать, а сам сброс попадает в лог.
+
 **Сертификат не выдаётся после нескольких переустановок.** В логах caddy —
 `too many certificates (5) already issued for this exact set of identifiers`.
 Let's Encrypt разрешает пять сертификатов на одно и то же имя за неделю; счётчик
