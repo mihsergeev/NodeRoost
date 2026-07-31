@@ -129,7 +129,23 @@ $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
 # --reset: см. пояснение в linux-шаблоне — без него `tailscale up` не меняет
 # настройки на машине, где уже был задан любой неявный флаг.
 & $ts up --reset --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@
-Write-Host "NodeRoost: нода `"$name`" подключена."
+# Докладываем то, ЧТО ЕСТЬ (см. пояснение в linux-шаблоне): на машине, уже
+# подключённой к этой сети, `tailscale up` не ругается ни на какой ключ, включая
+# просроченный, и отчёт «нода подключена» оказывался неправдой.
+$real = $null
+try {
+  $st = & $ts status --json | ConvertFrom-Json
+  $real = ($st.Self.DNSName -split '\.')[0]
+  $addr = @($st.Self.TailscaleIPs)[0]
+} catch {}
+if (-not $real) {
+  Write-Error "NodeRoost: подключение не подтвердилось — проверьте 'tailscale status'."
+} elseif ($real -ne $name) {
+  Write-Host "NodeRoost: машина уже была в этой сети как `"$real`" ($addr) — использована её запись."
+  Write-Host "В панели она останется под своим именем, новая нода `"$name`" не появится."
+} else {
+  Write-Host "NodeRoost: нода `"$real`" подключена ($addr)."
+}
 """
 
 # --- macOS (Терминал, CLI-клиент через Homebrew) ---

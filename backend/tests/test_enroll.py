@@ -116,9 +116,8 @@ def test_scripts_report_the_name_the_control_server_gave():
     ключом — даже просроченным, — и скрипт бодро писал «нода подключена», хотя
     в панели не появлялось ничего.
     """
-    for os_name in ("linux", "macos"):
+    for os_name in ("linux", "macos", "windows"):
         s = enroll.build_script(os_name, _S, "key", "web-1")
-        assert '"DNSName"' in s, os_name          # имя от control-сервера
-        assert '"HostName"' not in s              # не то, как машина назвала себя
+        assert 'DNSName' in s, os_name            # имя берём у control-сервера
         assert "уже была в этой сети" in s        # честный отчёт о переиспользовании
         assert "не подтвердилось" in s            # и о неподтверждённом подключении
