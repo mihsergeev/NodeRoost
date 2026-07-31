@@ -107,3 +107,18 @@ async def test_enroll_quiet_when_name_matches(client, monkeypatch):
     body, hs = await _status(client, monkeypatch, "laptop")
     assert body["connected"] is True and body["reused_from"] is None
     assert hs.renamed is None                    # переименовывать нечего
+
+
+def test_scripts_report_the_name_the_control_server_gave():
+    """Скрипт должен докладывать то, что есть, а не то, что просили.
+
+    На машине, уже подключённой к сети, `tailscale up` возвращает 0 с любым
+    ключом — даже просроченным, — и скрипт бодро писал «нода подключена», хотя
+    в панели не появлялось ничего.
+    """
+    for os_name in ("linux", "macos"):
+        s = enroll.build_script(os_name, _S, "key", "web-1")
+        assert '"DNSName"' in s, os_name          # имя от control-сервера
+        assert '"HostName"' not in s              # не то, как машина назвала себя
+        assert "уже была в этой сети" in s        # честный отчёт о переиспользовании
+        assert "не подтвердилось" in s            # и о неподтверждённом подключении
