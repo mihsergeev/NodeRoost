@@ -213,6 +213,22 @@ For caddy-docker-proxy there is a ready override: `compose.caddy.yml`.
 resolve to this server and that 80/443 are reachable from outside — Let's
 Encrypt validates over port 80. Logs: `docker compose logs caddy --tail 30`.
 
+**Locked out: the password, the second factor, or both are gone.** The panel has no
+"forgot password" link on purpose — it would be a way in. Recovery goes through the
+server, because whoever holds the server holds the panel anyway:
+
+```bash
+cd /opt/noderoost
+sed -i 's/^NODEROOST_ADMIN_PASSWORD_RESET=.*/NODEROOST_ADMIN_PASSWORD_RESET=1/' .env
+sudo docker compose up -d backend      # sets the password back to NODEROOST_ADMIN_PASSWORD
+                                       # and switches the second factor off
+sed -i 's/^NODEROOST_ADMIN_PASSWORD_RESET=.*/NODEROOST_ADMIN_PASSWORD_RESET=0/' .env
+sudo docker compose up -d backend      # put the switch back, or the next restart resets again
+```
+
+Sign in with the password from `.env`, change it and turn the second factor on again.
+Every session issued earlier stops working, and the reset is written to the log.
+
 **No certificate after several reinstalls.** The caddy log says `too many
 certificates (5) already issued for this exact set of identifiers`. Let's Encrypt
 allows five certificates per week for the same name; the counter resets on its
