@@ -507,6 +507,10 @@ class HsInfoOut(BaseModel):
     derp: DerpInfo = DerpInfo()
     ipv4_prefix: str = ""
     allocation: str = ""
+    # Правка записана, но headscale ещё не перезапущен: флаг перезапуска лежит на
+    # месте. Перезапускает его хостовый помощник, и если его не поставили (или он
+    # сломан), правка так и не вступит в силу — молчать об этом нельзя.
+    restart_pending: bool = False
 
 
 class NetworkUpdateIn(BaseModel):
