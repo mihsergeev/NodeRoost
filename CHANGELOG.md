@@ -5,6 +5,25 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.7] — 2026-07-31
+
+### Fixed
+
+- **A panel upgraded from 0.1.x could not apply DNS changes.** Editing DNS writes
+  the config and asks the host helper to restart headscale, and 0.1.x had no such
+  helper — so the request sat there while the panel said the restart was under way
+  and the change never took effect. `ops/update.sh` installs the helpers wherever
+  they are missing, and the panel reports a restart still pending instead of
+  claiming one that never happened.
+- **A node whose panel record was deleted filled its journal with curl.** Its agent
+  kept polling an address answering 404, logging `curl: (22) The requested URL
+  returned error: 404` once a minute — a line that says neither what happened nor
+  what to do. It now says the panel no longer knows this node and gives the command
+  that removes the agent.
+- The join script read the machine's own view of itself the instant after
+  registering, when it still held the previous name and address, and announced the
+  address the node had a second ago.
+
 ## [0.2.6] — 2026-07-31
 
 ### Changed
