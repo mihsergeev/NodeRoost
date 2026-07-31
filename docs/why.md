@@ -90,6 +90,25 @@ editing.
 single-use key and one command for their OS — a minute later they are on the network.
 Revoking means deleting a device, not reissuing configs for everyone else.
 
+**SSH closed to the internet for good.** While the server answers on port 22,
+strangers' bots pick at it around the clock. With a node on it, that port can be closed
+on the public interface for good — you come in on the network address instead, by a
+rule from the panel. There is nothing left outside to knock on, and the list of who may
+come in sits in one place and changes by clicking.
+
+**A way in when the usual one is shut.** The provider blocked the port, the public
+address is under attack, somebody rewrote the firewall rules, the corporate VPN is
+down — and you need to get in now. A node needs no more than outbound access to stay in
+touch, so the machine is still reachable when nothing gets to it from outside. The
+panel is not part of the connection: even while it is unavailable, the sessions already
+running carry on.
+
+**Hardware that takes no client.** An IPMI board, cameras, a printer, a managed switch,
+an old NAS — nothing can be installed on them, and you still have to reach them. Put a
+node on any machine in that network, it advertises the subnet, you approve it, and you
+work with all of it on internal addresses as if you were sitting next to it. Access is
+granted the same way as everywhere else: to whom, and on which port.
+
 ## What makes something a server and something else a device
 
 headscale knows nothing about this — to it every machine is just a node. The split
