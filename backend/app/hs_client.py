@@ -47,7 +47,16 @@ class HeadscaleClient:
                     method, url, headers=self._headers(), **kwargs
                 )
         except httpx.HTTPError as exc:  # сеть/таймаут/DNS
-            raise HeadscaleError(f"headscale недоступен: {exc}") from exc
+            # У таймаутов httpx текст пустой, и сообщение обрывалось на
+            # двоеточии: «headscale недоступен: » — ни что случилось, ни как
+            # долго ждали. Зависший control-сервер выглядит именно так, и это
+            # самый частый его отказ: не упал, а перестал отвечать.
+            reason = str(exc) or (
+                f"не ответил за {self._timeout:g} с"
+                if isinstance(exc, httpx.TimeoutException)
+                else type(exc).__name__
+            )
+            raise HeadscaleError(f"headscale недоступен: {reason}") from exc
         if resp.status_code >= 400:
             # headscale отдаёт ошибки как {"code":.., "message":"...", ...} —
             # достаём message (для понятных сообщений валидации политики)
