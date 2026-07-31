@@ -219,3 +219,29 @@ def test_dns_override_is_not_a_side_effect_of_naming_servers(tmp_path):
     data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
     assert data["dns"]["override_local_dns"] is False
     assert data["dns"]["nameservers"]["global"] == []
+
+
+async def test_hs_info_admits_a_restart_that_never_happened(client, monkeypatch, tmp_path):
+    """Правку записали, а перезапустить headscale некому — панель должна сказать.
+
+    Перезапускает его хостовый помощник; на установках 0.1.x его не существовало,
+    и после обновления панель бодро писала «headscale перезапускается», хотя
+    правка DNS так и не вступала в силу.
+    """
+    from app.api import settings as api_settings
+    from app.config import Settings, get_settings
+
+    cfg = tmp_path / "config" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_text("server_url: https://hs.example\n", encoding="utf-8")
+    st = Settings(headscale_config_path=str(cfg))
+    monkeypatch.setattr(api_settings, "get_settings", lambda: st)
+
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    assert (await client.get("/api/hs-info", headers=h)).json()["restart_pending"] is False
+    # помощник снимает этот файл, перезапустив headscale; пока он лежит — не снял
+    (tmp_path / ".restart-request").touch()
+    assert (await client.get("/api/hs-info", headers=h)).json()["restart_pending"] is True
