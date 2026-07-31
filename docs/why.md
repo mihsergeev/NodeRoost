@@ -54,10 +54,13 @@ whoever you allowed leaves for the internet from its address. People switch betw
 gateways themselves in the Tailscale client, but only ever see the ones you gave
 them.
 
-**A server's whole traffic through another server.** Sometimes you need a machine's
-outbound traffic to leave from another country for a while. It is one switch, and the
-server does not disappear: SSH and the site on its public address keep working. The
-panel makes sure replies leave the way the request came in.
+**A server's whole traffic through another server.** The server reaches the internet
+through a node you pick, so its requests arrive from that node's address — from the
+country a partner expects, say. One tick on the server's card turns it on, another
+turns it off. Normally a server vanishes when its traffic is tunnelled: replies to
+incoming connections leave through the tunnel and never arrive, so SSH drops and the
+site stops answering. Not here — a reply goes back the way the request came, and the
+server stays reachable at its own address.
 
 **A service that allows one address only.** The partner allows one IP only, and you
 need to reach them from a laptop. In the panel you say: for this address, go through
@@ -65,12 +68,14 @@ need to reach them from a laptop. In the panel you say: for this address, go thr
 while the rest of the laptop's traffic still goes direct.
 
 **Home NAS, cameras, Home Assistant.** No public IP, no dynamic DNS, no port
-forwarding on the router. Put a node on the home server and reach it from your phone
-anywhere exactly as you would from the sofa.
+forwarding on the router. Put a node on the home server and reach it from anywhere —
+your phone, your laptop, your work machine — exactly as you would from the sofa.
 
-**Server to server.** The runner writes to the database, the backup job ships to
-storage, the app talks to the next data centre. This used to be an IP allowlist on a
-firewall that broke on every migration. Now it is one rule in the panel.
+**Server to server.** The machines sit with different providers, in different data
+centres, with no network in common: the runner writes to the database, the backup job
+ships to storage, the app talks to the next data centre. That used to mean a port open
+to the world and an IP allowlist on a firewall that broke on every migration. Now the
+machines see each other directly and the access is one rule in the panel.
 
 **Not everything goes into the tunnel.** A normal VPN swallows all your traffic. Here
 the laptop reaches the internet directly and fast, and only what you listed goes
