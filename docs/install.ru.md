@@ -185,14 +185,16 @@ cp .env.example .env
 # заполнить: домены, NODEROOST_ALLOW_IPS, пароли (openssl rand -hex 32),
 # NODEROOST_VERSION, COMPOSE_FILE=compose.yml:compose.tls.yml
 
+mkdir -p data/headscale/config
 sed -e "s|^server_url:.*|server_url: https://hs.example.com|" \
     -e "s|^\( *ipv4: *\)[0-9.]*|\1203.0.113.10|" \
     deploy/headscale/config.example.yaml > data/headscale/config/config.yaml
 
-docker compose up -d db headscale frontend caddy
+docker compose up -d
+# панель поднимется и без ключа к headscale — и прямо скажет об этом
 docker compose exec headscale headscale apikeys create --expiration 3650d
 # ключ вписать в .env → NODEROOST_HEADSCALE_API_KEY
-docker compose up -d
+docker compose up -d backend
 ```
 
 **Свой обратный прокси вместо Caddy.** Уберите `compose.tls.yml` из
