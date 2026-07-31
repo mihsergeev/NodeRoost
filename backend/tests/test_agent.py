@@ -53,3 +53,16 @@ def test_state_hash_matches_what_the_agent_hashes():
     body = agent.state_body(["10.0.0.0/24"], False, "100.100.0.4")
     assert hashlib.sha256(body.encode()).hexdigest()  # тот же вход, что и у sha256sum
     assert body.endswith("\n") and body.count("\n") == 3
+
+
+def test_agent_explains_a_deleted_node():
+    """Ноду удалили — агент должен сказать это словами, а не сыпать curl-ошибками.
+
+    Раньше в журнал машины каждую минуту падало «curl: (22) The requested URL
+    returned error: 404», и по этой строке нельзя понять ни что случилось, ни что
+    с этим делать.
+    """
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "404" in setup
+    assert "панель больше не знает этот узел" in setup
+    assert "/remove | sh" in setup           # готовая команда, чтобы убрать агента

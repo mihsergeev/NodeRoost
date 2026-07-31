@@ -39,7 +39,17 @@ cat > "$DIR/apply.sh" <<EOF
 # иначе tailscale set дёргался бы каждую минуту без нужды.
 set -e
 TMP=\$(mktemp)
-curl -fsS --max-time 15 "$STATE_URL" -o "\$TMP" || { rm -f "\$TMP"; exit 0; }
+# Панель недоступна — молча выходим: это её дело, а не ноды. Но 404 значит другое:
+# такого узла панель больше не знает (его удалили). Тогда сообщаем по-человечески,
+# а не сыплем в журнал сырым «curl: (22) … 404» каждую минуту.
+CODE=\$(curl -sS --max-time 15 -o "\$TMP" -w '%{http_code}' "$STATE_URL" 2>/dev/null || echo 000)
+if [ "\$CODE" = 404 ]; then
+  rm -f "\$TMP"
+  echo "NodeRoost: панель больше не знает этот узел — агент можно удалить:" >&2
+  echo "  curl -fsSL $STATE_URL/remove | sh" >&2
+  exit 0
+fi
+[ "\$CODE" = 200 ] || { rm -f "\$TMP"; exit 0; }
 grep -q '^routes=' "\$TMP" || { rm -f "\$TMP"; exit 0; }   # мусор вместо ответа
 
 ROUTES=\$(grep '^routes=' "\$TMP" | cut -d= -f2-)
