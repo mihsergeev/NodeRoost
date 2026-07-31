@@ -197,8 +197,11 @@ async def test_parallel_rule_writes_end_up_consistent(client, monkeypatch):
 
     class _HS:
         async def get_nodes(self):
+            # у цели есть роль — значит это сервер: к устройству правило теперь
+            # не примут (см. test_rules_that_could_never_work_are_refused)
             return [{"id": "1", "givenName": "a", "ipAddresses": ["100.64.0.1"]},
-                    {"id": "2", "givenName": "b", "ipAddresses": ["100.64.0.2"]}]
+                    {"id": "2", "givenName": "b", "ipAddresses": ["100.64.0.2"],
+                     "forcedTags": ["tag:prod"]}]
 
     async def fake_push(session, client_, settings):
         # пуш «медленный» — тут-то гонка и вылезала
@@ -229,3 +232,51 @@ async def test_parallel_rule_writes_end_up_consistent(client, monkeypatch):
     ])
     stored = (await client.get("/api/policy/rules", headers=h)).json()["rules"]
     assert pushed[-1] == stored[0]["ports"]   # в сети ровно то, что в панели
+
+
+async def _rules_put(client, tok, src, dst, ports="22"):
+    return await client.put(
+        "/api/policy/rules",
+        json={"rules": [{"src": src, "dst": dst, "ports": ports}]},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+
+
+async def test_rules_that_could_never_work_are_refused(client, monkeypatch):
+    """Правило к устройству панель принимала и молча выбрасывала при сборке.
+
+    В списке оно оставалось, и админ видел выданный доступ, которого в сети нет.
+    """
+    from app.api import policy as api_policy
+
+    class _HS:
+        async def get_nodes(self):
+            return [
+                {"id": "1", "givenName": "laptop", "ipAddresses": ["100.64.0.1"],
+                 "forcedTags": ["tag:staff"]},
+                {"id": "2", "givenName": "web", "ipAddresses": ["100.64.0.2"],
+                 "forcedTags": ["tag:prod"]},
+            ]
+
+    async def fake_meta(_session):
+        # роль делает ноду сервером по авто-определению, поэтому «роль на
+        # устройстве» бывает только когда тип задан руками
+        return {"1": {"kind": "device"}}
+
+    monkeypatch.setattr(api_policy, "get_client", lambda _s: _HS())
+    monkeypatch.setattr(api_policy, "require_hs", lambda _s: None)
+    monkeypatch.setattr(api_policy.settings_store, "get_node_meta", fake_meta)
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    tok = r.json()["access_token"]
+
+    node, tag = {"kind": "node", "value": "2"}, {"kind": "tag", "value": "staff"}
+    # к устройству (laptop — без ролей и подсетей, значит устройство)
+    resp = await _rules_put(client, tok, node, {"kind": "node", "value": "1"})
+    assert resp.status_code == 400 and "устройств" in resp.json()["detail"]
+    # роль, висящая на устройстве
+    resp = await _rules_put(client, tok, node, tag)
+    assert resp.status_code == 400 and "staff" in resp.json()["detail"]
+    # нода сама себе
+    resp = await _rules_put(client, tok, node, node)
+    assert resp.status_code == 400 and "сама с собой" in resp.json()["detail"]
