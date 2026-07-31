@@ -378,4 +378,9 @@ async def hs_info(_: CurrentUser) -> HsInfoOut:
         ),
         ipv4_prefix=str(pref.get("v4", "") or ""),
         allocation=str(pref.get("allocation", "") or ""),
+        # флаг снимает хостовый помощник, перезапустив headscale; если он всё ещё
+        # здесь — правка записана, но в силу не вступила
+        restart_pending=os.path.exists(
+            _restart_flag_path(settings.headscale_config_path)
+        ),
     )

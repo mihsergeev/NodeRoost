@@ -312,6 +312,7 @@ export type HsInfo = {
   derp: { embedded: boolean; urls: string[]; auto_update: boolean }
   ipv4_prefix: string
   allocation: string
+  restart_pending: boolean
 }
 
 export function listApiKeys(): Promise<ApiKey[]> {

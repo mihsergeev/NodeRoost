@@ -46,11 +46,13 @@ fi
 echo ">> поднимаю стек…"
 docker compose up -d </dev/null
 
-# Хостовые помощники живут ВНЕ каталога панели и сами не обновятся.
-if [ -d /lib65/noderoost ]; then
-    echo ">> обновляю помощники в /lib65/noderoost…"
+# Хостовые помощники живут ВНЕ каталога панели и сами не обновятся. Ставим их и
+# тем, у кого их не было: на установках 0.1.x помощников не существовало, и после
+# обновления панель писала «headscale перезапускается», хотя перезапускать его
+# было некому — правка DNS ложилась в конфиг и не вступала в силу.
+if mkdir -p /lib65/noderoost 2>/dev/null; then
+    echo ">> ставлю/обновляю помощники в /lib65/noderoost…"
     for f in hs-apply.sh hs-logs.sh; do
-        [ -f "/lib65/noderoost/$f" ] || continue
         sed "s|^APP_DIR=.*|APP_DIR=$APP|" "ops/$f" > "/lib65/noderoost/$f"
         chmod 755 "/lib65/noderoost/$f"
     done
@@ -65,15 +67,17 @@ if [ -d /lib65/noderoost ]; then
             > /etc/cron.d/noderoost-watchdog
         chmod 644 /etc/cron.d/noderoost-watchdog
     fi
-    # systemd-юниты помощников тоже могли поменяться вместе с релизом
+    # systemd-юниты помощников: могли поменяться вместе с релизом, а на старых
+    # установках их просто нет — тогда ставим впервые
     for u in noderoost-hs-apply noderoost-hs-logs; do
-        [ -f "/etc/systemd/system/$u.path" ] || continue
         for ext in path service; do
             sed "s|/app/noderoost|$APP|g; s|/opt/noderoost|$APP|g" \
                 "ops/$u.$ext" > "/etc/systemd/system/$u.$ext"
         done
     done
     systemctl daemon-reload 2>/dev/null || true
+    systemctl enable --now noderoost-hs-apply.path noderoost-hs-logs.path \
+        >/dev/null 2>&1 || true
 fi
 
 echo ">> ГОТОВО. Проверьте: docker compose ps ; версия внизу страницы панели."
