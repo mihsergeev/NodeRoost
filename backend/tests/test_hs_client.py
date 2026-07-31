@@ -76,3 +76,33 @@ async def test_delete_preauthkey_passes_id_as_query(monkeypatch):
 def test_configured_flag():
     assert HeadscaleClient("http://h:8080", "k").configured is True
     assert HeadscaleClient("http://h:8080", "").configured is False
+
+
+async def test_timeout_says_it_timed_out(monkeypatch):
+    """Зависший headscale — самый частый его отказ, и сообщение о нём было пустым.
+
+    У httpx-таймаутов текст пустой, и админ видел «headscale недоступен: » —
+    двоеточие и ничего.
+    """
+    import httpx
+    import pytest
+
+    from app.hs_client import HeadscaleClient, HeadscaleError
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, *a, **k):
+            raise httpx.ReadTimeout("")
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    with pytest.raises(HeadscaleError) as e:
+        await HeadscaleClient("http://hs:8080", "key", timeout=7).get_nodes()
+    assert "не ответил за 7 с" in str(e.value)
