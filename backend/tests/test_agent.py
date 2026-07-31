@@ -1,4 +1,5 @@
 from app import agent
+from tests.conftest import ADMIN_PASSWORD
 
 
 def test_state_body_has_use_exit():
@@ -79,3 +80,29 @@ def test_agent_does_not_start_tailscaled_behind_the_admin():
     assert "After=tailscaled.service" in setup      # порядок сохраняем
     assert "Wants=tailscaled.service" not in setup  # а поднимать не наше дело
     assert "systemctl is-active --quiet tailscaled" in setup
+
+
+async def test_agent_change_is_written_to_the_audit_log(client, monkeypatch):
+    """Смена маршрутов ноды — изменение того, что она объявляет ВСЕЙ сети.
+
+    Это была единственная правка в панели, не оставлявшая следа в журнале.
+    """
+    from app.api import agent as api_agent
+
+    async def fake_routes(session, node_id, cfg):
+        return list(cfg.get("routes") or [])
+
+    monkeypatch.setattr(api_agent, "_wanted_routes", fake_routes)
+
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    resp = await client.put("/api/agent/7",
+                            json={"routes": ["10.9.0.0/24"], "exit_node": True},
+                            headers=h)
+    assert resp.status_code == 200
+
+    log = (await client.get("/api/logs/audit?limit=5", headers=h)).json()
+    entry = next((e for e in log if e["action"] == "agent_set"), None)
+    assert entry is not None, log
+    assert entry["target"] == "7" and "10.9.0.0/24" in entry["detail"]
