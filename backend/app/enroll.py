@@ -77,8 +77,17 @@ tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME"
 # Спрашиваем DNSName, а не HostName: первое выдаёт control-сервер (это и есть имя
 # записи в панели), второе — то, как машина назвала себя сама, и оно совпадёт с
 # запрошенным всегда, даже когда никакой новой ноды не завелось.
-REAL="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName" *: *"\([^".]*\)\..*/\1/p' | head -1)"
-ADDR="$(tailscale ip -4 2>/dev/null | head -1)"
+# Читаем не сразу: сведения о себе на ноде обновляются через секунду-другую
+# после регистрации, и первый же ответ показывал прежние имя и адрес.
+REAL=""; ADDR=""
+i=0
+while [ $i -lt 10 ]; do
+    REAL="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName" *: *"\([^".]*\)\..*/\1/p' | head -1)"
+    ADDR="$(tailscale ip -4 2>/dev/null | head -1)"
+    [ "$REAL" = "$NAME" ] && break
+    i=$((i + 1))
+    sleep 1
+done
 if [ -z "$REAL" ]; then
     echo "NodeRoost: подключение не подтвердилось — проверьте 'tailscale status'." >&2
     exit 1
@@ -132,12 +141,18 @@ $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
 # Докладываем то, ЧТО ЕСТЬ (см. пояснение в linux-шаблоне): на машине, уже
 # подключённой к этой сети, `tailscale up` не ругается ни на какой ключ, включая
 # просроченный, и отчёт «нода подключена» оказывался неправдой.
-$real = $null
-try {
-  $st = & $ts status --json | ConvertFrom-Json
-  $real = ($st.Self.DNSName -split '\.')[0]
-  $addr = @($st.Self.TailscaleIPs)[0]
-} catch {}
+# Читаем не сразу: сведения о себе обновляются через секунду-другую после
+# регистрации, и первый же ответ показывал прежние имя и адрес.
+$real = $null; $addr = $null
+for ($i = 0; $i -lt 10; $i++) {
+  try {
+    $st = & $ts status --json | ConvertFrom-Json
+    $real = ($st.Self.DNSName -split '\.')[0]
+    $addr = @($st.Self.TailscaleIPs)[0]
+  } catch {}
+  if ($real -eq $name) { break }
+  Start-Sleep -Seconds 1
+}
 if (-not $real) {
   Write-Error "NodeRoost: подключение не подтвердилось — проверьте 'tailscale status'."
 } elseif ($real -ne $name) {
@@ -191,8 +206,17 @@ tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME"
 # Спрашиваем DNSName, а не HostName: первое выдаёт control-сервер (это и есть имя
 # записи в панели), второе — то, как машина назвала себя сама, и оно совпадёт с
 # запрошенным всегда, даже когда никакой новой ноды не завелось.
-REAL="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName" *: *"\([^".]*\)\..*/\1/p' | head -1)"
-ADDR="$(tailscale ip -4 2>/dev/null | head -1)"
+# Читаем не сразу: сведения о себе на ноде обновляются через секунду-другую
+# после регистрации, и первый же ответ показывал прежние имя и адрес.
+REAL=""; ADDR=""
+i=0
+while [ $i -lt 10 ]; do
+    REAL="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName" *: *"\([^".]*\)\..*/\1/p' | head -1)"
+    ADDR="$(tailscale ip -4 2>/dev/null | head -1)"
+    [ "$REAL" = "$NAME" ] && break
+    i=$((i + 1))
+    sleep 1
+done
 if [ -z "$REAL" ]; then
     echo "NodeRoost: подключение не подтвердилось — проверьте 'tailscale status'." >&2
     exit 1
