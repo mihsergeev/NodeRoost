@@ -5,6 +5,22 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.13] — 2026-07-31
+
+### Fixed
+
+- **The restore tool could not unpack anything, and had not been able to since
+  0.2.5.** The line that extracts the archive was rewritten then to give a damaged
+  file a readable message, and its line continuation collapsed into a stray `n`
+  argument — so `tar` failed on every archive, sound or not. The check made at the
+  time only covered the corrupt-file path, which passed for the wrong reason. A test
+  now reads that line back and refuses a collapsed continuation.
+- **A machine could not be moved here from another control server.** Tailscale
+  refuses to change the login server without `--force-reauth`, so the join command
+  died on its own English one-liner — the ordinary case of moving a server between
+  panels or in from another tailnet. The script recognises that refusal, says what
+  it is doing and asks again with the flag.
+
 ## [0.2.12] — 2026-07-31
 
 ### Security
