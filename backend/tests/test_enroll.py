@@ -121,3 +121,15 @@ def test_scripts_report_the_name_the_control_server_gave():
         assert 'DNSName' in s, os_name            # имя берём у control-сервера
         assert "уже была в этой сети" in s        # честный отчёт о переиспользовании
         assert "не подтвердилось" in s            # и о неподтверждённом подключении
+
+
+def test_scripts_can_move_a_machine_from_another_control_server():
+    """Переезд с другой панели: Tailscale не меняет control-сервер без force-reauth.
+
+    Скрипт падал с его английской строкой «can't change --login-server without
+    --force-reauth», не сказав ни что случилось, ни что делать.
+    """
+    for os_name in ("linux", "macos", "windows"):
+        s = enroll.build_script(os_name, _S, "key", "web-1")
+        assert "force-reauth" in s, os_name
+        assert "другому control-серверу" in s, os_name

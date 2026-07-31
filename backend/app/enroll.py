@@ -68,7 +68,21 @@ fi
 # `tailscale up` отказывается их менять — «requires mentioning all non-default
 # flags» — и подключение падает. Мы задаём состояние ноды целиком, поэтому
 # сбрасываем прежнее.
-tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
+# Машина могла быть привязана к ДРУГОМУ control-серверу (переезд с другой панели
+# или из чужого тайлнета). Tailscale в этом случае отказывается менять сервер и
+# просит --force-reauth — раньше скрипт просто падал с его английской строкой.
+# Пробуем как обычно, а на этом отказе переспрашиваем с force-reauth, сказав почему.
+if ! tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@ 2>/tmp/nr-up.err; then
+    if grep -q "force-reauth" /tmp/nr-up.err; then
+        echo "NodeRoost: машина была подключена к другому control-серверу — переключаю."
+        tailscale up --reset --force-reauth --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
+    else
+        cat /tmp/nr-up.err >&2
+        rm -f /tmp/nr-up.err
+        exit 1
+    fi
+fi
+rm -f /tmp/nr-up.err
 # Докладываем то, ЧТО ЕСТЬ, а не то, что просили. На машине, уже подключённой к
 # этой сети, `tailscale up` возвращает 0 при любом ключе — ключ ей не нужен, и
 # скрипт с просроченным ключом бодро писал «нода подключена», хотя в панели не
@@ -137,7 +151,17 @@ Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/quiet', '/norestart'
 $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
 # --reset: см. пояснение в linux-шаблоне — без него `tailscale up` не меняет
 # настройки на машине, где уже был задан любой неявный флаг.
-& $ts up --reset --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@
+# Машина могла быть привязана к ДРУГОМУ control-серверу (см. пояснение в
+# linux-шаблоне): Tailscale просит --force-reauth, и без него подключение падало.
+$err = & $ts up --reset --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@ 2>&1
+if ($LASTEXITCODE -ne 0) {
+  if ("$err" -match "force-reauth") {
+    Write-Host "NodeRoost: машина была подключена к другому control-серверу — переключаю."
+    & $ts up --reset --force-reauth --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@
+  } else {
+    Write-Error "$err"
+  }
+}
 # Докладываем то, ЧТО ЕСТЬ (см. пояснение в linux-шаблоне): на машине, уже
 # подключённой к этой сети, `tailscale up` не ругается ни на какой ключ, включая
 # просроченный, и отчёт «нода подключена» оказывался неправдой.
@@ -197,7 +221,21 @@ fi
 # `tailscale up` отказывается их менять — «requires mentioning all non-default
 # flags» — и подключение падает. Мы задаём состояние ноды целиком, поэтому
 # сбрасываем прежнее.
-tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
+# Машина могла быть привязана к ДРУГОМУ control-серверу (переезд с другой панели
+# или из чужого тайлнета). Tailscale в этом случае отказывается менять сервер и
+# просит --force-reauth — раньше скрипт просто падал с его английской строкой.
+# Пробуем как обычно, а на этом отказе переспрашиваем с force-reauth, сказав почему.
+if ! tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@ 2>/tmp/nr-up.err; then
+    if grep -q "force-reauth" /tmp/nr-up.err; then
+        echo "NodeRoost: машина была подключена к другому control-серверу — переключаю."
+        tailscale up --reset --force-reauth --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
+    else
+        cat /tmp/nr-up.err >&2
+        rm -f /tmp/nr-up.err
+        exit 1
+    fi
+fi
+rm -f /tmp/nr-up.err
 # Докладываем то, ЧТО ЕСТЬ, а не то, что просили. На машине, уже подключённой к
 # этой сети, `tailscale up` возвращает 0 при любом ключе — ключ ей не нужен, и
 # скрипт с просроченным ключом бодро писал «нода подключена», хотя в панели не
