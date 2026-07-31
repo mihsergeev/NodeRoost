@@ -66,3 +66,16 @@ def test_agent_explains_a_deleted_node():
     assert "404" in setup
     assert "панель больше не знает этот узел" in setup
     assert "/remove | sh" in setup           # готовая команда, чтобы убрать агента
+
+
+def test_agent_does_not_start_tailscaled_behind_the_admin():
+    """Остановленный демон — решение владельца машины, а не повод его поднять.
+
+    С `Wants=tailscaled.service` systemd поднимал демона каждый раз, когда
+    срабатывал таймер агента: админ останавливал VPN и через минуту находил его
+    снова запущенным.
+    """
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "After=tailscaled.service" in setup      # порядок сохраняем
+    assert "Wants=tailscaled.service" not in setup  # а поднимать не наше дело
+    assert "systemctl is-active --quiet tailscaled" in setup
