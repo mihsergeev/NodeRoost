@@ -137,12 +137,14 @@ function App() {
                   ? t('headscale доступен')
                   : hs === 'down'
                     ? t('headscale недоступен')
-                    : t('API-ключ headscale не задан')) +
+                    : hs === 'unauthorized'
+                      ? t('headscale не принимает ключ панели — выпустите новый и впишите в .env')
+                      : t('API-ключ headscale не задан')) +
                 (cfg?.headscale_server_url ? ` · ${cfg.headscale_server_url}` : '')
               }
             >
               <span
-                className={`dot ${hs === 'ok' ? 'dot-ok' : hs === 'down' ? 'dot-fail' : 'dot-unknown'}`}
+                className={`dot ${hs === 'ok' ? 'dot-ok' : hs === 'down' || hs === 'unauthorized' ? 'dot-fail' : 'dot-unknown'}`}
               />
               <span className="muted small hs-status-label">headscale</span>
             </span>

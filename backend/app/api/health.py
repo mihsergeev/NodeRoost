@@ -40,8 +40,17 @@ async def health(request: Request, response: Response) -> dict[str, str]:
         try:
             await client.ping()
             headscale = "ok"
-        except Exception:  # noqa: BLE001 — control-сервер недоступен
-            headscale = "down"
+        except Exception as exc:  # noqa: BLE001 — control-сервер недоступен
+            # «Не пускает» и «не отвечает» чинятся по-разному: в первом случае
+            # headscale жив, а ключ панели истёк или отозван — нужен новый ключ,
+            # а не перезапуск. Раньше и то и другое показывалось как «down», и
+            # админ шёл поднимать работающий control-сервер.
+            msg = str(exc)
+            headscale = (
+                "unauthorized"
+                if "401" in msg or "403" in msg
+                else "down"
+            )
 
     return {
         "status": "ok" if db != "down" else "degraded",

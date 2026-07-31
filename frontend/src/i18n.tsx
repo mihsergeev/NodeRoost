@@ -128,6 +128,8 @@ const EN: Record<string, string> = {
   'Ждём подключения ноды — статус обновится сам…':
     'Waiting for the node to connect — this updates automatically…',
   'Нода подключена ✓': 'Node connected ✓',
+  'headscale не принимает ключ панели — выпустите новый и впишите в .env':
+    "headscale rejects the panel's key — issue a new one and put it in .env",
   'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.':
     'The change is saved but headscale has not restarted: the host helper is missing. Run `sudo ops/update.sh` on the server (it installs one) or restart it by hand: `docker compose restart headscale`.',
   'Создайте бота через @BotFather, вставьте его токен и chat_id (свой ID узнаете у @userinfobot).':
