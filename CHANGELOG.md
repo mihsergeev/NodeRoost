@@ -5,6 +5,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.2.14] — 2026-08-01
+
+### Changed
+
+- **The "agent gone quiet" alert now reads like something a person can act on.** It
+  said "the agent on node «24» has been quiet for over 10 min — routes from the panel
+  no longer reach it", which means nothing to whoever picks up the phone. It now
+  names the server, says it is still online while its agent is not, how long it has
+  been quiet, what will not take effect until it returns, what still works, and the
+  one command to run on the machine.
+
 ## [0.2.13] — 2026-07-31
 
 ### Fixed
