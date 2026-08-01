@@ -14,6 +14,8 @@ from app.models import NodeStatus
 
 log = logging.getLogger("noderoost.alerts")
 
+NL = chr(10)  # перевод строки в тексте алерта
+
 # антидребезг: сколько подряд циклов нода наблюдалась офлайн, пока её статус ещё
 # подтверждён онлайн (сбрасывается при онлайне/подтверждении падения)
 _down_streak: dict[str, int] = {}
@@ -243,10 +245,11 @@ async def reconcile_agents(
             continue
         if not online.get(nid, True):  # нода лежит — про это уже отчитались
             continue
-        if (now - last).total_seconds() > minutes * 60:
+        quiet_min = int((now - last).total_seconds() // 60)
+        if quiet_min > minutes:
             if nid not in _agent_silent:
                 _agent_silent.add(nid)
-                silent.append(names.get(nid, nid))
+                silent.append((names.get(nid, nid), quiet_min))
         elif nid in _agent_silent:
             _agent_silent.discard(nid)
             back.append(names.get(nid, nid))
@@ -257,16 +260,27 @@ async def reconcile_agents(
     if not alerts_enabled(cfg_alerts):
         return []
     link = settings.panel_url or None
-    for name in silent:
+    # Сообщение должно читаться человеком, который открыл телефон и не помнит, что
+    # такое агент: сначала ЧТО происходит, потом ЧЕМ это грозит и чем НЕ грозит, в
+    # конце — что проверить. Прежний текст («агент молчит, маршруты не доезжают»)
+    # понятен только тому, кто и так знает устройство панели.
+    for name, quiet_min in silent:
         await send_alert(
             cfg_alerts,
-            f"🟠 NodeRoost: агент на ноде «{name}» молчит дольше {minutes} мин — "
-            "маршруты из панели на неё больше не доезжают",
+            f"🟠 NodeRoost: сервер «{name}» не забирает настройки из панели." + NL
+            + f"Сам он на связи, а его агент молчит уже {quiet_min} мин "
+            "(обычно приходит раз в минуту). Пока так — новые маршруты и режим "
+            "шлюза выхода на нём не применятся; доступы и соединения работают." + NL
+            + "Проверить на сервере: systemctl status noderoost-agent.timer",
             link,
         )
     for name in back:
-        await send_alert(cfg_alerts, f"🟢 NodeRoost: агент на ноде «{name}» снова отвечает", link)
-    return silent + back
+        await send_alert(
+            cfg_alerts,
+            f"✅ NodeRoost: сервер «{name}» снова забирает настройки из панели",
+            link,
+        )
+    return [name for name, _ in silent] + back
 
 
 async def reconcile_nodes(
