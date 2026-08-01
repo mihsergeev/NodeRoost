@@ -197,7 +197,13 @@ async def test_reconcile_agents_silent_and_recovery(session, monkeypatch):
     assert await alerts.reconcile_agents(session, st, agents, names, {"3": True}) == []
 
     assert len(sent) == 2
-    assert "молчит" in sent[0] and "снова отвечает" in sent[1]
+    # текст должен читаться человеком, который открыл телефон и не помнит, что
+    # такое агент: что случилось, чем грозит, что проверить
+    assert "не забирает настройки" in sent[0]
+    assert "30 мин" in sent[0]                       # сколько именно молчит
+    assert "доступы и соединения работают" in sent[0]
+    assert "noderoost-agent.timer" in sent[0]        # что проверить на сервере
+    assert "снова забирает настройки" in sent[1]
 
 
 async def test_reconcile_agents_disabled(session, monkeypatch):
