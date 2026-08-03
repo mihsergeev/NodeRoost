@@ -251,6 +251,30 @@ input:focus {
   margin-top: 0.4rem;
 }
 
+/* имена внутри сети: строка «имя → цель → адрес → убрать» */
+.dns-rec-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.4rem 0;
+  flex-wrap: wrap;
+}
+
+.dns-rec-row input[type='text'],
+.dns-rec-row select {
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+
+.dns-rec-row .dns-rec-addr {
+  flex: 1 1 11rem;
+  color: var(--text-muted);
+}
+
+.dns-rec-row .dns-rec-drop {
+  flex: 0 0 auto;
+}
+
 .cidr-examples {
   display: flex;
   flex-wrap: wrap;

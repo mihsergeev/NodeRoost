@@ -9,7 +9,7 @@ from math import ceil
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app import alerts, policy_apply, routing, settings_store
+from app import alerts, dnsrecords, policy_apply, routing, settings_store
 from app.config import Settings
 from app.hs_client import HeadscaleError, get_client
 from app.models import NodeMetricSample, NodeStatus
@@ -78,6 +78,14 @@ async def collect_once(
         await alerts.reconcile_agents(session, settings, agents, names, online_map, muted)
     async with session_factory() as session:
         await _check_key_expiry(session, settings, nodes, muted)
+    # имена внутри сети: адрес берётся у ноды СЕЙЧАС, а не когда имя записали —
+    # нода после переподключения получает другой адрес, и запись начала бы врать
+    async with session_factory() as session:
+        try:
+            if await dnsrecords.sync(session, settings, raw):
+                log.info("имена внутри сети обновлены (изменился состав нод)")
+        except OSError:
+            log.exception("не удалось обновить файл имён внутри сети")
     # маршруты, заказанные в панели, одобряем без участия человека
     try:
         await _auto_approve_requested(session_factory, settings, raw)

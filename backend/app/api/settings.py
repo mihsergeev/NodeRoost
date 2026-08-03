@@ -10,7 +10,7 @@ import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app import audit, settings_store, tsmirror
+from app import audit, dnsrecords, settings_store, tsmirror
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import get_client
@@ -22,6 +22,9 @@ from app.schemas import (
     ApiKeyOut,
     DerpInfo,
     DnsInfo,
+    DnsRecordOut,
+    DnsRecordsOut,
+    DnsRecordsUpdateIn,
     DnsUpdateIn,
     HsInfoOut,
     NetworkUpdateIn,
@@ -231,6 +234,163 @@ async def update_dns(
         ) from e
     await audit.record(session, user.username, "dns_update", bd)
     return await hs_info(user)
+
+
+def _write_extra_records_path(config_path: str, hs_path: str) -> None:
+    """Разовая правка config.yaml: показать headscale наш файл с именами."""
+
+    def mut(data: dict) -> None:
+        dns = data.get("dns")
+        if not isinstance(dns, dict):
+            dns = {}
+            data["dns"] = dns
+        dns["extra_records_path"] = hs_path
+        # Список прямо в конфиге и файл — два источника одного и того же. Оставить
+        # оба значит спорить самим с собой: что победит, по конфигу не прочитать.
+        dns.pop("extra_records", None)
+
+    _edit_hs_config(config_path, mut)
+
+
+async def _hs_nodes() -> list[dict]:
+    """Ноды из headscale; он недоступен — пустой список (панель не падает)."""
+    settings = get_settings()
+    if not settings.headscale_api_key:
+        return []
+    try:
+        return await get_client(settings).get_nodes()
+    except Exception:  # noqa: BLE001 — состояние нод тут только для показа
+        return []
+
+
+def _records_out(
+    stored: list[dict], nodes: list[dict], cfg: dict, config_path: str
+) -> DnsRecordsOut:
+    settings = get_settings()
+    by_id = {str(n.get("id", "")): n for n in nodes}
+    out: list[DnsRecordOut] = []
+    for rec in stored:
+        node_id = str(rec.get("node_id") or "")
+        node = by_id.get(node_id)
+        addrs = (
+            [str(a) for a in (node.get("ipAddresses") or [])]
+            if node
+            else ([str(rec.get("ip"))] if rec.get("ip") else [])
+        )
+        note = ""
+        if node_id and node is None:
+            note = "нода не найдена" if nodes else "headscale недоступен"
+        out.append(
+            DnsRecordOut(
+                name=str(rec.get("name") or ""),
+                node_id=node_id,
+                node_name=str(node.get("givenName") or node.get("name") or "")
+                if node
+                else "",
+                ip=str(rec.get("ip") or ""),
+                addresses=addrs,
+                note=note,
+            )
+        )
+    return DnsRecordsOut(
+        records=out,
+        active=dnsrecords.hs_path_configured(
+            cfg, settings.headscale_extra_records_path_in_hs
+        ),
+        restart_pending=os.path.exists(_restart_flag_path(config_path)),
+    )
+
+
+@router.get("/hs-info/dns-records", response_model=DnsRecordsOut)
+async def list_dns_records(_: CurrentUser, session: SessionDep) -> DnsRecordsOut:
+    """Имена, которые панель раздаёт внутри меша (снаружи DNS не меняется)."""
+    settings = get_settings()
+    stored = await settings_store.get_dns_records(session)
+    return _records_out(
+        stored,
+        await _hs_nodes(),
+        _read_hs_config(settings.headscale_config_path),
+        settings.headscale_config_path,
+    )
+
+
+@router.put("/hs-info/dns-records", response_model=DnsRecordsOut)
+async def update_dns_records(
+    body: DnsRecordsUpdateIn, request: Request, user: CurrentUser, session: SessionDep
+) -> DnsRecordsOut:
+    """Задать имена внутри меша целиком (список заменяется).
+
+    Записи подхватываются headscale без перезапуска. Перезапуск нужен ровно один
+    раз — когда путь к файлу впервые попадает в config.yaml.
+    """
+    settings = get_settings()
+    require_hs(settings)
+    nodes = await hs_call(get_client(settings).get_nodes())
+    known = {str(n.get("id", "")) for n in nodes}
+    cfg = _read_hs_config(settings.headscale_config_path)
+    server_host = (urlparse(str(cfg.get("server_url", ""))).hostname or "").lower()
+    base_domain = str((cfg.get("dns") or {}).get("base_domain") or "").lower()
+    magic = {
+        f"{str(n.get('givenName') or n.get('name') or '').lower()}.{base_domain}"
+        for n in nodes
+        if base_domain
+    }
+    for r in body.records:
+        if r.node_id and r.node_id not in known:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Ноды {r.node_id} больше нет — обновите список",
+            )
+        if server_host and r.name == server_host:
+            # Имя control-сервера, уведённое в меш, отрезает ноды от него
+            # НАВСЕГДА: обратно они узнают об исправлении только от него же.
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"{r.name} — имя control-сервера. Уведи его внутрь сети, и ноды "
+                "потеряют связь с ним без возможности узнать об отмене",
+            )
+        if r.name in magic:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"{r.name} — это MagicDNS-имя ноды, оно и так работает внутри сети",
+            )
+
+    stored = [{"name": r.name, "node_id": r.node_id, "ip": r.ip} for r in body.records]
+    # Файл — ПЕРВЫМ, конфиг — вторым: headscale не поднимется, если путь в конфиге
+    # есть, а файла нет (os.Stat в конструкторе его следилки за файлом).
+    try:
+        dnsrecords.write_file(
+            settings.headscale_extra_records_path,
+            dnsrecords.entries_for(stored, nodes),
+        )
+    except OSError as e:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Не удалось записать файл имён: {e}",
+        ) from e
+    if not dnsrecords.hs_path_configured(
+        cfg, settings.headscale_extra_records_path_in_hs
+    ):
+        try:
+            _write_extra_records_path(
+                settings.headscale_config_path,
+                settings.headscale_extra_records_path_in_hs,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Не удалось записать config.yaml: {e}",
+            ) from e
+        cfg = _read_hs_config(settings.headscale_config_path)
+    await settings_store.set_dns_records(session, stored)
+    await audit.record(
+        session,
+        user.username,
+        "dns_records_set",
+        "",
+        ", ".join(r.name for r in body.records) or "пусто",
+    )
+    return _records_out(stored, nodes, cfg, settings.headscale_config_path)
 
 
 @router.put("/hs-info/network", response_model=HsInfoOut)

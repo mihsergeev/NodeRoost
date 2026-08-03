@@ -616,6 +616,74 @@ class DnsUpdateIn(RequestModel):
         return self
 
 
+class DnsRecordIn(RequestModel):
+    """Имя, которое панель раздаёт внутри меша.
+
+    Цель — либо нода (адрес подставляется её текущий), либо адрес руками: так
+    именуют то, до чего дотягиваются через подсеть за нодой (NAS, IPMI, камера),
+    куда клиента не поставить.
+    """
+
+    name: str = Field(min_length=1, max_length=253)
+    node_id: str = Field(default="", max_length=32)
+    ip: str = Field(default="", max_length=64)
+
+    @field_validator("name")
+    @classmethod
+    def _valid_name(cls, v: str) -> str:
+        v = v.strip().rstrip(".").lower()
+        if not _DOMAIN_RE.match(v):
+            raise ValueError(f"Некорректное имя: {v or '(пусто)'} (пример: nas.example.com)")
+        return v
+
+    @field_validator("ip")
+    @classmethod
+    def _valid_ip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return ""
+        try:
+            return str(ipaddress.ip_address(v))
+        except ValueError as e:
+            raise ValueError(f"Некорректный адрес: {v}") from e
+
+    @model_validator(mode="after")
+    def _one_target(self) -> "DnsRecordIn":
+        if bool(self.node_id) == bool(self.ip):
+            raise ValueError("У имени должна быть одна цель: либо нода, либо адрес")
+        return self
+
+
+class DnsRecordOut(BaseModel):
+    name: str = ""
+    node_id: str = ""
+    node_name: str = ""  # для показа: id ноды администратору ни о чём не говорит
+    ip: str = ""
+    # на что имя ведёт внутри сети ПРЯМО СЕЙЧАС (у записи на ноду — её адреса)
+    addresses: list[str] = []
+    note: str = ""  # почему запись сейчас не раздаётся (нода удалена и т.п.)
+
+
+class DnsRecordsUpdateIn(RequestModel):
+    records: list[DnsRecordIn] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode="after")
+    def _no_dupes(self) -> "DnsRecordsUpdateIn":
+        seen: set[str] = set()
+        for r in self.records:
+            if r.name in seen:
+                raise ValueError(f"Имя встречается дважды: {r.name}")
+            seen.add(r.name)
+        return self
+
+
+class DnsRecordsOut(BaseModel):
+    records: list[DnsRecordOut] = []
+    # headscale уже знает про наш файл (иначе записи никуда не раздаются)
+    active: bool = False
+    restart_pending: bool = False
+
+
 # --- метрики + алерты ---
 
 class HistoryPoint(BaseModel):

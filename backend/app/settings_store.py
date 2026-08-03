@@ -19,6 +19,10 @@ AGENT_KEY = "node_agent"
 # направления «кто → куда → через какую ноду»: {id: {src, dst, via, ports, ips,
 # resolved_at, error}}. Маршрут агента и правило ACL ВЫВОДЯТСЯ отсюда, см. app/routing.py
 ROUTING_KEY = "routing"
+# имена, которые панель раздаёт внутри меша: [{name, node_id|ip}]. Адрес у
+# записи, привязанной к ноде, НЕ хранится — он берётся у ноды при выгрузке
+# файла для headscale (см. app/dnsrecords.py)
+DNS_RECORDS_KEY = "dns_records"
 
 
 async def get_tailscale_version(session: AsyncSession, settings: Settings) -> str:
@@ -199,6 +203,13 @@ async def forget_node_refs(session: AsyncSession, node_id: str) -> None:
         agents.pop(node_id)
         await set_agent_all(session, agents)
 
+    records = await get_dns_records(session)
+    left = [r for r in records if str(r.get("node_id") or "") != node_id]
+    if len(left) != len(records):
+        # имя, ведущее на адрес удалённой ноды, — хуже отсутствующего: адреса в
+        # меше переиспользуются, и однажды оно приведёт на чужую машину
+        await set_dns_records(session, left)
+
 
 async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
     """Перевести всё, что ссылалось на ноду по id, на её новый id.
@@ -237,6 +248,15 @@ async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
     if old in agents and new not in agents:
         agents[new] = agents.pop(old)
         await set_agent_all(session, agents)
+
+    records = await get_dns_records(session)
+    touched = False
+    for r in records:
+        if str(r.get("node_id") or "") == old:
+            r["node_id"] = new
+            touched = True
+    if touched:
+        await set_dns_records(session, records)
 
 
 async def clear_node_meta(session: AsyncSession, node_id: str) -> None:
@@ -335,6 +355,15 @@ async def get_routing(session: AsyncSession) -> dict:
 
 async def set_routing(session: AsyncSession, data: dict) -> None:
     await _set_raw(session, ROUTING_KEY, json.dumps(data, ensure_ascii=False))
+
+
+async def get_dns_records(session: AsyncSession) -> list[dict]:
+    raw = await _get_raw(session, DNS_RECORDS_KEY)
+    return json.loads(raw) if raw else []
+
+
+async def set_dns_records(session: AsyncSession, records: list[dict]) -> None:
+    await _set_raw(session, DNS_RECORDS_KEY, json.dumps(records, ensure_ascii=False))
 
 
 async def get_agent_all(session: AsyncSession) -> dict:

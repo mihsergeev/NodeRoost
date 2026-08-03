@@ -96,6 +96,12 @@ async def build_archive(session: AsyncSession, settings: Settings) -> bytes:
         cfg = hs / "config" / "config.yaml"
         if cfg.exists():
             add("headscale/config.yaml", cfg.read_bytes())
+        # Имена внутри сети. Файл едет вместе с конфигом не для сохранности (сами
+        # записи лежат в app_settings), а чтобы восстановленный config.yaml не
+        # ссылался в пустоту: с extra_records_path без файла headscale не стартует.
+        extra = Path(settings.headscale_extra_records_path)
+        if extra.exists():
+            add("headscale/extra-records.json", extra.read_bytes())
         libdir = hs / "lib"
         if libdir.is_dir():
             for f in sorted(libdir.iterdir()):
