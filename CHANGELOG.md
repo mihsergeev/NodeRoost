@@ -5,6 +5,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.4.1] — 2026-08-04
+
+### Changed
+
+- **Names inside the network are a section of their own now.** They arrived as a
+  card at the bottom of Settings, between the DNS block and the mesh address range
+  — technical company for something that is really about how machines on the
+  network find each other, and three scrolls away from anyone looking for it. The
+  section sits in the top navigation next to Access and Routing, with room for what
+  the thing does and an empty state that says what to put there.
+
 ## [0.4.0] — 2026-08-04
 
 ### Added
