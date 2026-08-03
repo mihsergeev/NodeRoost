@@ -16,6 +16,7 @@ part that is otherwise done by hand.
 | A subnet behind a node | a button on the server's card | `approve-routes` by node id in the CLI |
 | Traffic to one destination | name the domain — the panel tracks it | pick the CIDR, watch for the IP changing |
 | Applying a route on the node | the agent applies it | SSH into every machine |
+| A name that leads inside | one record: name → node | edit hosts on every machine |
 | Internet egress | every device gets its own list of gateways | the exit node is open to anyone the ACL allows |
 | Who is online | history and Telegram alerts | `nodes list` — this moment only |
 | Onboarding a machine | a key and a ready command for the OS | make a key in the CLI, dictate the command |

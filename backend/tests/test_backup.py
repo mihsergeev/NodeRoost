@@ -1,7 +1,10 @@
 import io
+import os
 import sqlite3
 import tarfile
 from pathlib import Path
+
+import pytest
 
 from app import backup
 from app.config import Settings
@@ -104,13 +107,16 @@ async def test_failed_manual_backup_says_why(client, monkeypatch):
     assert "No space left" in detail and "data/backups" in detail
 
 
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="права POSIX; на Windows chmod меняет только флаг «только чтение»",
+)
 async def test_archive_is_written_for_its_owner_only(tmp_path, monkeypatch):
     """Архив несёт секрет 2FA, хеш пароля и приватные ключи control-сервера.
 
     Каталог закрыт правами, но файл живёт дольше каталога: его скачивают,
     копируют, кладут в хранилище — и права уезжают вместе с ним.
     """
-    import os
     import stat
 
     from app import backup as backup_mod

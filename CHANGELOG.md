@@ -5,6 +5,31 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.3.0] — 2026-08-04
+
+### Added
+
+- **A name can now lead inside the network.** A service closed behind an address
+  allowlist is already reachable over the mesh by its address — but not by its
+  name: DNS hands out the public address, so the browser goes around the world and
+  is turned away at the front door. The panel now gives the nodes a *name →
+  address on the network* record. Public DNS is left alone: from outside the name
+  leads where it always did, and only machines on the network see the difference.
+  A record points at a node, not at the address that node happens to have today,
+  so reconnecting or deleting a machine can never leave a name aimed at a
+  stranger. headscale picks the file up without restarting — the very first name
+  is the one exception, since its path has to be written into the config once.
+  A name that would take the control server itself inside the network is refused:
+  that one cannot be undone, as the nodes would learn of the undoing from the very
+  server they had just lost.
+
+### Changed
+
+- **A backup now carries the file of names.** Not to keep the names safe — those
+  live in the panel's database — but because a restored `config.yaml` pointing at a
+  file the host does not have stops headscale from starting at all. Restoring an
+  older archive, whose config already knew the path, creates an empty one.
+
 ## [0.2.14] — 2026-08-01
 
 ### Changed

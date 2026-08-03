@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # Версия панели. Двигается вместе с pyproject.toml, frontend/package.json
     # и NODEROOST_VERSION в .env.example (последний задаёт теги образов) —
     # иначе панель показывает не ту версию, что установлена.
-    version: str = "0.2.14"
+    version: str = "0.3.0"
     debug: bool = False
 
     db_url: str = "sqlite+aiosqlite:///./data/panel.db"
@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     # путь к config.yaml headscale (смонтирован в бэкенд через ./data) —
     # для read-only показа DNS/DERP (у headscale нет API для них)
     headscale_config_path: str = "/data/headscale/config/config.yaml"
+    # Имена, раздаваемые внутри меша (headscale dns.extra_records_path).
+    # Файл лежит в каталоге КОНФИГА, а не в lib, как можно было бы ждать: lib
+    # смонтирован бэкенду только на чтение (там база нод и приватные ключи), а
+    # в каталог конфига панель и так пишет config.yaml.
+    headscale_extra_records_path: str = "/data/headscale/config/extra-records.json"
+    # тот же файл глазами headscale — это значение уходит в config.yaml
+    headscale_extra_records_path_in_hs: str = "/etc/headscale/extra-records.json"
     # БД headscale — читаем ТОЛЬКО на чтение и только ради host_info (ОС/версия
     # клиента), которого нет в REST API. Это не публичный контракт headscale,
     # поэтому всё best-effort: недоступна/сменилась схема → блок просто не покажем.
