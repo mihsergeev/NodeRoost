@@ -184,6 +184,30 @@ async def test_first_save_wires_the_config_once(client, hs_env):
     ]
 
 
+def test_the_path_lands_inside_its_own_block(tmp_path):
+    """Ключ должен стоять в блоке dns, а не под чужим заголовком.
+
+    ruamel дописывает новый ключ в КОНЕЦ блока — то есть после комментария,
+    который относится уже к следующей секции. YAML при этом валиден, но человек
+    читает строку как часть чужой секции и уносит её вместе с ней.
+    """
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dns:\n"
+        "  magic_dns: true\n"
+        "\n"
+        "# Unix-сокет для локального CLI внутри контейнера.\n"
+        "unix_socket: /var/run/headscale/headscale.sock\n",
+        encoding="utf-8",
+    )
+    api_settings._write_extra_records_path(str(cfg), "/etc/headscale/extra-records.json")
+    text = cfg.read_text(encoding="utf-8")
+    assert text.index("extra_records_path") < text.index("# Unix-сокет")
+    data = yaml.safe_load(text)
+    assert data["dns"]["extra_records_path"] == "/etc/headscale/extra-records.json"
+    assert data["unix_socket"] == "/var/run/headscale/headscale.sock"
+
+
 async def test_the_file_exists_before_the_config_points_at_it(client, hs_env, monkeypatch):
     """С extra_records_path на несуществующий файл headscale НЕ СТАРТУЕТ —
     поэтому файл пишется первым, а конфиг вторым."""
