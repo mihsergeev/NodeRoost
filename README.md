@@ -62,6 +62,12 @@ role; adding a server to it later needs no rule changes.
 hostname and the panel resolves it, keeps the route in sync when the site moves, and
 refuses addresses that would hijack traffic inside the mesh.
 
+**Names inside the network.** A service behind an address allowlist — or with no
+ports open to the world at all — is reached by the name it already has: the panel
+hands the nodes a *name → address on the network* record. Public DNS is left alone,
+so from outside the name leads where it always did. The address is not remembered
+but taken from the node, so a node reconnecting does not break the record.
+
 **Internet egress through gateways.** Mark a server as an exit gateway and pick
 which devices may use it. In the Tailscale tray each user sees only the exits you
 allowed — the choice is theirs, the set is yours. A node's whole outbound traffic can
