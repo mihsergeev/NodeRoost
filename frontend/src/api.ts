@@ -356,6 +356,8 @@ export type DnsRecord = {
   node_id: string
   node_name: string
   ip: string
+  // выключенное имя не раздаётся нодам: внутри сети оно ведёт туда же, куда снаружи
+  enabled: boolean
   addresses: string[]
   note: string
 }
@@ -371,7 +373,7 @@ export function getDnsRecords(): Promise<DnsRecords> {
 }
 
 export function setDnsRecords(
-  records: { name: string; node_id: string; ip: string }[],
+  records: { name: string; node_id: string; ip: string; enabled: boolean }[],
 ): Promise<DnsRecords> {
   return api<DnsRecords>('/api/hs-info/dns-records', {
     method: 'PUT',

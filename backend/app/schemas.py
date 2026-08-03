@@ -627,6 +627,9 @@ class DnsRecordIn(RequestModel):
     name: str = Field(min_length=1, max_length=253)
     node_id: str = Field(default="", max_length=32)
     ip: str = Field(default="", max_length=64)
+    # Выключенное имя не раздаётся нодам: внутри сети оно снова ведёт туда же,
+    # куда снаружи. Так «внутрь» и «как обычно» переключаются, не теряя запись.
+    enabled: bool = True
 
     @field_validator("name")
     @classmethod
@@ -659,6 +662,7 @@ class DnsRecordOut(BaseModel):
     node_id: str = ""
     node_name: str = ""  # для показа: id ноды администратору ни о чём не говорит
     ip: str = ""
+    enabled: bool = True
     # на что имя ведёт внутри сети ПРЯМО СЕЙЧАС (у записи на ноду — её адреса)
     addresses: list[str] = []
     note: str = ""  # почему запись сейчас не раздаётся (нода удалена и т.п.)
