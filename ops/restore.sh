@@ -57,6 +57,15 @@ rm -f "$APP/data/headscale/lib/db.sqlite" \
 cp "$TMP/headscale/db.sqlite" "$APP/data/headscale/lib/db.sqlite"
 [ -f "$TMP/headscale/config.yaml" ] && \
   cp "$TMP/headscale/config.yaml" "$APP/data/headscale/config/config.yaml" || true
+[ -f "$TMP/headscale/extra-records.json" ] && \
+  cp "$TMP/headscale/extra-records.json" "$APP/data/headscale/config/extra-records.json" || true
+# С extra_records_path в конфиге headscale не стартует, если файла нет: архив мог
+# быть снят до появления имён внутри сети, а конфиг в нём — уже с путём.
+if grep -q '^ *extra_records_path:' "$APP/data/headscale/config/config.yaml" 2>/dev/null \
+   && [ ! -f "$APP/data/headscale/config/extra-records.json" ]; then
+    echo "   файла имён внутри сети нет — создаю пустой, иначе headscale не поднимется"
+    echo '[]' > "$APP/data/headscale/config/extra-records.json"
+fi
 for k in "$TMP"/headscale/lib/*.key; do
   [ -f "$k" ] && cp "$k" "$APP/data/headscale/lib/" || true
 done

@@ -349,6 +349,36 @@ export function setHsDns(dns: {
   })
 }
 
+// Имена внутри сети (headscale extra_records): имя → адрес в меше. Публичный
+// DNS не меняется — записи получают только ноды меша.
+export type DnsRecord = {
+  name: string
+  node_id: string
+  node_name: string
+  ip: string
+  addresses: string[]
+  note: string
+}
+
+export type DnsRecords = {
+  records: DnsRecord[]
+  active: boolean
+  restart_pending: boolean
+}
+
+export function getDnsRecords(): Promise<DnsRecords> {
+  return api<DnsRecords>('/api/hs-info/dns-records')
+}
+
+export function setDnsRecords(
+  records: { name: string; node_id: string; ip: string }[],
+): Promise<DnsRecords> {
+  return api<DnsRecords>('/api/hs-info/dns-records', {
+    method: 'PUT',
+    body: JSON.stringify({ records }),
+  })
+}
+
 export function setHsNetwork(net: {
   ipv4_prefix: string
   allocation: string

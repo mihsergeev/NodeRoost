@@ -565,6 +565,20 @@ const EN: Record<string, string> = {
     'Apply DNS changes? headscale will restart (~10–15 s), pausing node registration meanwhile. Changing the base domain changes the MagicDNS names of all nodes.',
   'Применяется с перезапуском headscale (~10–15 c). Смена базового домена меняет MagicDNS-имена всех нод.':
     'Applied by restarting headscale (~10–15 s). Changing the base domain changes the MagicDNS names of all nodes.',
+  'Имена внутри сети': 'Names inside the network',
+  'пока не настроено': 'not set up yet',
+  'записано, ждёт перезапуска headscale': 'written, waiting for headscale to restart',
+  'раздаётся нодам': 'handed out to nodes',
+  'Имя ведёт на адрес в сети — но только для машин сети. Публичный DNS панель не трогает: снаружи имя ведёт туда же, куда вело, и кто не в сети — заходит как раньше. Так к сервису, закрытому вайтлистом, ходят по внутреннему адресу.':
+    'A name points at an address on the network — but only for machines on it. Public DNS is left alone: from outside the name leads where it always did, and whoever is not on the network gets in as before. That is how you reach a service closed behind an address allowlist by its internal address.',
+  'Имя получают все машины сети — включая те, которым доступ к этому серверу не открыт: у них оно перестанет открываться совсем, наружу за ним они больше не пойдут. Записи применяются без перезапуска headscale; исключение — самое первое имя.':
+    'Every machine on the network gets the name — including those with no access to that server: for them it stops opening at all, as they will no longer go out to the internet for it. Records apply without restarting headscale; the very first name is the exception.',
+  'Первое имя нужно один раз показать headscale: он перезапустится (~10–15 c), на это время регистрация нод приостановится. Дальнейшие правки применяются без перезапуска.':
+    'The first name has to be shown to headscale once: it will restart (~10–15 s), pausing node registration meanwhile. Later edits apply without a restart.',
+  'Сохранено — имена уже раздаются нодам': 'Saved — the names are already going out to the nodes',
+  'адрес вручную': 'address by hand',
+  'нода не найдена': 'node not found',
+  'Добавить имя': 'Add a name',
   'Сеть меша (IP-диапазон)': 'Mesh network (IP range)',
   'получится: {n} адресов ({from} – {to})': 'result: {n} addresses ({from} – {to})',
   'Примеры:': 'Examples:',
