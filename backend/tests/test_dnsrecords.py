@@ -22,6 +22,24 @@ def test_entries_follow_the_current_address_of_the_node():
     assert dnsrecords.entries_for(stored, [moved])[0]["value"] == "100.100.0.9"
 
 
+def test_a_switched_off_name_is_not_handed_out():
+    """Снятая галочка оставляет запись в списке, но нодам её не раздаёт: внутри
+    сети имя снова ведёт туда же, куда снаружи."""
+    stored = [
+        {"name": "acontrol.example.com", "node_id": "7", "enabled": False},
+        {"name": "nas.example.com", "ip": "192.168.1.10", "enabled": True},
+    ]
+    assert [e["name"] for e in dnsrecords.entries_for(stored, [NODE])] == [
+        "nas.example.com"
+    ]
+
+
+def test_a_record_without_the_field_is_on():
+    """Записи, сделанные до появления галочки, поля не знают — читаем как «вкл»."""
+    stored = [{"name": "acontrol.example.com", "node_id": "7"}]
+    assert len(dnsrecords.entries_for(stored, [NODE])) == 1
+
+
 def test_a_name_without_its_node_is_not_handed_out():
     """Имя, ведущее на адрес удалённой ноды, хуже отсутствующего: адреса в меше
     переиспользуются, и однажды оно приведёт на чужую машину."""
@@ -274,6 +292,29 @@ async def test_a_bad_name_is_refused(client, hs_env):
     token = await _login(client)
     r = await _put(client, token, [{"name": "не имя", "node_id": "7"}])
     assert r.status_code == 422
+
+
+async def test_switching_a_name_off_keeps_it_but_stops_handing_it_out(client, hs_env):
+    cfg, records = hs_env
+    token = await _login(client)
+    await _put(client, token, [{"name": "acontrol.example.com", "node_id": "7"}])
+    flag = cfg.parent.parent / ".restart-request"
+    flag.unlink()
+
+    r = await _put(
+        client,
+        token,
+        [{"name": "acontrol.example.com", "node_id": "7", "enabled": False}],
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["records"][0]["enabled"] is False  # запись на месте
+    assert dnsrecords.read_file(str(records)) == []  # но нодам не раздаётся
+    assert not flag.exists()  # и без перезапуска headscale
+
+    back = await _put(client, token, [{"name": "acontrol.example.com", "node_id": "7"}])
+    assert back.json()["records"][0]["enabled"] is True
+    assert dnsrecords.read_file(str(records))[0]["value"] == "100.100.0.1"
 
 
 async def test_clearing_the_list_leaves_the_file_and_config_alone(client, hs_env):

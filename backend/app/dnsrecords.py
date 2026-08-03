@@ -50,6 +50,12 @@ def entries_for(stored: list[dict], nodes: list[dict]) -> list[dict]:
         name = str(rec.get("name") or "").strip().lower()
         if not name:
             continue
+        # Выключенное имя остаётся в списке, но нодам не раздаётся: внутри сети
+        # оно снова ведёт туда же, куда снаружи. Так «внутрь» и «как обычно»
+        # переключаются, не теряя саму запись. Старые записи поля не знают —
+        # отсутствие читаем как «включено».
+        if not rec.get("enabled", True):
+            continue
         node_id = str(rec.get("node_id") or "")
         if node_id:
             node = by_id.get(node_id)

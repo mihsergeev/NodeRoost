@@ -297,6 +297,7 @@ def _records_out(
                 if node
                 else "",
                 ip=str(rec.get("ip") or ""),
+                enabled=bool(rec.get("enabled", True)),
                 addresses=addrs,
                 note=note,
             )
@@ -364,7 +365,10 @@ async def update_dns_records(
                 f"{r.name} — это MagicDNS-имя ноды, оно и так работает внутри сети",
             )
 
-    stored = [{"name": r.name, "node_id": r.node_id, "ip": r.ip} for r in body.records]
+    stored = [
+        {"name": r.name, "node_id": r.node_id, "ip": r.ip, "enabled": r.enabled}
+        for r in body.records
+    ]
     # Файл — ПЕРВЫМ, конфиг — вторым: headscale не поднимется, если путь в конфиге
     # есть, а файла нет (os.Stat в конструкторе его следилки за файлом).
     try:
@@ -397,7 +401,8 @@ async def update_dns_records(
         user.username,
         "dns_records_set",
         "",
-        ", ".join(r.name for r in body.records) or "пусто",
+        ", ".join(r.name if r.enabled else f"{r.name} (выкл)" for r in body.records)
+        or "пусто",
     )
     return _records_out(stored, nodes, cfg, settings.headscale_config_path)
 

@@ -54,10 +54,15 @@ function cidrInfo(cidr: string): { count: number; first: string; last: string } 
 const CIDR_EXAMPLES = ['100.64.0.0/10', '100.80.0.0/12', '100.100.0.0/16', '100.64.7.0/24']
 
 // строка формы «имена внутри сети»: цель — либо нода, либо адрес руками
-type RecRow = { name: string; node_id: string; ip: string }
+type RecRow = { name: string; node_id: string; ip: string; enabled: boolean }
 
 function rowsOf(r: DnsRecords): RecRow[] {
-  return r.records.map((x) => ({ name: x.name, node_id: x.node_id, ip: x.ip }))
+  return r.records.map((x) => ({
+    name: x.name,
+    node_id: x.node_id,
+    ip: x.ip,
+    enabled: x.enabled,
+  }))
 }
 
 // Сообщение, когда правку записали, а перезапустить headscale некому.
@@ -252,7 +257,12 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
     setRecMsg(null)
     try {
       const rows = recRows
-        .map((r) => ({ name: r.name.trim(), node_id: r.node_id, ip: r.ip.trim() }))
+        .map((r) => ({
+          name: r.name.trim(),
+          node_id: r.node_id,
+          ip: r.ip.trim(),
+          enabled: r.enabled,
+        }))
         .filter((r) => r.name)
       const updated = await setDnsRecords(rows)
       setRecs(updated)
@@ -751,7 +761,16 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
             )}
           </p>
           {recRows.map((r, i) => (
-            <div className="dns-rec-row" key={i}>
+            <div className={r.enabled ? 'dns-rec-row' : 'dns-rec-row off'} key={i}>
+              {/* Галочка = «вести внутрь сети». Снятая оставляет имя в списке, но
+                  нодам его не раздаёт: внутри сети оно снова ведёт наружу. */}
+              <input
+                type="checkbox"
+                className="field-checkbox"
+                checked={r.enabled}
+                title={t('Вести внутрь сети')}
+                onChange={(e) => updateRec(i, { enabled: e.target.checked })}
+              />
               <input
                 type="text"
                 value={r.name}
@@ -777,8 +796,10 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
                 <option value="ip">{t('адрес вручную')}</option>
               </select>
               {r.node_id ? (
-                <span className="dns-rec-addr mono small">
-                  {nodeAddr(r.node_id) || t('нода не найдена')}
+                <span className={r.enabled ? 'dns-rec-addr mono small' : 'dns-rec-addr small'}>
+                  {!r.enabled
+                    ? t('ведёт наружу, как обычно')
+                    : nodeAddr(r.node_id) || t('нода не найдена')}
                 </span>
               ) : (
                 <input
@@ -804,7 +825,10 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
               onClick={() =>
                 // новая строка целится в ноду: имя на адрес ноды — обычный случай,
                 // ручной адрес нужен для того, что стоит ЗА нодой (NAS, IPMI, камера)
-                setRecRows([...recRows, { name: '', node_id: nodes[0]?.id ?? '', ip: '' }])
+                setRecRows([
+                  ...recRows,
+                  { name: '', node_id: nodes[0]?.id ?? '', ip: '', enabled: true },
+                ])
               }
             >
               {t('Добавить имя')}
@@ -815,7 +839,7 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
           </div>
           <p className="muted small settings-note">
             {t(
-              'Имя получают все машины сети — включая те, которым доступ к этому серверу не открыт: у них оно перестанет открываться совсем, наружу за ним они больше не пойдут. Записи применяются без перезапуска headscale; исключение — самое первое имя.',
+              'Галочка слева переключает имя между «внутрь сети» и «как снаружи» — снятая оставляет запись в списке, но нодам её не раздаёт. Переключается для всей сети сразу: адресно, по машинам, headscale раздавать имена не умеет. Имя получают и те машины, которым доступ к этому серверу не открыт: у них оно перестанет открываться совсем, наружу за ним они больше не пойдут. Правки применяются без перезапуска headscale; исключение — самое первое имя.',
             )}
           </p>
         </div>
