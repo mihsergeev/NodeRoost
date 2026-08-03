@@ -565,7 +565,10 @@ const EN: Record<string, string> = {
     'Apply DNS changes? headscale will restart (~10–15 s), pausing node registration meanwhile. Changing the base domain changes the MagicDNS names of all nodes.',
   'Применяется с перезапуском headscale (~10–15 c). Смена базового домена меняет MagicDNS-имена всех нод.':
     'Applied by restarting headscale (~10–15 s). Changing the base domain changes the MagicDNS names of all nodes.',
+  'Имена': 'Names',
   'Имена внутри сети': 'Names inside the network',
+  'Имён пока нет. Обычный случай: панель или админка живёт на своём имени и закрыта снаружи — добавьте это имя и укажите ноду, на которой она стоит. Второй случай: имя для того, что стоит за нодой и куда клиента не поставить (NAS, IPMI, камера) — тогда вместо ноды укажите адрес вручную.':
+    'No names yet. The usual case: a panel or an admin page lives on a name of its own and is closed from outside — add that name and point it at the node it runs on. The other case: a name for something that sits behind a node and takes no client of its own (a NAS, an IPMI board, a camera) — then give an address by hand instead of a node.',
   'пока не настроено': 'not set up yet',
   'записано, ждёт перезапуска headscale': 'written, waiting for headscale to restart',
   'раздаётся нодам': 'handed out to nodes',
