@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.4.0] — 2026-08-04
+
+### Added
+
+- **A name can be switched between leading inside the network and leading out,
+  without losing the record.** Handing a name out is the whole of it: once a name
+  points at an address on the network, that is where every machine on the network
+  goes. The tick in front of each record turns that off — the record stays, the
+  nodes stop being told about it, and the name leads where it does for everyone
+  else. Switching takes effect in seconds and does not restart headscale. It is
+  network-wide by nature: headscale hands DNS to the whole tailnet, not machine by
+  machine, and the panel says so rather than pretending otherwise.
+
+### Fixed
+
+- **A service behind Docker never saw the address of the machine that came in
+  over the network, and nothing said why.** Tailscale replaces the sender's address
+  on traffic it forwards onward — into a container, into the LAN behind the node —
+  so a service that decides who may come in by address turned its own people away:
+  the connection and TLS went through and the request was cut off, which the browser
+  reports as `ERR_HTTP2_PROTOCOL_ERROR` and curl as an empty reply. The install
+  guide now names that symptom, the cause and the one command that fixes it.
+
 ## [0.3.1] — 2026-08-04
 
 ### Fixed
