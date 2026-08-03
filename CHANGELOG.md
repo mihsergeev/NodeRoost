@@ -5,6 +5,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.3.1] — 2026-08-04
+
+### Fixed
+
+- **The path to the file of names was written under the wrong heading.** ruamel
+  appends a new key at the end of its block, and the end of the block is already
+  past the comment introducing the next section — so the line read as part of a
+  section it has nothing to do with, and editing that section would have carried it
+  off. It goes first in the DNS block now. Valid YAML either way; this is about the
+  person who opens the file.
+
 ## [0.3.0] — 2026-08-04
 
 ### Added

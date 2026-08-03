@@ -244,7 +244,16 @@ def _write_extra_records_path(config_path: str, hs_path: str) -> None:
         if not isinstance(dns, dict):
             dns = {}
             data["dns"] = dns
-        dns["extra_records_path"] = hs_path
+        dns.pop("extra_records_path", None)
+        if hasattr(dns, "insert"):  # CommentedMap: ставим ключ ПЕРВЫМ в блоке
+            # Новый ключ ruamel дописывает в самый конец блока, а конец блока —
+            # это уже после комментария, который относится к следующей секции
+            # конфига. Строка остаётся валидной, но читается как чужая: висит
+            # под чужим заголовком, и удалить её при правке той секции — дело
+            # одного движения.
+            dns.insert(0, "extra_records_path", hs_path)
+        else:
+            dns["extra_records_path"] = hs_path
         # Список прямо в конфиге и файл — два источника одного и того же. Оставить
         # оба значит спорить самим с собой: что победит, по конфигу не прочитать.
         dns.pop("extra_records", None)
