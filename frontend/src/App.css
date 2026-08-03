@@ -275,6 +275,13 @@ input:focus {
   flex: 0 0 auto;
 }
 
+/* имя оставлено в списке, но внутрь сети не ведёт */
+.dns-rec-row.off input[type='text'],
+.dns-rec-row.off select,
+.dns-rec-row.off .dns-rec-addr {
+  opacity: 0.55;
+}
+
 .cidr-examples {
   display: flex;
   flex-wrap: wrap;

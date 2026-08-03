@@ -257,6 +257,24 @@ with the command shown there.
 `NODEROOST_HEADSCALE_API_KEY` is empty in `.env`. Create one with
 `docker compose exec headscale headscale apikeys create --expiration 3650d`.
 
+**A name inside the network resolves, but the site will not open:
+`ERR_HTTP2_PROTOCOL_ERROR` (`Empty reply from server` in curl).** That is what a
+service that decides for itself who may come in — by the client's address — looks
+like from outside: the connection and TLS go through, the request is cut off. If it
+lives in Docker on that node, the address from the network never reaches it:
+Tailscale by default replaces the sender's address on traffic it forwards onward
+(into a container, into the LAN behind the node), so the service sees the docker
+bridge and does not recognise its own. On the node:
+
+```bash
+sudo iptables -t nat -S ts-postrouting     # a MASQUERADE on mark 0x40000 — that's it
+sudo tailscale set --snat-subnet-routes=false   # stop replacing the address
+```
+
+The setting lives in Tailscale itself and survives restarts, but `tailscale up
+--reset` clears it — that is, joining the node again through the panel. Repeat the
+command after that.
+
 ---
 
 ## Updating and removing
