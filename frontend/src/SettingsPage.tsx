@@ -10,7 +10,6 @@ import {
   getTsMirror,
   getTsVersion,
   listApiKeys,
-  setHsDns,
   setHsNetwork,
   setTsVersion,
   tsCheck,
@@ -64,15 +63,6 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   const [creating, setCreating] = useState(false)
   const [newKey, setNewKey] = useState<ApiKeyCreated | null>(null)
   const [copied, setCopied] = useState(false)
-  // редактор DNS
-  const [dnsMagic, setDnsMagic] = useState(false)
-  // подменять ли резолвер на самих нодах (см. подпись у галочки)
-  const [dnsOverride, setDnsOverride] = useState(false)
-  const [dnsDomain, setDnsDomain] = useState('')
-  const [dnsServers, setDnsServers] = useState('')
-  const [dnsBusy, setDnsBusy] = useState(false)
-  const [dnsMsg, setDnsMsg] = useState<string | null>(null)
-  const [dnsErr, setDnsErr] = useState<string | null>(null)
   // редактор сети меша
   const [netV4, setNetV4] = useState('')
   const [netAlloc, setNetAlloc] = useState('sequential')
@@ -88,10 +78,8 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   // Последняя версия из pkgs.tailscale.com. Тянем при открытии страницы; на
   // бэкенде ответ кэшируется на сутки, так что реальный поход наружу — раз в день.
   const [tsUpstream, setTsUpstream] = useState('')
-  // DNS и диапазон меша настраиваются один раз и почти никогда не меняются, а
-  // цена случайной правки высокая (рестарт headscale, смена MagicDNS-имён).
-  // Поэтому карточки по умолчанию закрыты на «Изменить».
-  const [dnsLocked, setDnsLocked] = useState(true)
+  // Диапазон меша настраивается один раз и почти никогда не меняется, а цена
+  // случайной правки высокая (рестарт headscale) — карточка закрыта на «Изменить».
   const [netLocked, setNetLocked] = useState(true)
   // ноды нужны карточке DERP: релей важен ровно настолько, насколько ноды НЕ
   // смогли соединиться напрямую — это и показываем вместо голого конфига
@@ -99,14 +87,8 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   // локальный мирор бинарей
   const [mirror, setMirror] = useState<TsMirror | null>(null)
   const [mirrorBusy, setMirrorBusy] = useState(false)
-  // заполняет ОБЕ формы — и DNS, и сеть меша: обе читаются из одного hs-info.
-  // Прежнее имя seedDns вводило в заблуждение, из-за него «Отменить» в карточке
-  // сети сбрасывала соседнюю форму.
+  // форма диапазона меша читается из hs-info
   function seedForms(i: HsInfo) {
-    setDnsMagic(i.dns.magic_dns)
-    setDnsOverride(i.dns.override_local_dns)
-    setDnsDomain(i.dns.base_domain)
-    setDnsServers(i.dns.nameservers.join(', '))
     setNetV4(i.ipv4_prefix)
     setNetAlloc(i.allocation || 'sequential')
   }
@@ -144,60 +126,6 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
       .then(setMirror)
       .catch(() => {})
   }, [loadKeys])
-
-  const parsedServers = dnsServers
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const dnsDirty =
-    !!info &&
-    (dnsMagic !== info.dns.magic_dns ||
-      dnsOverride !== info.dns.override_local_dns ||
-      dnsDomain.trim() !== info.dns.base_domain ||
-      parsedServers.join(',') !== info.dns.nameservers.join(','))
-
-  async function applyDns() {
-    if (
-      !window.confirm(
-        t(
-          'Применить изменения DNS? headscale перезапустится (~10–15 c), на это время регистрация нод приостановится. Смена базового домена меняет MagicDNS-имена всех нод.',
-        ),
-      )
-    )
-      return
-    setDnsBusy(true)
-    setDnsErr(null)
-    setDnsMsg(null)
-    try {
-      const updated = await setHsDns({
-        magic_dns: dnsMagic,
-        override_local_dns: dnsOverride,
-        base_domain: dnsDomain.trim(),
-        nameservers: parsedServers,
-      })
-      setInfo(updated)
-      seedForms(updated)
-      setDnsLocked(true)
-      setDnsMsg(t('Сохранено. headscale перезапускается…'))
-      window.setTimeout(() => {
-        getHsInfo()
-          .then((i) => {
-            setInfo(i)
-            seedForms(i)
-            // Перезапускает headscale хостовый помощник. Если флаг ещё на месте,
-            // значит помощника нет (или он сломан): правка записана, но не
-            // действует — и сказать об этом должна панель, а не тишина.
-            if (i.restart_pending) setDnsErr(t(HELPER_MISSING))
-          })
-          .catch(() => {})
-      }, 9000)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onUnauthorized()
-      else setDnsErr(err instanceof Error ? err.message : t('Ошибка'))
-    } finally {
-      setDnsBusy(false)
-    }
-  }
 
   const netDirty =
     !!info &&
@@ -556,80 +484,6 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
       {info && (
         <>
         <div className="settings-grid">
-          <div className="card">
-            <div className="clients-head">
-              <h3>{t('DNS / MagicDNS')}</h3>
-              {dnsLocked ? (
-                <button className="ghost small" onClick={() => setDnsLocked(false)}>
-                  {t('Изменить')}
-                </button>
-              ) : (
-                <button
-                  className="ghost small"
-                  onClick={() => {
-                    if (info) seedForms(info)
-                    setDnsLocked(true)
-                  }}
-                >
-                  {t('Отменить')}
-                </button>
-              )}
-            </div>
-            {/* галочка слева от подписи: так она привязана к тексту, а не уезжает
-                к правому краю карточки, где выглядит оторванной от него */}
-            <label className="field field-check">
-              <input
-                type="checkbox"
-                className="field-checkbox"
-                checked={dnsMagic}
-                disabled={dnsLocked}
-                onChange={(e) => setDnsMagic(e.target.checked)}
-              />
-              <span>MagicDNS</span>
-            </label>
-            <label className="field">
-              <span>{t('Базовый домен')}</span>
-              <input
-                value={dnsDomain}
-                disabled={dnsLocked}
-                onChange={(e) => setDnsDomain(e.target.value)}
-                placeholder="noderoost.internal"
-              />
-            </label>
-            <label className="field">
-              <span>{t('DNS-серверы (через запятую)')}</span>
-              <input
-                value={dnsServers}
-                disabled={dnsLocked}
-                onChange={(e) => setDnsServers(e.target.value)}
-                placeholder="1.1.1.1, 1.0.0.1"
-              />
-            </label>
-            <label className="field field-check">
-              <input
-                type="checkbox"
-                className="field-checkbox"
-                checked={dnsOverride}
-                disabled={dnsLocked || parsedServers.length === 0}
-                onChange={(e) => setDnsOverride(e.target.checked)}
-              />
-              <span>{t('Использовать только эти серверы')}</span>
-            </label>
-            <p className="muted small settings-note">
-              {t('Без галочки ноды продолжают пользоваться своим DNS, а эти серверы добавляются к нему. С галочкой весь DNS ноды идёт только сюда — сервер перестанет видеть внутренние имена, которые знал его прежний резолвер.')}
-            </p>
-            {dnsErr && <p className="form-error">{dnsErr}</p>}
-            {dnsMsg && <p className="form-ok">{dnsMsg}</p>}
-            <div className="dns-actions">
-              <button onClick={applyDns} disabled={dnsBusy || dnsLocked || !dnsDirty}>
-                {dnsBusy ? t('Применение…') : t('Применить')}
-              </button>
-            </div>
-            <p className="muted small settings-note">
-              {t('Применяется с перезапуском headscale (~10–15 c). Смена базового домена меняет MagicDNS-имена всех нод.')}
-            </p>
-          </div>
-
           <div className="card">
             <h3>DERP</h3>
             <div className="info-row">

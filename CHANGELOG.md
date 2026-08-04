@@ -5,6 +5,22 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.4.2] — 2026-08-04
+
+### Changed
+
+- **The section is called DNS, and everything about DNS lives in it.** Naming it
+  after the names alone left the panel with two places about DNS — a section for
+  names and a card in Settings for the resolvers and MagicDNS — with nothing to
+  say which held what. MagicDNS, the base domain and the resolvers moved in as the
+  second block of the section, below the names; Settings keeps the API keys, the
+  Tailscale client, DERP and the mesh address range.
+- **The list of names reads as a table.** Rows were a wrapping flex line — every
+  row a different width, the address landing somewhere new each time. Columns line
+  up now, under headings, with the arrow from a name to its node, the mesh address
+  as a chip, and a plain × instead of a "Remove" button. A switched-off name says
+  where it leads instead of showing an address it no longer hands out.
+
 ## [0.4.1] — 2026-08-04
 
 ### Changed
