@@ -565,8 +565,14 @@ const EN: Record<string, string> = {
     'Apply DNS changes? headscale will restart (~10–15 s), pausing node registration meanwhile. Changing the base domain changes the MagicDNS names of all nodes.',
   'Применяется с перезапуском headscale (~10–15 c). Смена базового домена меняет MagicDNS-имена всех нод.':
     'Applied by restarting headscale (~10–15 s). Changing the base domain changes the MagicDNS names of all nodes.',
-  'Имена': 'Names',
   'Имена внутри сети': 'Names inside the network',
+  'имя': 'name',
+  'на какой ноде': 'on which node',
+  'адрес в сети': 'address on the network',
+  'ведёт наружу': 'leads outside',
+  'Резолверы и MagicDNS': 'Resolvers and MagicDNS',
+  'Короткие имена самих нод (MagicDNS) и то, какими DNS-серверами ноды пользуются. Настраивается один раз при разворачивании сети.':
+    'The short names of the nodes themselves (MagicDNS) and which DNS servers the nodes use. Set once, when the network is stood up.',
   'Имён пока нет. Обычный случай: панель или админка живёт на своём имени и закрыта снаружи — добавьте это имя и укажите ноду, на которой она стоит. Второй случай: имя для того, что стоит за нодой и куда клиента не поставить (NAS, IPMI, камера) — тогда вместо ноды укажите адрес вручную.':
     'No names yet. The usual case: a panel or an admin page lives on a name of its own and is closed from outside — add that name and point it at the node it runs on. The other case: a name for something that sits behind a node and takes no client of its own (a NAS, an IPMI board, a camera) — then give an address by hand instead of a node.',
   'пока не настроено': 'not set up yet',
@@ -577,7 +583,6 @@ const EN: Record<string, string> = {
   'Галочка слева переключает имя между «внутрь сети» и «как снаружи» — снятая оставляет запись в списке, но нодам её не раздаёт. Переключается для всей сети сразу: адресно, по машинам, headscale раздавать имена не умеет. Имя получают и те машины, которым доступ к этому серверу не открыт: у них оно перестанет открываться совсем, наружу за ним они больше не пойдут. Правки применяются без перезапуска headscale; исключение — самое первое имя.':
     'The tick on the left switches a name between “inside the network” and “as from outside” — unticked, the record stays in the list but is not handed to the nodes. It switches for the whole network at once: headscale cannot hand names out machine by machine. Machines with no access to that server get the name too: for them it stops opening at all, as they will no longer go out to the internet for it. Edits apply without restarting headscale; the very first name is the exception.',
   'Вести внутрь сети': 'Point inside the network',
-  'ведёт наружу, как обычно': 'leads outside, as usual',
   'Первое имя нужно один раз показать headscale: он перезапустится (~10–15 c), на это время регистрация нод приостановится. Дальнейшие правки применяются без перезапуска.':
     'The first name has to be shown to headscale once: it will restart (~10–15 s), pausing node registration meanwhile. Later edits apply without a restart.',
   'Сохранено — имена уже раздаются нодам': 'Saved — the names are already going out to the nodes',
