@@ -251,35 +251,109 @@ input:focus {
   margin-top: 0.4rem;
 }
 
-/* имена внутри сети: строка «имя → цель → адрес → убрать» */
-.dns-rec-row {
+/* --- DNS: имена внутри сети --- */
+/* строка = «вести внутрь · имя → нода · адрес · убрать»; колонки одинаковой
+   ширины у всех строк, поэтому таблица читается сверху вниз, а не ёлочкой */
+.dns-names {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.9rem 0 0.6rem;
+}
+
+.dns-rec-head,
+.dns-rec-row {
+  display: grid;
+  grid-template-columns:
+    1.4rem minmax(9rem, 1.3fr) 0.9rem
+    minmax(8rem, 1fr) minmax(7rem, 0.9fr) 1.6rem;
   align-items: center;
-  margin: 0.4rem 0;
-  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.dns-rec-row input[type='text'],
-.dns-rec-row select {
-  flex: 1 1 11rem;
-  min-width: 0;
-}
-
-.dns-rec-row .dns-rec-addr {
-  flex: 1 1 11rem;
+.dns-rec-head {
+  padding: 0 0.65rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
-.dns-rec-row .dns-rec-drop {
-  flex: 0 0 auto;
+.dns-rec-row {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.dns-rec-row:hover {
+  border-color: var(--border-strong);
+}
+
+.dns-rec-row input,
+.dns-rec-row select {
+  min-width: 0;
+}
+
+.dns-rec-arrow,
+.dns-rec-addr {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.dns-rec-arrow {
+  text-align: center;
 }
 
 /* имя оставлено в списке, но внутрь сети не ведёт */
-.dns-rec-row.off input[type='text'],
+.dns-rec-row.off input,
 .dns-rec-row.off select,
 .dns-rec-row.off .dns-rec-addr {
-  opacity: 0.55;
+  opacity: 0.5;
+}
+
+.dns-rec-drop {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  cursor: pointer;
+}
+
+.dns-rec-drop:hover {
+  color: var(--danger);
+}
+
+.dns-empty {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 0.8rem 0.9rem;
+  margin: 0.9rem 0 0.2rem;
+}
+
+/* поля резолверов/MagicDNS в две колонки: по одному на строку было длинно */
+.dns-srv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0 1.25rem;
+}
+
+@media (max-width: 760px) {
+  .dns-rec-head {
+    display: none;
+  }
+  /* узкий экран: имя, нода и адрес встают друг под другом в одной колонке */
+  .dns-rec-row {
+    grid-template-columns: 1.4rem 1fr 1.6rem;
+    row-gap: 0.4rem;
+  }
+  .dns-rec-arrow {
+    display: none;
+  }
+  .dns-rec-row input,
+  .dns-rec-row select,
+  .dns-rec-row .dns-rec-addr {
+    grid-column: 2 / 3;
+  }
 }
 
 .cidr-examples {
