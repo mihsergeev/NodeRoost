@@ -4,7 +4,7 @@ import { LoginPage } from './LoginPage'
 import { NodesPage } from './NodesPage'
 import { AccessPage } from './AccessPage'
 import { RoutingPage } from './RoutingPage'
-import { NamesPage } from './NamesPage'
+import { DnsPage } from './DnsPage'
 import { SettingsPage } from './SettingsPage'
 import { Menu } from './Menu'
 import { BrandHorizontal } from './Logo'
@@ -16,7 +16,7 @@ import { LogsModal } from './LogsModal'
 import { useI18n } from './i18n'
 import './App.css'
 
-type View = 'servers' | 'devices' | 'access' | 'routing' | 'names' | 'settings'
+type View = 'servers' | 'devices' | 'access' | 'routing' | 'dns' | 'settings'
 
 function App() {
   const { t, lang, setLang } = useI18n()
@@ -127,13 +127,13 @@ function App() {
             >
               {t('Маршрутизация')}
             </button>
-            {/* Имена — рядом с доступами и маршрутизацией: это тоже про то, как
+            {/* DNS — рядом с доступами и маршрутизацией: это тоже про то, как
                 машины сети находят друг друга, а не техническая настройка */}
             <button
-              className={view === 'names' ? 'navlink navlink-active' : 'navlink'}
-              onClick={() => go('names')}
+              className={view === 'dns' ? 'navlink navlink-active' : 'navlink'}
+              onClick={() => go('dns')}
             >
-              {t('Имена')}
+              DNS
             </button>
           </nav>
         )}
@@ -212,8 +212,8 @@ function App() {
           <AccessPage onUnauthorized={logout} />
         ) : view === 'routing' ? (
           <RoutingPage key={navSeq} onUnauthorized={logout} />
-        ) : view === 'names' ? (
-          <NamesPage key={navSeq} onUnauthorized={logout} />
+        ) : view === 'dns' ? (
+          <DnsPage key={navSeq} onUnauthorized={logout} />
         ) : view === 'settings' ? (
           <SettingsPage onUnauthorized={logout} />
         ) : view === 'devices' ? (
