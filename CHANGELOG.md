@@ -5,6 +5,20 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.6.2] — 2026-08-06
+
+### Fixed
+
+- **An update was cleared before it could happen** (agent release 3). The request
+  travelled in the state the agent compares and hashes, so it counted as a change:
+  the agent applied the state, reported that it had, and the panel took the report as
+  proof the update was done and dropped the request — while the node still ran the
+  old release. Found by pressing the button on a live node and watching nothing
+  happen. The request is now outside the compared state, the agent reports its
+  release number alongside, and the panel clears the request only when that number
+  reaches the one it asked for. A refused update no longer retries every minute
+  either — the reason it was refused does not disappear on its own.
+
 ## [0.6.1] — 2026-08-06
 
 ### Changed
