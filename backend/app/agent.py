@@ -187,7 +187,15 @@ if [ -n "\$CERTS" ]; then
     while IFS= read -r LINE; do
       SPEC=\${LINE#cert=}
       NAME=\${SPEC%%|*}; REST=\${SPEC#*|}; FP=\${REST%%|*}; NEED=\${REST##*|}
-      [ -n "\$NAME" ] || continue
+      # Имя приходит от панели, а ей мы доверяем ровно настолько, насколько
+      # обязаны. Без проверки «имя» вида ../../ssl/certs/ca-certificates заставило
+      # бы агента под root переписать системное хранилище корней — то есть отдать
+      # машину целиком. Пускаем только то, что бывает DNS-именем.
+      case "\$NAME" in
+        ''|.*|*..*|*[!a-z0-9.-]*)
+          echo "NodeRoost: имя сертификата отвергнуто: \$NAME" >&2
+          continue;;
+      esac
       KEY=/etc/noderoost/certs/\$NAME.key
       CRT=/etc/noderoost/certs/\$NAME.crt
       LOCAL=""

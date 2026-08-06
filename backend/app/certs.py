@@ -93,6 +93,10 @@ def cert_not_after(pem: str) -> datetime | None:
 def csr_names(csr_der: bytes) -> set[str]:
     """Имена из CSR: CN плюс SAN. Нужны, чтобы нода не заказала чужое имя."""
     csr = x509.load_der_x509_csr(csr_der)
+    if not csr.is_signature_valid:
+        # Подпись CSR доказывает, что просящий владеет ключом. Let's Encrypt это
+        # и сам проверит, но отказать здесь дешевле, чем сходить к нему впустую.
+        raise ValueError("подпись CSR неверна")
     names = {
         str(a.value).lower()
         for a in csr.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)
@@ -199,6 +203,15 @@ async def issue(
         now = datetime.now(timezone.utc)
         if row.retry_after and row.retry_after > now:
             return row  # ждём паузы после отказа — Let's Encrypt считает попытки
+        if (
+            row.status == "ok"
+            and row.cert_pem
+            and not needs_renewal(row, settings.cert_renew_days)
+        ):
+            # Действующий сертификат есть — отдаём его, а не заказываем новый.
+            # Иначе нода (или тот, у кого её токен) повторными запросами сожгла бы
+            # недельный лимит Let's Encrypt на ВЕСЬ домен, задев чужие имена.
+            return row
         row.status = "issuing"
         await session.commit()
 
