@@ -149,13 +149,21 @@ async def all_certs(session: AsyncSession) -> list[Certificate]:
     return list(await session.scalars(select(Certificate)))
 
 
-async def forget(session: AsyncSession, names: set[str]) -> None:
+async def forget(session: AsyncSession, names: set[str]) -> int:
     """Убрать сертификаты имён, которых в панели больше нет (или у которых сняли
-    галочку): держать их значит показывать администратору то, чего никто не ждёт."""
+    галочку): держать их значит показывать администратору то, чего никто не ждёт.
+
+    Зовётся и из коллектора: имя уходит вместе с удалённой нодой, а не только по
+    правке списка в UI, — иначе строка сертификата пережила бы саму запись.
+    """
+    dropped = 0
     for cert in await all_certs(session):
         if cert.name not in names:
             await session.delete(cert)
-    await session.commit()
+            dropped += 1
+    if dropped:
+        await session.commit()
+    return dropped
 
 
 async def issue(
