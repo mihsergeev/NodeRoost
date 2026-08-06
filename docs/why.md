@@ -17,6 +17,7 @@ part that is otherwise done by hand.
 | Traffic to one destination | name the domain — the panel tracks it | pick the CIDR, watch for the IP changing |
 | Applying a route on the node | the agent applies it | SSH into every machine |
 | A name that leads inside | one record: name → node | edit hosts on every machine |
+| A certificate for that name | a tick next to the name | dns-01 with a provider API key, or your own CA |
 | Internet egress | every device gets its own list of gateways | the exit node is open to anyone the ACL allows |
 | Who is online | history and Telegram alerts | `nodes list` — this moment only |
 | Onboarding a machine | a key and a ready command for the OS | make a key in the CLI, dictate the command |
