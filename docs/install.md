@@ -286,6 +286,30 @@ Worth knowing up front:
   and every renewal arrive there.
 * **Publicly the name resolves to the panel's address.** That grants nothing — on
   those names only the challenge path is served, everything else answers 404.
+### Your own CA — when the name must not exist publicly
+
+Each name in the DNS section picks its issuer: **Let's Encrypt** or **your own CA**.
+The second needs no domain, no public DNS record, no internet and no open ports — the
+name can be anything (`nas.mesh`, `router.lan`), issuing is instant and there are no
+rate limits. Nothing reaches the CT logs either: from outside, the name's existence
+stays unknown.
+
+The panel creates the root certificate itself with the first such name. After that it
+has to be installed **once on every device** you use — the panel hands you the file
+and shows the fingerprint to check it against:
+
+| System | Where |
+|---|---|
+| Windows | "Trusted Root Certification Authorities" in the **Local Machine** store |
+| macOS | Keychain → "System", then set "Always Trust" |
+| Linux | `/usr/local/share/ca-certificates/`, then `update-ca-certificates` |
+| Android / iOS | install the profile and switch on full trust in settings |
+
+That CA's private key lives in the panel's database and travels in its backup: whoever
+holds the panel can mint a certificate for any internal name. For a network the panel
+already governs that is acceptable; if it is not, use Let's Encrypt, where everything
+issued is visible in public logs.
+
 * To try the setup without spending real attempts, point it at the staging
   directory: `NODEROOST_ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory`.
   Browsers do not trust those certificates, but the limits are gentle.

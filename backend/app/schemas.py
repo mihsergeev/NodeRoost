@@ -633,9 +633,13 @@ class DnsRecordIn(RequestModel):
     # Выключенное имя не раздаётся нодам: внутри сети оно снова ведёт туда же,
     # куда снаружи. Так «внутрь» и «как обычно» переключаются, не теряя запись.
     enabled: bool = True
-    # Выпускать ли для имени сертификат Let's Encrypt. Только для имён, ведущих
-    # на ноду: ключ живёт на ней, и класть сертификат больше некуда.
+    # Выпускать ли для имени сертификат. Только для имён, ведущих на ноду: ключ
+    # живёт на ней, и класть сертификат больше некуда.
     cert: bool = False
+    # Кто выпускает: «le» — Let's Encrypt (публично доверенный, но имя обязано
+    # существовать в публичном DNS и попадёт в CT-логи), «ca» — своя CA панели
+    # (имя любое, ничего наружу, но корень надо поставить на устройства).
+    issuer: Literal["le", "ca"] = "le"
 
     @field_validator("name")
     @classmethod
@@ -675,6 +679,7 @@ class DnsRecordOut(BaseModel):
     ip: str = ""
     enabled: bool = True
     cert: bool = False
+    issuer: str = "le"
     # состояние сертификата для показа: ok | issuing | error | ""
     cert_status: str = ""
     cert_until: str = ""  # до какого числа действует
@@ -697,8 +702,18 @@ class DnsRecordsUpdateIn(RequestModel):
         return self
 
 
+class CaInfo(BaseModel):
+    """Корневой сертификат панели: есть ли он и что о нём показать."""
+
+    exists: bool = False
+    subject: str = ""
+    not_after: str = ""
+    fingerprint: str = ""  # по нему сверяют, что на устройство поставили ТОТ корень
+
+
 class DnsRecordsOut(BaseModel):
     records: list[DnsRecordOut] = []
+    ca: CaInfo = CaInfo()
     # headscale уже знает про наш файл (иначе записи никуда не раздаются)
     active: bool = False
     restart_pending: bool = False
