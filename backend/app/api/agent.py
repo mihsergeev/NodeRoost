@@ -69,6 +69,10 @@ def _out(cfg: dict, wanted_hash: str = "") -> AgentOut:
         ),
         setup_oneline=f"curl -fsSL {url}/setup | sh" if url else "",
         remove_oneline=f"curl -fsSL {url}/remove | sh" if url else "",
+        # Агент, поставленный до появления новой возможности, о ней не знает и
+        # молча её игнорирует. Пока панель этого не показывала, выглядело это как
+        # «включил — ничего не произошло». Свежие агенты обновляются сами.
+        script_current=(not installed) or cfg.get("script") == agent.SCRIPT_VERSION,
     )
 
 
@@ -138,7 +142,7 @@ async def agent_remove(token: str, session: SessionDep) -> Response:
 
 
 @public_router.post("/agent/{token}/applied")
-async def agent_applied(token: str, h: str, session: SessionDep) -> Response:
+async def agent_applied(token: str, h: str, session: SessionDep, s: str = "") -> Response:
     """Агент подтверждает, что ПРИМЕНИЛ состояние (h — sha256 применённого файла).
 
     Отдельно от запроса состояния: сам по себе запрос ничего не доказывает — ноде
@@ -151,7 +155,7 @@ async def agent_applied(token: str, h: str, session: SessionDep) -> Response:
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     node_id, _ = found
-    await settings_store.mark_agent_applied(session, token, (h or "")[:64])
+    await settings_store.mark_agent_applied(session, token, (h or "")[:64], (s or "")[:16])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -168,7 +172,7 @@ async def agent_state(token: str, session: SessionDep) -> Response:
         bool(cfg.get("exit", False)),
         str(cfg.get("use_exit") or ""),
     )
-    body += agent.cert_lines(
+    body += agent.extra_lines(
         await certs.wanted_for_node(session, get_settings(), node_id)
     )
     return Response(content=body, media_type="text/plain")

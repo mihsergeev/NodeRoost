@@ -114,9 +114,24 @@ def test_certificates_do_not_enter_the_state_hash():
     когда он как раз отработал."""
     assert "cert=" not in agent.state_body(["10.0.0.0/24"], False)
     setup = agent.build_setup("https://hs.example/agent/tok")
-    assert "grep -v '^cert='" in setup
+    # из состояния вырезаются и сертификаты, и версия скрипта — обе строки
+    # меняются сами по себе и к заданию ноды отношения не имеют
+    strip = "grep -v -e '^cert=' -e '^script='"
+    assert strip in setup
     # состояние обрезается ДО сравнения, иначе выпуск выглядел бы как правка
-    assert setup.index("grep -v '^cert='") < setup.index(r'cmp -s "\$TMP.core"')
+    assert setup.index(strip) < setup.index(r'cmp -s "\$TMP.core"')
+
+
+def test_agent_updates_itself_when_the_panel_script_changed():
+    """Скрипт живёт на ноде и сам себя не чинил: агент, поставленный до появления
+    возможности, не умел её никогда — и панель об этом молчала."""
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert f'SCRIPT_V="{agent.SCRIPT_VERSION}"' in setup
+    assert "/setup\" | sh" in setup  # переустановка при расхождении версий
+    assert ".selfupdate" in setup and "3600" in setup  # не чаще раза в час
+    # версию агент сообщает вместе с отчётом о применении — по ней панель видит старого
+    assert "&s=\\$SCRIPT_V" in setup
+    assert agent.extra_lines([]).startswith(f"script={agent.SCRIPT_VERSION}")
 
 
 def test_cert_line_format():
