@@ -12,6 +12,8 @@ JSON в нём получается хрупким (sed по кавычкам л
 
 from __future__ import annotations
 
+import hashlib
+
 _SETUP = r"""#!/bin/sh
 # Подавления истории здесь НЕТ намеренно. Скрипт доставляется через `curl … | sh`,
 # то есть исполняется неинтерактивным шеллом, у которого истории нет вовсе, а токен
@@ -35,6 +37,12 @@ command -v curl >/dev/null 2>&1 || {
 
 cat > "$DIR/apply.sh" <<EOF
 #!/bin/sh
+# Версия САМОГО скрипта. Панель присылает в состоянии свою (script=…): не сошлись
+# — значит на ноде агент от прошлого релиза, и новые возможности (например
+# сертификаты) он просто не понимает. Раньше это выяснялось только тем, что
+# «ничего не происходит», причём молча — панель ждала от ноды того, чего её агент
+# делать не умеет.
+SCRIPT_V="@@SCRIPT_V@@"
 # Тянет желаемое состояние с панели и применяет, ТОЛЬКО если оно изменилось —
 # иначе tailscale set дёргался бы каждую минуту без нужды.
 set -e
@@ -55,6 +63,26 @@ if [ "\$CODE" = 404 ]; then
 fi
 [ "\$CODE" = 200 ] || { rm -f "\$TMP"; exit 0; }
 grep -q '^routes=' "\$TMP" || { rm -f "\$TMP"; exit 0; }   # мусор вместо ответа
+
+# --- самообновление агента ---
+# Скрипт живёт на ноде и сам себя не чинит: пока его не переустановят руками, нода
+# не умеет ничего, чего не умела в день установки. Поэтому при расхождении версий
+# перезапускаем установку — она идемпотентна и переписывает этот же файл. Не чаще
+# раза в час (штамп): если версия почему-то не сойдётся и после установки, нода не
+# должна дёргать панель каждую минуту.
+WANT_V=\$(grep '^script=' "\$TMP" | cut -d= -f2-)
+if [ -n "\$WANT_V" ] && [ "\$WANT_V" != "\$SCRIPT_V" ]; then
+  STAMP="$DIR/.selfupdate"
+  NOW=\$(date +%s)
+  LAST=\$(cat "\$STAMP" 2>/dev/null || echo 0)
+  if [ \$((NOW - LAST)) -gt 3600 ]; then
+    echo "\$NOW" > "\$STAMP"
+    echo "NodeRoost: агент обновляется до версии \$WANT_V (был \$SCRIPT_V)" >&2
+    rm -f "\$TMP"
+    curl -fsSL --max-time 60 "$STATE_URL/setup" | sh && exit 0
+    exit 0
+  fi
+fi
 
 ROUTES=\$(grep '^routes=' "\$TMP" | cut -d= -f2-)
 WANT_EXIT=\$(grep '^exit=' "\$TMP" | cut -d= -f2-)
@@ -139,7 +167,7 @@ if [ -n "\$CERTS" ]; then
   set -e
 fi
 # Состояние без строк cert=: только оно сравнивается, сохраняется и хешируется.
-grep -v '^cert=' "\$TMP" > "\$TMP.core" || true
+grep -v -e '^cert=' -e '^script=' "\$TMP" > "\$TMP.core" || true
 
 # tailscale set дёргаем ТОЛЬКО при изменении состояния, а состояние сохраняем лишь
 # после успеха: сбойный set (напр. exit-нода ещё не видна в netmap) не «замораживает»
@@ -169,7 +197,7 @@ rm -f "\$TMP"
 # агента от ноды, которая просто дёргает свой URL и ничего не делает. Шлём хеш
 # применённого состояния — по нему видно и то, что нода отстала от задания.
 HASH=\$(sha256sum "$DIR/state" 2>/dev/null | cut -d' ' -f1)
-[ -n "\$HASH" ] && curl -fsS --max-time 10 -X POST "$STATE_URL/applied?h=\$HASH" >/dev/null 2>&1 || true
+[ -n "\$HASH" ] && curl -fsS --max-time 10 -X POST "$STATE_URL/applied?h=\$HASH&s=\$SCRIPT_V" >/dev/null 2>&1 || true
 EOF
 chmod +x "$DIR/apply.sh"
 
@@ -239,12 +267,28 @@ echo "NodeRoost: агент снят. Маршруты остаются таки
 """
 
 
+# Версия скрипта агента = хеш его текста. Меняем скрипт — меняется и она, и ноды
+# со старой версией обновляются сами (см. блок самообновления внутри apply.sh).
+SCRIPT_VERSION = hashlib.sha256(_SETUP.encode()).hexdigest()[:8]
+
+
 def build_setup(state_url: str) -> str:
-    return _SETUP.replace("@@STATE_URL@@", state_url)
+    return _SETUP.replace("@@STATE_URL@@", state_url).replace(
+        "@@SCRIPT_V@@", SCRIPT_VERSION
+    )
 
 
 def build_remove() -> str:
     return _REMOVE
+
+
+def extra_lines(wanted: list[tuple[str, str, bool]]) -> str:
+    """Довесок к состоянию: версия скрипта агента и сертификаты.
+
+    В хешируемое состояние НЕ входит — иначе смена скрипта или выпуск сертификата
+    показывали бы все ноды «отставшими», хотя маршруты у них ровно те, что нужно.
+    """
+    return f"script={SCRIPT_VERSION}\n" + cert_lines(wanted)
 
 
 def cert_lines(wanted: list[tuple[str, str, bool]]) -> str:

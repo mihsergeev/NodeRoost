@@ -160,6 +160,23 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
               <span>{t('Агент установлен — настройки применяются автоматически')}</span>
             </div>
 
+            {/* Агент от прошлого релиза молча не умеет нового: выглядит это как
+                «включил в панели — ничего не произошло». Свежие обновляются сами,
+                но самому этому умению тоже надо один раз доехать до ноды. */}
+            {!agent.script_current && (
+              <div className="exit-setup">
+                <p className="muted small">
+                  {t('На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Свежий обновляется сам; этому нужно помочь один раз, выполнив на ноде под root:')}
+                </p>
+                <pre className="enroll-script cmd-oneline">{agent.setup_oneline}</pre>
+                <div className="enroll-actions">
+                  <button onClick={() => copy(agent.setup_oneline, 'setup')}>
+                    {copied === 'setup' ? t('Скопировано ✓') : t('Скопировать команду установки')}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <label className="route-row">
               <input
                 type="checkbox"
