@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app import aclgen, audit, enroll, exitvia, geoip, hostinfo, settings_store
+from app import aclgen, audit, ca, enroll, exitvia, geoip, hostinfo, settings_store
 from app.clientip import client_ip
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
@@ -452,8 +452,10 @@ async def reconnect_node(
     # админ/роли на новую ноду при переподключении)
     await settings_store.clear_node_meta(session, node_id)
     version = await settings_store.get_tailscale_version(session, settings)
+    ca_pem = await ca.root_cert(session) if await ca.auto_install(session) else ""
     script = enroll.build_script(
-        body.os, settings, key.get("key", ""), name, version=version, force_reauth=True
+        body.os, settings, key.get("key", ""), name, version=version,
+        force_reauth=True, ca_pem=ca_pem,
     )
     await audit.record(session, user.username, "node_reconnect", node_id, name)
     await apply_policy(session, client, settings)

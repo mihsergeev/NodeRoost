@@ -294,9 +294,15 @@ name can be anything (`nas.mesh`, `router.lan`), issuing is instant and there ar
 rate limits. Nothing reaches the CT logs either: from outside, the name's existence
 stays unknown.
 
-The panel creates the root certificate itself with the first such name. After that it
-has to be installed **once on every device** you use — the panel hands you the file
-and shows the fingerprint to check it against:
+The panel creates the root certificate itself with the first such name, and **hands it
+out on its own**: a server joined with the enrollment script gets it while it joins,
+and a node running the agent puts it into the system trust store and keeps the right
+one there (the state carries the fingerprint, and the node fetches the file by it).
+Clear "install the root on nodes automatically" in the DNS section and the nodes remove
+it again — trust switched off has to disappear, not merely stop being refreshed.
+
+What is left by hand are the machines nobody joins with a script — laptops and phones.
+The panel hands you the file and shows the fingerprint to check it against:
 
 | System | Where |
 |---|---|
@@ -305,10 +311,20 @@ and shows the fingerprint to check it against:
 | Linux | `/usr/local/share/ca-certificates/`, then `update-ca-certificates` |
 | Android / iOS | install the profile and switch on full trust in settings |
 
+**The root is constrained to its zones.** Once it sits in every node's trust store,
+"what can it sign" stops being theoretical: unconstrained, whoever took the panel could
+mint a certificate for any public domain and your own machines would believe it. So the
+root carries X.509 name constraints — it may sign only the listed zones (`mesh`, `lan`,
+`int.example.com`) and never an IP address. The first zone comes from the first name
+(`nas.mesh` → `mesh`); the list changes with "Reissue the root" in the DNS section,
+which is also what you press when a name appears in a new zone. Reissuing voids
+everything the old root signed: the panel reorders the names' certificates itself
+within a minute, but on laptops and phones the old root has to be replaced by hand.
+
 That CA's private key lives in the panel's database and travels in its backup: whoever
-holds the panel can mint a certificate for any internal name. For a network the panel
-already governs that is acceptable; if it is not, use Let's Encrypt, where everything
-issued is visible in public logs.
+holds the panel can mint a certificate for any name **inside the permitted zones**. For
+a network the panel already governs that is acceptable; if it is not, use Let's Encrypt,
+where everything issued is visible in public logs.
 
 * To try the setup without spending real attempts, point it at the staging
   directory: `NODEROOST_ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory`.

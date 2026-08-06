@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   downloadCa,
+  setCa,
   getDnsRecords,
   getHsInfo,
   listNodes,
@@ -50,6 +51,11 @@ export function DnsPage({ onUnauthorized }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [caErr, setCaErr] = useState<string | null>(null)
+  // перевыпуск корня: открывается по кнопке и требует подтверждения — он
+  // обесценивает всё, что подписано, и заставляет обойти устройства заново
+  const [rotOpen, setRotOpen] = useState(false)
+  const [zones, setZones] = useState('')
+  const [caBusy, setCaBusy] = useState(false)
 
   // резолверы и MagicDNS — вторая половина раздела: настраивается один раз и
   // почти никогда не меняется, поэтому карточка закрыта на «Изменить»
@@ -88,6 +94,7 @@ export function DnsPage({ onUnauthorized }: Props) {
       .then((r) => {
         setRecs(r)
         setRows(rowsOf(r))
+        setZones(r.ca.suffixes.join(', '))
       })
       .catch(handle)
     getHsInfo()
@@ -358,9 +365,10 @@ export function DnsPage({ onUnauthorized }: Props) {
           </div>
         )}
 
-        {/* Корень своей CA. Показываем, только когда он кому-то нужен: пока
-            все имена на Let's Encrypt, ставить на устройства нечего. */}
-        {recs?.ca.exists && rows.some((r) => r.cert && r.issuer === 'ca') && (
+        {/* Корень своей CA: показываем, как только он есть — с этого момента
+            он раскладывается по нодам, и администратор обязан видеть, что
+            именно раздаётся и каким именам этот корень вправе выдавать бумаги. */}
+        {recs?.ca.exists && (
           <div className="dns-ca">
             <div className="clients-head">
               <h4>{t('Корневой сертификат')}</h4>
@@ -375,11 +383,40 @@ export function DnsPage({ onUnauthorized }: Props) {
                 {t('Скачать')}
               </button>
             </div>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={recs.ca.auto}
+                disabled={caBusy}
+                onChange={async (e) => {
+                  const auto = e.target.checked
+                  setCaBusy(true)
+                  setCaErr(null)
+                  try {
+                    const info = await setCa({ auto })
+                    setRecs({ ...recs, ca: info })
+                  } catch (err) {
+                    setCaErr(err instanceof Error ? err.message : t('Ошибка'))
+                  } finally {
+                    setCaBusy(false)
+                  }
+                }}
+              />{' '}
+              {t('ставить корень на ноды автоматически')}
+            </label>
             <p className="muted small">
               {t(
-                'Имена со своей CA открываются без предупреждений только там, где этот сертификат установлен. Поставьте его один раз на каждое устройство, с которого ходите: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» с уровнем «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие в настройках.',
+                'Ноды с агентом кладут его в системное хранилище сами, а машины, подключаемые скриптом, получают его сразу при подключении — внутренние имена открываются без ругани с первой минуты. Снимете галочку — ноды уберут корень у себя. На ноутбуки и телефоны, подключённые вручную, корень всё равно придётся поставить: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Android и iOS — установить профиль и включить полное доверие.',
               )}
             </p>
+            <div className="info-row">
+              <span className="muted small">{t('Разрешённые зоны')}</span>
+              <span className="mono small">
+                {recs.ca.suffixes.length
+                  ? recs.ca.suffixes.join(', ')
+                  : t('любые имена (ограничений нет)')}
+              </span>
+            </div>
             <div className="info-row">
               <span className="muted small">{t('Действует до')}</span>
               <span>{recs.ca.not_after}</span>
@@ -391,6 +428,57 @@ export function DnsPage({ onUnauthorized }: Props) {
             <p className="muted small">
               {t('Сверьте отпечаток после установки: так видно, что на устройстве именно этот корень, а не похожий.')}
             </p>
+            {!rotOpen ? (
+              <button className="ghost small" onClick={() => setRotOpen(true)}>
+                {t('Перевыпустить корень')}
+              </button>
+            ) : (
+              <div className="ca-rotate">
+                <p className="muted small">
+                  {t(
+                    'Корень подписывает только имена в перечисленных зонах — этим ограничена и власть самой панели: на чужой домен она сертификат не выпишет. Зоны через запятую (mesh, lan, int.example.com). Перевыпуск обесценит всё, что подписано старым корнем: сертификаты имён панель закажет заново сама, а на устройствах старый корень надо будет заменить руками.',
+                  )}
+                </p>
+                <input
+                  value={zones}
+                  onChange={(e) => setZones(e.target.value)}
+                  placeholder="mesh, lan"
+                  disabled={caBusy}
+                />
+                <div className="modal-actions">
+                  <button className="ghost small" onClick={() => setRotOpen(false)}>
+                    {t('Отмена')}
+                  </button>
+                  <button
+                    className="danger small"
+                    disabled={caBusy || !zones.trim()}
+                    onClick={async () => {
+                      if (!window.confirm(t('Перевыпустить корень? Старый перестанет действовать.'))) return
+                      setCaBusy(true)
+                      setCaErr(null)
+                      try {
+                        const info = await setCa({
+                          auto: recs.ca.auto,
+                          rotate_suffixes: zones
+                            .split(',')
+                            .map((z) => z.trim())
+                            .filter(Boolean),
+                        })
+                        setRecs({ ...recs, ca: info })
+                        setZones(info.suffixes.join(', '))
+                        setRotOpen(false)
+                      } catch (err) {
+                        setCaErr(err instanceof Error ? err.message : t('Ошибка'))
+                      } finally {
+                        setCaBusy(false)
+                      }
+                    }}
+                  >
+                    {t('Перевыпустить')}
+                  </button>
+                </div>
+              </div>
+            )}
             {caErr && <p className="form-error">{caErr}</p>}
           </div>
         )}

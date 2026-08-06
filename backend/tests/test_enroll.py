@@ -133,3 +133,20 @@ def test_scripts_can_move_a_machine_from_another_control_server():
         s = enroll.build_script(os_name, _S, "key", "web-1")
         assert "force-reauth" in s, os_name
         assert "другому control-серверу" in s, os_name
+
+
+def test_join_script_installs_the_root():
+    """Скрипт подключения ставит корень сам: на ноутбуке агента не будет никогда,
+    а «сразу и без проблем» — это чтобы имя открылось с первой минуты."""
+    from app import enroll as e
+
+    pem = "-----BEGIN CERTIFICATE-----\nZm9v\n-----END CERTIFICATE-----\n"
+    lin = e.build_script("linux", Settings(), "KEY", "n1", ca_pem=pem)
+    assert "update-ca-certificates" in lin and pem in lin
+    win = e.build_script("windows", Settings(), "KEY", "n1", ca_pem=pem)
+    assert r"Cert:\LocalMachine\Root" in win and pem in win
+    mac = e.build_script("macos", Settings(), "KEY", "n1", ca_pem=pem)
+    assert "add-trusted-cert" in mac and pem in mac
+    # своей CA нет — в скрипте не должно остаться ни блока, ни следа плейсхолдера
+    plain = e.build_script("linux", Settings(), "KEY", "n1")
+    assert "noderoost-ca.crt" not in plain and "@@" not in plain

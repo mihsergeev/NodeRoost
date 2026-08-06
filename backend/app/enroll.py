@@ -63,6 +63,7 @@ if ! command -v tailscale >/dev/null 2>&1; then
   fi
 fi
 @@EXITSETUP@@
+@@CAROOT@@
 # --reset обязателен: если на машине уже стояли какие-то настройки Tailscale
 # (например --exit-node-allow-lan-access от прошлого выхода через шлюз),
 # `tailscale up` отказывается их менять — «requires mentioning all non-default
@@ -149,6 +150,7 @@ try { Invoke-WebRequest "@@PKGBASE@@/tailscale-setup-$ver-$arch.msi" -OutFile $m
 catch { Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
 Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/quiet', '/norestart' -Wait
 $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+@@CAROOT@@
 # --reset: см. пояснение в linux-шаблоне — без него `tailscale up` не меняет
 # настройки на машине, где уже был задан любой неявный флаг.
 # Машина могла быть привязана к ДРУГОМУ control-серверу (см. пояснение в
@@ -215,6 +217,7 @@ if ! command -v tailscale >/dev/null 2>&1; then
   sudo brew services start tailscale
   sleep 2
 fi
+@@CAROOT@@
 
 # --reset обязателен: если на машине уже стояли какие-то настройки Tailscale
 # (например --exit-node-allow-lan-access от прошлого выхода через шлюз),
@@ -282,7 +285,87 @@ _ANDROID_INSTRUCTIONS = r"""NodeRoost — подключение Android к та
    (если ключ не спрашивают — вход интерактивный, подтвердите на открывшейся
    странице; ключ действует ограниченное время.)
 5. Разрешите VPN-профиль. Устройство «@@NAME@@» появится в панели.
+@@CAROOT@@"""
+
+# --- корень своей CA прямо в скрипте подключения ---
+# Зачем инлайном, а не скачиванием: скрипт подключения намеренно не ходит в
+# панель (нода знает только control-сервер), и заводить ей туда дорогу ради
+# одного файла — менять свойство системы ради удобства. PEM не секрет.
+# Зачем вообще при подключении, если то же делает агент: агента на ноутбуке и
+# телефоне не будет никогда, а на сервере он появится минутой позже — «сразу»
+# значит сразу.
+_CA_LINUX = """
+# NodeRoost: корень панели в доверенные — чтобы имена внутри сети открывались
+# без ругани на сертификат. Убрать: rm .../noderoost-ca.crt + update-ca-*
+cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
+@@CAPEM@@NRCAEOF
+if [ -d /usr/local/share/ca-certificates ]; then
+  install -m644 /tmp/noderoost-ca.crt /usr/local/share/ca-certificates/noderoost-ca.crt
+  update-ca-certificates >/dev/null 2>&1 && echo "NodeRoost: корень панели добавлен в доверенные."
+elif [ -d /etc/pki/ca-trust/source/anchors ]; then
+  install -m644 /tmp/noderoost-ca.crt /etc/pki/ca-trust/source/anchors/noderoost-ca.crt
+  update-ca-trust extract >/dev/null 2>&1 && echo "NodeRoost: корень панели добавлен в доверенные."
+else
+  echo "NodeRoost: не нашёл хранилище корней — поставьте /tmp/noderoost-ca.crt сами." >&2
+fi
+rm -f /tmp/noderoost-ca.crt
 """
+
+_CA_WINDOWS = """
+# NodeRoost: корень панели в доверенные (LocalMachine\\Root) — чтобы имена внутри
+# сети открывались без ругани на сертификат.
+$caPem = @'
+@@CAPEM@@'@
+$caFile = Join-Path $env:TEMP 'noderoost-ca.crt'
+Set-Content -Path $caFile -Value $caPem -Encoding ascii
+try {
+  Import-Certificate -FilePath $caFile -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
+  Write-Host "NodeRoost: корень панели добавлен в доверенные."
+} catch {
+  & certutil -addstore -f Root $caFile | Out-Null
+  Write-Host "NodeRoost: корень панели добавлен в доверенные (certutil)."
+}
+Remove-Item $caFile -ErrorAction SilentlyContinue
+"""
+
+# macOS: системная связка ключей требует прав, поэтому sudo (пароль спросят).
+_CA_MACOS = """
+# NodeRoost: корень панели в доверенные — чтобы имена внутри сети открывались
+# без ругани на сертификат. Понадобится пароль: связка ключей системная.
+cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
+@@CAPEM@@NRCAEOF
+sudo security add-trusted-cert -d -r trustRoot \\
+  -k /Library/Keychains/System.keychain /tmp/noderoost-ca.crt \\
+  && echo "NodeRoost: корень панели добавлен в доверенные."
+rm -f /tmp/noderoost-ca.crt
+"""
+
+_CA_ANDROID = """
+6. Отдельно поставьте корневой сертификат панели, иначе внутренние имена будут
+   открываться с предупреждением: скачайте его в панели (раздел DNS → «скачать
+   корень»), перекиньте на телефон и поставьте через Настройки → Безопасность →
+   Шифрование → Установить сертификат → Сертификат ЦС. Сверьте отпечаток с тем,
+   что показывает панель. Учтите: приложения (не браузер) пользовательским
+   корням по умолчанию не доверяют — это ограничение Android, не панели.
+"""
+
+_CA_BLOCKS = {
+    "linux": _CA_LINUX,
+    "windows": _CA_WINDOWS,
+    "macos": _CA_MACOS,
+    "android": _CA_ANDROID,
+}
+
+
+def ca_block(os_name: str, ca_pem: str) -> str:
+    """Кусок скрипта, ставящий корень панели в доверенные (пусто — если корня нет)."""
+    if not ca_pem:
+        return ""
+    tpl = _CA_BLOCKS.get(os_name, _CA_LINUX)
+    if not ca_pem.endswith("\n"):
+        ca_pem += "\n"
+    return tpl.replace("@@CAPEM@@", ca_pem)
+
 
 OSES = ("linux", "windows", "macos", "android")
 
@@ -304,6 +387,7 @@ def _fill(
     extra: str = "",
     pkgbase: str = "",
     exit_setup: str = "",
+    caroot: str = "",
 ) -> str:
     return (
         tpl.replace("@@VER@@", version)
@@ -311,6 +395,7 @@ def _fill(
         .replace("@@KEY@@", key)
         .replace("@@NAME@@", hostname)
         .replace("@@EXITSETUP@@", exit_setup)
+        .replace("@@CAROOT@@", caroot)
         .replace("@@EXTRA@@", extra)
         .replace("@@PKGBASE@@", pkgbase)
     )
@@ -324,13 +409,16 @@ def build_script(
     version: str | None = None,
     force_reauth: bool = False,
     exit_node: bool = False,
+    ca_pem: str = "",
 ) -> str:
     """version=None → пиновая из настроек. force_reauth — для переподключения
     (переоформить регистрацию под новым ключом → новый IP из текущего диапазона).
     exit_node — нода анонсирует exit (--advertise-exit-node) + на Linux включаем и
     ЗАКРЕПЛЯЕМ ip_forward (иначе после ребута роутинг отвалится). Одобрить exit-
     маршрут всё равно нужно в панели («Маршруты»). Бинарь — с нашего мирора
-    (server_url + /pkgs), при неудаче — с офиц."""
+    (server_url + /pkgs), при неудаче — с офиц. ca_pem — корень своей CA панели:
+    он ставится в доверенные прямо здесь, чтобы имена внутри сети открывались
+    без ругани с первой минуты, а не после похода по машинам с файлом."""
     server_url = settings.headscale_server_url or "https://hs.example.com"
     pkgbase = server_url.rstrip("/") + "/pkgs"
     tpl = _TEMPLATES.get(os_name, _LINUX_TEMPLATE)
@@ -353,4 +441,5 @@ def build_script(
         extra=" ".join(flags),
         pkgbase=pkgbase,
         exit_setup=_EXIT_SETUP_LINUX if (exit_node and os_name == "linux") else "",
+        caroot=ca_block(os_name, ca_pem),
     )
