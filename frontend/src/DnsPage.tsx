@@ -16,6 +16,11 @@ import { useI18n } from './i18n'
 
 type Props = { onUnauthorized: () => void }
 
+// Грубая проверка «имя в настоящем домене» — только чтобы предупредить заранее.
+// Точный список (вся корневая зона IANA) живёт в панели и зашит в сам корень.
+const PUBLIC_TLD_HINT =
+  /\.(com|net|org|ru|io|dev|app|co|me|info|biz|pro|site|online|xyz|club|shop|cloud|tech|store|su|ua|by|kz|de|fr|uk|us|cn|jp|tv|cc|zip|mov)$/
+
 // строка формы: цель — либо нода (адрес подставляется её текущий), либо адрес
 // руками (для того, что стоит ЗА нодой и куда клиента не поставить)
 type RecRow = {
@@ -52,7 +57,6 @@ export function DnsPage({ onUnauthorized }: Props) {
   // перевыпуск корня: открывается по кнопке и требует подтверждения — он
   // обесценивает всё, что подписано, и заставляет обойти устройства заново
   const [rotOpen, setRotOpen] = useState(false)
-  const [zones, setZones] = useState('')
   const [years, setYears] = useState(20)
   const [caBusy, setCaBusy] = useState(false)
 
@@ -93,7 +97,6 @@ export function DnsPage({ onUnauthorized }: Props) {
       .then((r) => {
         setRecs(r)
         setRows(rowsOf(r))
-        setZones(r.ca.suffixes.join(', '))
       })
       .catch(handle)
     getHsInfo()
@@ -110,28 +113,18 @@ export function DnsPage({ onUnauthorized }: Props) {
     setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   }
 
-  // Домен имени: portainer-dev.bironex → bironex. Ровно так же считает панель,
-  // когда решает, вправе ли корень подписать это имя.
-  function zoneOf(name: string): string {
-    const i = name.indexOf('.')
-    return i === -1 ? name : name.slice(i + 1)
-  }
-
-  // Имя с сертификатом, чей домен корню не разрешён, сертификата НЕ получит:
-  // ограничение зашито в сам корень, и добавить домен можно только выпуском
-  // нового. Молчать об этом нельзя — снаружи это выглядит как «поставил галочку,
-  // ничего не произошло», а причина видна только в строке ошибки под именем.
+  // Корень не подписывает имена в настоящих доменах — иначе он мог бы подделать
+  // сайт банка для машин, на которых стоит. Имя вида nas.example.com сертификата
+  // не получит, и сказать об этом надо здесь, а не в строке ошибки после.
   const caZones = recs?.ca.suffixes ?? []
-  const missingZones = caZones.length
-    ? [
-        ...new Set(
-          rows
-            .filter((r) => r.cert && r.name.includes('.'))
-            .map((r) => zoneOf(r.name.trim().toLowerCase()))
-            .filter((z) => z && !caZones.includes(z)),
-        ),
-      ]
-    : []
+  const badNames = rows
+    .filter((r) => r.cert && r.name.includes('.'))
+    .map((r) => r.name.trim().toLowerCase())
+    .filter((n) =>
+      caZones.length
+        ? !caZones.some((z) => n === z || n.endsWith('.' + z))
+        : PUBLIC_TLD_HINT.test(n),
+    )
 
   // на что имя ведёт прямо сейчас: адрес берётся у ноды, а не запоминается
   function nodeAddr(id: string): string {
@@ -381,23 +374,19 @@ export function DnsPage({ onUnauthorized }: Props) {
           </div>
         )}
 
-        {missingZones.length > 0 && (
+        {badNames.length > 0 && (
           <div className="ca-missing">
             <p className="small">
-              {t(
-                'Корню разрешены только домены {have}. Для {want} сертификат выдан не будет, пока домен не добавлен — ограничение зашито в сам корень.',
-                { have: caZones.join(', '), want: missingZones.join(', ') },
-              )}
+              {caZones.length
+                ? t(
+                    'Этому корню разрешены только домены {have} — для {want} сертификат выдан не будет. Выпустите корень заново: новый подписывает любые внутренние имена, и добавлять домены больше не придётся.',
+                    { have: caZones.join(', '), want: badNames.join(', ') },
+                  )
+                : t(
+                    'Похоже, {want} — имя в настоящем интернет-домене. Корень такие не подписывает: иначе он мог бы подделать чужой сайт для ваших же машин. Возьмите внутреннее имя, например loki.mirabah.',
+                    { want: badNames.join(', ') },
+                  )}
             </p>
-            <button
-              className="ghost small"
-              onClick={() => {
-                setZones([...caZones, ...missingZones].join(', '))
-                setRotOpen(true)
-              }}
-            >
-              {t('Добавить домены и выпустить корень заново')}
-            </button>
           </div>
         )}
 
@@ -449,11 +438,17 @@ export function DnsPage({ onUnauthorized }: Props) {
             </label>
 
             <div className="info-row">
-              <span className="muted small">{t('Домены')}</span>
-              <span className="mono small">
+              <span className="muted small">{t('Подписывает')}</span>
+              <span className="small">
                 {recs.ca.suffixes.length
-                  ? recs.ca.suffixes.map((z) => '*.' + z).join(', ')
-                  : t('любые (ограничений нет)')}
+                  ? t('только {zones} (корень старого образца)', {
+                      zones: recs.ca.suffixes.join(', '),
+                    })
+                  : recs.ca.blocked
+                    ? t('любые внутренние имена, кроме {n} публичных доменов', {
+                        n: recs.ca.blocked,
+                      })
+                    : t('что угодно (ограничений нет)')}
               </span>
             </div>
             <div className="info-row">
@@ -468,15 +463,6 @@ export function DnsPage({ onUnauthorized }: Props) {
             {rotOpen && (
               <div className="ca-rotate">
                 <div className="ca-rotate-fields">
-                  <label>
-                    {t('Домены (через запятую)')}
-                    <input
-                      value={zones}
-                      onChange={(e) => setZones(e.target.value)}
-                      placeholder="mesh, lan, home.example.com"
-                      disabled={caBusy}
-                    />
-                  </label>
                   <label className="ca-years">
                     {t('Срок, лет')}
                     <input
@@ -491,13 +477,13 @@ export function DnsPage({ onUnauthorized }: Props) {
                 </div>
                 <p className="muted small">
                   {t(
-                    'Домены свои, любые: bironex, mirabah, mesh — тогда имена вида loki.mirabah и portainer-dev.bironex получат сертификат. Корень подписывает только их, и этим ограничена власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново — ноды подхватят его сами за минуту, а на ноутбуках и телефонах его надо будет поставить ещё раз, поэтому перечисляйте домены с запасом.',
+                    'Домены придумываете вы: bironex, mirabah, mesh — что угодно, чего нет в интернете. Корень подписывает такие имена сам, поэтому новый проект работает сразу и ничего перевыпускать не нужно. Выпустить корень заново стоит разве что ради другого срока: старый после этого перестанет действовать, ноды подхватят новый за минуту, а на ноутбуках и телефонах его придётся поставить ещё раз.',
                   )}
                 </p>
                 <div className="dns-actions">
                   <button
                     className="danger small"
-                    disabled={caBusy || !zones.trim()}
+                    disabled={caBusy}
                     onClick={async () => {
                       if (
                         !window.confirm(
@@ -510,14 +496,10 @@ export function DnsPage({ onUnauthorized }: Props) {
                       try {
                         const info = await setCa({
                           auto: recs.ca.auto,
-                          rotate_suffixes: zones
-                            .split(',')
-                            .map((z) => z.trim().replace(/^\*\./, ''))
-                            .filter(Boolean),
-                          rotate_years: years,
+                          reissue: true,
+                          years,
                         })
                         setRecs({ ...recs, ca: info })
-                        setZones(info.suffixes.join(', '))
                         setRotOpen(false)
                       } catch (err) {
                         setCaErr(err instanceof Error ? err.message : t('Ошибка'))

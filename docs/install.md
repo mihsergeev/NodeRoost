@@ -286,33 +286,38 @@ phones. The panel hands you the file and shows the fingerprint to check it again
 | Linux | `/usr/local/share/ca-certificates/`, then `update-ca-certificates` |
 | Android / iOS | install the profile and switch on full trust in settings |
 
-**Domains and validity are set with "Configure"** in the same card: the domains as
-a comma-separated list and the root's lifetime in years (20 by default, up to 30 —
-the root is installed by hand on every device and nobody wants to redo that every
-few years). Saving issues a new root.
+**The domains are yours to invent, and there is nothing to add.** The root is
+constrained by EXCLUSION rather than permission: every top-level domain that really
+exists on the internet is forbidden to it (the IANA root zone — 1438 of them at the
+time of issue), as is every IP address. Everything else is free, which means made-up
+domains: `mesh`, `bironex`, `mirabah`.
 
-The domains are **yours to invent**: no public DNS is involved here, so whether a
-domain is "real" does not matter. Name them after your projects — `bironex`,
-`mirabah`, `mesh` — and put whatever you need under them: `portainer-dev.bironex`,
-`loki.mirabah`. Create a name in a domain the root does not know and the panel says
-so in the DNS section and offers a button to add it, instead of leaving you to
-wonder why no certificate appeared.
+Hence the important property: **a new project works immediately**. A `newproj`
+appears tomorrow — create `grafana.newproj` and the certificate is issued; no
+reissuing the root, no walking around with it. A permit-list would do the opposite:
+every new domain would mean a new root and a trip to every machine.
 
-**The root is constrained to those domains, and that is not a formality.** Once it
-sits in every node's trust store, "what can it sign" stops being theoretical:
-unconstrained, whoever took the panel could mint a certificate for any public domain
-and your own machines would believe it. So the root carries X.509 name constraints:
-it may sign only the listed domains and never an IP address. The first one comes
-from the first name (`nas.mesh` → `mesh`); a name in a new domain needs that domain
-added to the list and the root issued again.
+The flip side is that a name in a real domain (`nas.example.com`) will not be
+signed, and that is protection rather than a defect: otherwise whoever took the
+panel could mint a certificate for a bank or a mail service and your machines would
+believe it. You can check it from outside:
 
-Reissuing voids everything the old root signed: the panel reorders the names'
-certificates itself within a minute, but on laptops and phones the old root has to
-be replaced by hand. So list the domains generously the first time.
+```
+openssl verify -CAfile noderoost-ca.crt leaf.pem
+# for www.google.com → error 48: excluded subtree violation
+```
+
+The list of forbidden domains is refreshed with `python ops/build-tlds.py` and goes
+into the root when it is issued; in an already issued root the constraints are baked
+in.
+
+**The lifetime is set with "Configure"** — 20 years by default, up to 30. That is
+the only reason worth issuing a new root: the old one stops working afterwards,
+nodes pick the new one up within a minute, and laptops and phones have to be visited
+by hand.
 
 That CA's private key lives in the panel's database and travels in its backup:
-whoever holds the panel can mint a certificate for any name **inside the permitted
-domains**. For a network the panel already governs that is acceptable; if it is not,
+whoever holds the panel can mint a certificate for any **internal** name. For a network the panel already governs that is acceptable; if it is not,
 switch the automatic install off and place the root only where you want it.
 
 ## When something is wrong

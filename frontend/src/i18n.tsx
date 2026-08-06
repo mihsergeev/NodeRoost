@@ -598,15 +598,18 @@ const EN: Record<string, string> = {
   'Действует до': 'Valid until',
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
-  'Корню разрешены только домены {have}. Для {want} сертификат выдан не будет, пока домен не добавлен — ограничение зашито в сам корень.':
-    'The root is limited to {have}. Nothing will be issued for {want} until that domain is added — the constraint is baked into the root itself.',
-  'Добавить домены и выпустить корень заново': 'Add the domains and issue a new root',
-  'Домены свои, любые: bironex, mirabah, mesh — тогда имена вида loki.mirabah и portainer-dev.bironex получат сертификат. Корень подписывает только их, и этим ограничена власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново — ноды подхватят его сами за минуту, а на ноутбуках и телефонах его надо будет поставить ещё раз, поэтому перечисляйте домены с запасом.':
-    'The domains are yours to invent: bironex, mirabah, mesh — then names like loki.mirabah and portainer-dev.bironex get certificates. The root signs those and nothing else, which is also the limit of the panel’s power: it cannot issue for someone else’s domain. Saving issues a new root — nodes pick it up themselves within a minute, but on laptops and phones it has to be installed again, so list the domains generously.',
+  'Подписывает': 'Signs',
+  'любые внутренние имена, кроме {n} публичных доменов':
+    'any internal name except {n} public domains',
+  'только {zones} (корень старого образца)': 'only {zones} (root of the older kind)',
+  'что угодно (ограничений нет)': 'anything (no constraints)',
+  'Похоже, {want} — имя в настоящем интернет-домене. Корень такие не подписывает: иначе он мог бы подделать чужой сайт для ваших же машин. Возьмите внутреннее имя, например loki.mirabah.':
+    '{want} looks like a name in a real internet domain. The root does not sign those: it could otherwise impersonate someone else’s site to your own machines. Use an internal name instead, say loki.mirabah.',
+  'Этому корню разрешены только домены {have} — для {want} сертификат выдан не будет. Выпустите корень заново: новый подписывает любые внутренние имена, и добавлять домены больше не придётся.':
+    'This root is limited to {have}, so nothing will be issued for {want}. Issue a new root: the new kind signs any internal name, and domains never have to be added again.',
+  'Домены придумываете вы: bironex, mirabah, mesh — что угодно, чего нет в интернете. Корень подписывает такие имена сам, поэтому новый проект работает сразу и ничего перевыпускать не нужно. Выпустить корень заново стоит разве что ради другого срока: старый после этого перестанет действовать, ноды подхватят новый за минуту, а на ноутбуках и телефонах его придётся поставить ещё раз.':
+    'The domains are yours to invent: bironex, mirabah, mesh — anything that does not exist on the internet. The root signs such names on its own, so a new project works immediately and nothing needs reissuing. Issuing a new root is only worth it for a different lifetime: the old one stops working, nodes pick the new one up within a minute, and on laptops and phones it has to be installed again.',
   'Свернуть': 'Collapse',
-  'Домены': 'Domains',
-  'любые (ограничений нет)': 'any (no constraints)',
-  'Домены (через запятую)': 'Domains (comma-separated)',
   'Срок, лет': 'Valid for, years',
   'Выпустить корень заново? Старый перестанет действовать.':
     'Issue a new root? The old one stops working.',

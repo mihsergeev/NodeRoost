@@ -44,8 +44,9 @@ async def test_signed_leaf_chains_to_the_root(session):
     # без serverAuth браузер сертификат не примет, каким бы он ни был правильным
     assert x509.oid.ExtendedKeyUsageOID.SERVER_AUTH in eku
     assert leaf.extensions.get_extension_for_class(x509.BasicConstraints).value.ca is False
-    # в ответе идёт и корень: клиентам вроде curl --cacert нужна вся цепочка
-    assert chain.count("BEGIN CERTIFICATE") == 2
+    # корень в файл не кладём: он весит два десятка килобайт (список запрещённых
+    # доменов), а клиенту, которому его поставили, он в рукопожатии не нужен
+    assert chain.count("BEGIN CERTIFICATE") == 1
 
 
 async def test_root_is_created_once(session):
@@ -58,90 +59,11 @@ async def test_leaf_is_short_lived(session):
     leaf = x509.load_pem_x509_certificate(chain.encode())
     days = (leaf.not_valid_after_utc - leaf.not_valid_before_utc).days
     assert 80 <= days <= 95  # продлевает панель сама, длинный срок тут ни к чему
-
-
-async def test_key_never_leaves_the_node(session):
-    """Панель подписывает CSR и не видит приватного ключа сервиса."""
-    key = ec.generate_private_key(ec.SECP256R1())
-    csr = (
-        x509.CertificateSigningRequestBuilder()
-        .subject_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "nas.mesh")]))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("nas.mesh")]), critical=False)
-        .sign(key, hashes.SHA256())
-    )
-    chain = await ca.sign_csr(
-        session, "nas.mesh", csr.public_bytes(serialization.Encoding.DER)
-    )
-    leaf = x509.load_pem_x509_certificate(chain.encode())
-    # выданный сертификат про НАШ ключ: панель его не подменила и не сгенерила свой
-    assert leaf.public_key().public_numbers() == key.public_key().public_numbers()
-    assert "PRIVATE KEY" not in chain
-
-
-def test_fingerprint_is_shown_for_checking():
-    _, cert_pem = ca.build_root("Отпечаток")
-    info = ca.root_info(cert_pem)
-    assert info["fingerprint"].count(":") == 31  # sha256 парами, как показывает ОС
-    assert info["not_after"] and info["subject"]
-    assert ca.root_info("") == {}
-
-
-async def test_issuing_needs_no_internet(session):
-    """Ни DNS, ни 80-го порта, ни интернета: имя может быть каким угодно."""
-    row = await certs.issue(session, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
-    assert row.status == "ok", row.error
-    assert row.not_after is not None
-    assert "BEGIN CERTIFICATE" in row.cert_pem
-
-
-def test_root_constrained_to_its_zones():
-    """Корень, стоящий в доверенных на каждой ноде, обязан быть ограничен.
-
-    Иначе автоустановка означает: панель может выписать сертификат на любой сайт
-    в интернете, и все наши машины ему поверят.
-    """
-    _, cert_pem = ca.build_root("Тест", ["mesh", "int.example.com"])
-    cert = x509.load_pem_x509_certificate(cert_pem.encode())
-    ext = cert.extensions.get_extension_for_class(x509.NameConstraints)
-    assert ext.critical is True  # некритичное клиент вправе не соблюдать
-    assert [d.value for d in ext.value.permitted_subtrees] == ["mesh", "int.example.com"]
-    # IP-адреса запрещаем отдельно: тип имени, не упомянутый в permitted,
-    # RFC 5280 считает НЕограниченным — то есть на IP корень бы всё подписал
-    assert len(ext.value.excluded_subtrees) == 2
-
-
-def test_covered():
-    assert ca.covered("nas.mesh", ["mesh"])
-    assert ca.covered("a.b.mesh", ["mesh"])
-    assert not ca.covered("nas.lan", ["mesh"])
-    assert not ca.covered("evilmesh", ["mesh"])  # не суффикс по точке — не в зоне
-    assert ca.covered("что угодно", [])  # старый корень без ограничений
-
-
-async def test_root_takes_its_zone_from_the_first_name(session):
-    await ca.ensure_root(session, for_name="nas.mesh")
-    assert await ca.suffixes(session) == ["mesh"]
-    assert ca.root_info(await ca.root_cert(session))["suffixes"] == ["mesh"]
-
-
-async def test_name_outside_the_zone_is_refused(session):
-    await ca.ensure_root(session, for_name="nas.mesh")
-    try:
-        await ca.sign_csr(session, "www.google.com", _csr("www.google.com"))
-    except ValueError as e:
-        # говорим, что делать: клиенты такой сертификат всё равно отвергнут, и
-        # «выпущен» в панели при ошибке в браузере — худшее из состояний
-        assert "перевыпустите корень" in str(e)
-    else:
-        raise AssertionError("подписал имя вне разрешённых зон")
-
-
 async def test_rotate_replaces_the_root(session):
-    first = await ca.ensure_root(session, for_name="nas.mesh")
-    second = await ca.rotate(session, ["mesh", "lan"])
+    first = await ca.ensure_root(session)
+    second = await ca.rotate(session, 20)
     assert second != first
-    assert await ca.suffixes(session) == ["mesh", "lan"]
-    # новый корень уже подписывает то, ради чего его перевыпускали
+    # новый корень сразу подписывает имена в любом внутреннем домене
     chain = await ca.sign_csr(session, "router.lan", _csr("router.lan"))
     root = x509.load_pem_x509_certificate(second.encode())
     leaf = x509.load_pem_x509_certificate(chain.encode())
@@ -161,29 +83,96 @@ async def test_fingerprint_matches_openssl_form(session):
 def test_root_lives_two_decades_by_default():
     """Корень ставят руками по ноутбукам и телефонам. Короткий срок здесь — не
     безопасность, а обещание обойти все машины заново через несколько лет."""
-    _, cert_pem = ca.build_root("Тест", ["bironex"])
+    _, cert_pem = ca.build_root("Тест")
     cert = x509.load_pem_x509_certificate(cert_pem.encode())
     years = (cert.not_valid_after_utc - cert.not_valid_before_utc).days / 365
     assert 19 < years < 21
 
 
-async def test_own_second_level_domains(session):
-    """Домены придумывает администратор: bironex, mirabah — что угодно.
-
-    Публичного DNS тут нет вовсе, поэтому и «настоящность» домена ни при чём:
-    важно лишь, чтобы корню было разрешено его подписывать.
+def test_public_domains_are_refused_by_the_root():
+    """Корень стоит в доверенных на всех машинах, поэтому вопрос «что он может
+    подписать» — это вопрос «что подделает тот, кто получит панель». Настоящие
+    домены он не подписывает, и клиент это проверяет сам: у OpenSSL это
+    «excluded subtree violation».
     """
-    await ca.set_suffixes(session, ["bironex", "mirabah"])
+    _, cert_pem = ca.build_root("Тест")
+    cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    nc = cert.extensions.get_extension_for_class(x509.NameConstraints)
+    assert nc.critical is True  # некритичное клиент вправе не соблюдать
+    assert nc.value.permitted_subtrees is None  # разрешено всё, кроме запрещённого
+    blocked = {d.value for d in nc.value.excluded_subtrees if isinstance(d, x509.DNSName)}
+    for real in ("com", "ru", "org", "io", "dev", "zip"):
+        assert real in blocked
+    # и IP: тип имени, не упомянутый в ограничениях, RFC 5280 считает свободным
+    assert sum(1 for d in nc.value.excluded_subtrees if isinstance(d, x509.IPAddress)) == 2
+
+
+def test_invented_domains_stay_free():
+    """Ради этого всё и затевалось: новый проект не должен требовать ни
+    перевыпуска корня, ни обхода устройств. Его домена нет в интернете — значит
+    он и не запрещён, и работает сразу."""
+    for name in ("loki.mirabah", "portainer-dev.bironex", "nas.mesh", "router.lan"):
+        assert ca.signable(name)
+    for name in ("www.google.com", "sberbank.ru", "internal.zip"):
+        assert not ca.signable(name)
+
+
+async def test_public_domain_is_refused_with_a_reason(session):
     await ca.ensure_root(session)
-    for name in ("portainer-dev.bironex", "loki.mirabah"):
-        chain = await ca.sign_csr(session, name, _csr(name))
-        leaf = x509.load_pem_x509_certificate(chain.encode())
-        san = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
-        assert san.get_values_for_type(x509.DNSName) == [name]
-    # а вот сосед по алфавиту, которого в списке нет, — уже нет
     try:
-        await ca.sign_csr(session, "grafana.othertown", _csr("grafana.othertown"))
+        await ca.sign_csr(session, "mail.google.com", _csr("mail.google.com"))
     except ValueError as e:
-        assert "othertown" in str(e)
+        assert ".com" in str(e)  # сказано, что именно не так
     else:
-        raise AssertionError("подписал имя вне разрешённых доменов")
+        raise AssertionError("подписал публичный домен")
+
+
+async def test_old_root_with_an_allow_list_still_works(session):
+    """Корень, выпущенный панелью прошлых версий, разрешал перечисленные домены.
+    Такой корень уже стоит на устройствах, поэтому он обязан продолжать работать —
+    и подсказывать, что перевыпуск снимет ограничение навсегда."""
+    key_pem, cert_pem = _legacy_root(["mesh"])
+    await settings_store.set_raw(session, ca.CA_KEY, key_pem)
+    await settings_store.set_raw(session, ca.CA_CERT, cert_pem)
+    assert (await ca.sign_csr(session, "nas.mesh", _csr("nas.mesh"))).count("CERTIFICATE") == 2
+    try:
+        await ca.sign_csr(session, "loki.mirabah", _csr("loki.mirabah"))
+    except ValueError as e:
+        assert "Выпустите корень заново" in str(e)
+    else:
+        raise AssertionError("старый корень подписал имя вне своего списка")
+
+
+def _legacy_root(allowed):
+    """Корень старого образца: РАЗРЕШАЮЩИЙ список доменов."""
+    import datetime
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    sub = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "старый корень")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(sub)
+        .issuer_name(sub)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(
+            x509.NameConstraints(
+                permitted_subtrees=[x509.DNSName(a) for a in allowed],
+                excluded_subtrees=None,
+            ),
+            critical=True,
+        )
+        .sign(key, hashes.SHA256())
+    )
+    return (
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode(),
+        cert.public_bytes(serialization.Encoding.PEM).decode(),
+    )
