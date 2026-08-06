@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.11.1] — 2026-08-06
+
+### Fixed
+
+- **The Windows enrollment script stayed silent about a failed install and then
+  spewed secondary errors.** The Tailscale installer ran without checking its exit
+  code, and the script is pasted into the console as a whole — PowerShell executes
+  pasted text line by line, so a failure in the middle did not stop the rest. On a
+  real machine it looked like this: the MSI did not install (administrator rights
+  were missing), and the person saw "tailscale.exe is not recognized", then
+  "connection not confirmed" — and not a word about the actual cause.
+  Now: the whole script is one `& { … }` block, so the first error aborts
+  everything; rights are checked before the install and explained in words;
+  msiexec's exit code is checked, common codes (1603, 1618, 1625) are translated
+  into plain language, and a verbose log lands in
+  `%TEMP%\noderoost-tailscale-install.log`; the downloaded file is matched against
+  the MSI signature (an error page instead of an installer no longer passes); and
+  the path to `tailscale.exe` is searched for rather than guessed (on 32-bit
+  PowerShell `$env:ProgramFiles` points elsewhere).
+- **Earlier panel roots are removed before the new one is installed** (Windows and
+  macOS). A reissued root does not revoke the old one, and dead "NodeRoost internal
+  CA" entries would pile up in the store while the machine still trusted them.
+
 ## [0.11.0] — 2026-08-06
 
 ### Changed

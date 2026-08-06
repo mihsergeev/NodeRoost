@@ -150,3 +150,39 @@ def test_join_script_installs_the_root():
     # своей CA нет — в скрипте не должно остаться ни блока, ни следа плейсхолдера
     plain = e.build_script("linux", Settings(), "KEY", "n1")
     assert "noderoost-ca.crt" not in plain and "@@" not in plain
+
+
+def test_windows_script_fails_loudly():
+    """Скрипт вставляют в консоль целиком, а PowerShell выполняет вставленное
+    построчно: без общего блока падение установщика не останавливало остальное, и
+    человек получал каскад вторичных ошибок («tailscale.exe не распознано»,
+    «подключение не подтвердилось»), из которых настоящая причина не видна.
+    Так и случилось на живой машине.
+    """
+    from app import enroll as e
+
+    s = e.build_script("windows", _S, "KEY", "ms-noute")
+    assert s.count("\n& {\n") == 1 and s.rstrip().endswith("}")  # один блок
+    # права проверяются ДО установки: без них msiexec /quiet молча не ставит ничего
+    assert "IsInRole(" in s and "ОТ АДМИНИСТРАТОРА" in s
+    # код возврата установщика больше не игнорируется, и есть подробный лог
+    assert "-PassThru" in s and "$p.ExitCode" in s and "/l*v" in s
+    assert "1603" in s and "1618" in s  # частые коды объясняются словами
+    # путь к клиенту ищется, а не угадывается (32-битный PowerShell даёт x86)
+    assert "ProgramFiles(x86)" in s
+    # скачанное проверяется на то, что это вообще установщик
+    assert "d0cf11e0a1b11ae1" in s
+    # ошибки прерывают блок, а не печатаются в никуда
+    assert "Write-Error" not in s
+
+
+def test_old_roots_are_replaced_not_stacked():
+    """Корень, выпущенный заново, старый не отменяет: без уборки в хранилище
+    копились бы мёртвые «NodeRoost internal CA», которым машина всё ещё верит."""
+    from app import enroll as e
+
+    pem = "-----BEGIN CERTIFICATE-----\nZm9v\n-----END CERTIFICATE-----\n"
+    win = e.build_script("windows", _S, "KEY", "n1", ca_pem=pem)
+    assert "NodeRoost internal CA" in win and "Remove-Item" in win
+    mac = e.build_script("macos", _S, "KEY", "n1", ca_pem=pem)
+    assert "delete-certificate" in mac
