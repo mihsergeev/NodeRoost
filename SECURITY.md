@@ -12,7 +12,8 @@ public issue. We aim to acknowledge reports within a few days.
 
 **A backup archive is the network.** `data/backups/*.tar.gz` carries the
 second-factor secret in the clear, the admin's password hash, the node agents'
-tokens, headscale's database and its private keys — noise and DERP. Anyone holding
+tokens, headscale's database and its private keys — noise and DERP — and, once you
+use them, the panel's own CA key and its Let's Encrypt account key. Anyone holding
 the file can generate your 2FA codes, work on the password hash offline and stand up
 a control server with your identity. The panel writes archives `0600` inside a `0700`
 directory; keep them somewhere you would keep a private key. `ops/backup-offsite.sh`

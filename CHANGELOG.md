@@ -5,6 +5,27 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.7.1] — 2026-08-06
+
+### Security
+
+- **A certificate name from the panel could have escaped its directory** (agent
+  release 4). The agent wrote `/etc/noderoost/certs/<name>.crt` with the name taken
+  from the panel and checked by nobody on the node — so a panel in the wrong hands
+  could have sent `../../ssl/certs/ca-certificates` and had the agent overwrite the
+  machine's trust store as root, which hands over the machine. That contradicted the
+  rule the rest of the agent follows: what the panel says is applied, never trusted.
+  The node now accepts only what can be a DNS name — no slashes, no `..`, nothing
+  outside `a-z0-9.-`.
+- **A CSR was read into memory whole, however large it was.** The body arrives from
+  another machine; a node (or whoever reached its token) could have sent a gigabyte
+  and spent the panel's memory on one request. It is capped at 16 KB — a CSR is two.
+- **Repeated requests could burn the Let's Encrypt weekly limit for the whole
+  domain,** taking other names down with them: every CSR started a fresh order, even
+  with a valid certificate already issued. While one is valid and not due for
+  renewal, the panel returns it instead of ordering again. A CSR whose signature does
+  not check out is refused on the spot rather than sent upstream.
+
 ## [0.7.0] — 2026-08-06
 
 ### Added
