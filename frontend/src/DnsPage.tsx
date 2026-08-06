@@ -16,7 +16,13 @@ type Props = { onUnauthorized: () => void }
 
 // строка формы: цель — либо нода (адрес подставляется её текущий), либо адрес
 // руками (для того, что стоит ЗА нодой и куда клиента не поставить)
-type RecRow = { name: string; node_id: string; ip: string; enabled: boolean }
+type RecRow = {
+  name: string
+  node_id: string
+  ip: string
+  enabled: boolean
+  cert: boolean
+}
 
 function rowsOf(r: DnsRecords): RecRow[] {
   return r.records.map((x) => ({
@@ -24,6 +30,7 @@ function rowsOf(r: DnsRecords): RecRow[] {
     node_id: x.node_id,
     ip: x.ip,
     enabled: x.enabled,
+    cert: x.cert,
   }))
 }
 
@@ -98,6 +105,18 @@ export function DnsPage({ onUnauthorized }: Props) {
     return nodes.find((n) => n.id === id)?.ip_addresses.join(', ') || ''
   }
 
+  // Состояние сертификата берём с сервера по имени, а не из строки формы: пока
+  // правку не сохранили, у новой строки на сервере ещё ничего нет.
+  function certLine(name: string): string {
+    const rec = recs?.records.find((x) => x.name === name)
+    if (!rec || !rec.cert) return ''
+    if (rec.cert_status === 'ok')
+      return rec.cert_until ? t('сертификат до {date}', { date: rec.cert_until }) : ''
+    if (rec.cert_status === 'error')
+      return t('сертификат не выдан: {err}', { err: rec.cert_error })
+    return t('сертификат заказан — нода заберёт его в течение минуты')
+  }
+
   async function save() {
     // Первое имя прописывает путь к файлу в config.yaml — только это и требует
     // перезапуска. Дальше headscale перечитывает файл сам, предупреждать не о чем.
@@ -122,6 +141,7 @@ export function DnsPage({ onUnauthorized }: Props) {
             node_id: r.node_id,
             ip: r.ip.trim(),
             enabled: r.enabled,
+            cert: r.cert,
           }))
           .filter((r) => r.name),
       )
@@ -234,6 +254,7 @@ export function DnsPage({ onUnauthorized }: Props) {
               <span>{t('на какой ноде')}</span>
               <span>{t('адрес в сети')}</span>
               <span />
+              <span />
             </div>
             {rows.map((r, i) => (
               <div className={r.enabled ? 'dns-rec-row' : 'dns-rec-row off'} key={i}>
@@ -293,6 +314,25 @@ export function DnsPage({ onUnauthorized }: Props) {
                     onChange={(e) => update(i, { ip: e.target.value })}
                   />
                 )}
+                {/* Сертификат — только у имени, ведущего на ноду: ключ генерится
+                    на ней, и положить его больше некуда. */}
+                <label
+                  className={r.node_id ? 'dns-rec-cert' : 'dns-rec-cert off'}
+                  title={
+                    r.node_id
+                      ? t('Сертификат Let’s Encrypt для этого имени')
+                      : t('Сертификат возможен только для имени, ведущего на ноду')
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    className="field-checkbox"
+                    checked={r.cert}
+                    disabled={!r.node_id}
+                    onChange={(e) => update(i, { cert: e.target.checked })}
+                  />
+                  <span aria-hidden>🔒</span>
+                </label>
                 <button
                   className="dns-rec-drop"
                   title={t('Убрать')}
@@ -300,9 +340,20 @@ export function DnsPage({ onUnauthorized }: Props) {
                 >
                   ×
                 </button>
+                {r.cert && certLine(r.name) && (
+                  <span className="dns-rec-certline small">{certLine(r.name)}</span>
+                )}
               </div>
             ))}
           </div>
+        )}
+
+        {rows.some((r) => r.cert) && (
+          <p className="muted small settings-note">
+            {t(
+              'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Чтобы это работало, нужна одна DNS-запись — раз и навсегда: маска ваших внутренних имён (например *.int.example.com) A-записью на адрес панели, плюс NODEROOST_CERT_DOMAIN в её .env. Продление идёт само за месяц до конца; готовые файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.',
+            )}
+          </p>
         )}
 
         {error && <p className="form-error">{error}</p>}
@@ -316,7 +367,7 @@ export function DnsPage({ onUnauthorized }: Props) {
               // ручной адрес нужен для того, что стоит ЗА нодой
               setRows([
                 ...rows,
-                { name: '', node_id: nodes[0]?.id ?? '', ip: '', enabled: true },
+                { name: '', node_id: nodes[0]?.id ?? '', ip: '', enabled: true, cert: false },
               ])
             }
           >

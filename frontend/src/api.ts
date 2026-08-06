@@ -358,6 +358,11 @@ export type DnsRecord = {
   ip: string
   // выключенное имя не раздаётся нодам: внутри сети оно ведёт туда же, куда снаружи
   enabled: boolean
+  // сертификат Let's Encrypt для этого имени (выпускает панель, ключ — на ноде)
+  cert: boolean
+  cert_status: string // ok | issuing | error | ''
+  cert_until: string
+  cert_error: string
   addresses: string[]
   note: string
 }
@@ -373,7 +378,13 @@ export function getDnsRecords(): Promise<DnsRecords> {
 }
 
 export function setDnsRecords(
-  records: { name: string; node_id: string; ip: string; enabled: boolean }[],
+  records: {
+    name: string
+    node_id: string
+    ip: string
+    enabled: boolean
+    cert: boolean
+  }[],
 ): Promise<DnsRecords> {
   return api<DnsRecords>('/api/hs-info/dns-records', {
     method: 'PUT',
