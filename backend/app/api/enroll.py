@@ -1,16 +1,60 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app import audit, ca, enroll, settings_store
 from app.config import get_settings
-from app.deps import CurrentUser, SessionDep
+from app.deps import CurrentUser, PublicRateLimit, SessionDep
 from app.api.nodes import _map_node
 from app.hs_client import get_client
 from app.hs_util import hs_call, require_hs
 from app.schemas import EnrollIn, EnrollOut, EnrollStatusOut
 
 router = APIRouter(prefix="/enroll", tags=["enroll"])
+# Скрипт подключения по ссылке — публично, на домене control-сервера: машину как
+# раз и подключают откуда угодно, а панель за вайтлистом ей недоступна.
+public_router = APIRouter(tags=["enroll-public"], dependencies=[PublicRateLimit])
+
+
+async def _join_link(session, settings, script: str, os_name: str, expires_at: str):
+    """Положить скрипт под случайным токеном и вернуть (ссылка, команда запуска).
+
+    Зачем ссылка, если скрипт и так показан: его вставляют в консоль целиком, а
+    консоль выполняет вставленное построчно — падение в середине не останавливает
+    остальное, и человек получает каскад вторичных ошибок вместо причины. Одна
+    команда исполняется как одно целое. Заодно ключ не попадает ни в историю
+    шелла, ни в буфер обмена — в них остаётся только адрес.
+
+    Ссылка живёт столько же, сколько одноразовый ключ внутри неё: она ровно
+    настолько же секретна, и переживать его ей незачем.
+    """
+    token = secrets.token_urlsafe(24)
+    await settings_store.save_join_script(session, token, script, os_name, expires_at)
+    base = (settings.headscale_server_url or "").rstrip("/")
+    url = f"{base}/join/{token}" if base else ""
+    if not url:
+        return "", ""
+    if os_name == "windows":
+        # PowerShell ОТ АДМИНИСТРАТОРА: установщик Tailscale ставится на машину.
+        cmd = f"irm {url} | iex"
+    elif os_name == "android":
+        cmd = ""  # там инструкция для человека, а не скрипт
+    else:
+        cmd = f"curl -fsSL {url} | sudo sh"
+    return url, cmd
+
+
+@public_router.get("/join/{token}")
+async def join_script(token: str, session: SessionDep) -> Response:
+    """Скрипт подключения по одноразовой ссылке. Секрет здесь — сам токен."""
+    script = await settings_store.get_join_script(session, token)
+    if script is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Ссылка не найдена или устарела — создайте подключение в панели заново",
+        )
+    return Response(content=script, media_type="text/plain; charset=utf-8")
 
 
 @router.post("", response_model=EnrollOut)
@@ -51,6 +95,7 @@ async def enroll_node(
         body.os, settings, key_str, body.name, version=version,
         exit_node=body.exit_node, ca_pem=ca_pem,
     )
+    url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
     await audit.record(session, user.username, "node_enroll", body.name)
     return EnrollOut(
         os=body.os,
@@ -59,6 +104,8 @@ async def enroll_node(
         script=script,
         key_id=key_id,
         expires_at=exp_iso,
+        join_url=url,
+        join_cmd=cmd,
     )
 
 

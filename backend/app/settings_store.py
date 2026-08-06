@@ -530,3 +530,31 @@ async def set_backup_config(
         BACKUP_KEY,
         json.dumps({"interval_hours": int(interval_hours), "keep": int(keep)}),
     )
+
+
+JOIN_KEY = "join_scripts"  # {токен: {script, os, expires_at}} — ссылки на подключение
+
+
+async def save_join_script(
+    session: AsyncSession, token: str, script: str, os_name: str, expires_at: str
+) -> None:
+    """Положить скрипт подключения под токеном, чтобы его можно было скачать одной
+    командой. Живёт столько же, сколько одноразовый ключ внутри него: ссылка ровно
+    настолько же секретна, и переживать ключ ей незачем."""
+    raw = await _get_raw(session, JOIN_KEY)
+    data = json.loads(raw) if raw else {}
+    now = datetime.now(timezone.utc).isoformat()
+    data = {t: v for t, v in data.items() if str(v.get("expires_at", "")) > now}
+    data[token] = {"script": script, "os": os_name, "expires_at": expires_at}
+    await _set_raw(session, JOIN_KEY, json.dumps(data, ensure_ascii=False))
+
+
+async def get_join_script(session: AsyncSession, token: str) -> str | None:
+    raw = await _get_raw(session, JOIN_KEY)
+    data = json.loads(raw) if raw else {}
+    item = data.get(token)
+    if not item:
+        return None
+    if str(item.get("expires_at", "")) <= datetime.now(timezone.utc).isoformat():
+        return None  # протух вместе с ключом
+    return str(item.get("script") or "")

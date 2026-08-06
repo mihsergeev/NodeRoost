@@ -186,3 +186,27 @@ def test_old_roots_are_replaced_not_stacked():
     assert "NodeRoost internal CA" in win and "Remove-Item" in win
     mac = e.build_script("macos", _S, "KEY", "n1", ca_pem=pem)
     assert "delete-certificate" in mac
+
+
+async def test_join_link_serves_the_script_until_the_key_expires(client):
+    """Скрипт по ссылке — чтобы подключение было ОДНОЙ командой: вставленный в
+    консоль текст выполняется построчно, и падение в середине не останавливает
+    остальное. Ссылка живёт столько же, сколько ключ внутри неё: она ровно
+    настолько же секретна, и переживать его ей незачем.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app import settings_store
+
+    app = client._transport.app
+    later = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    async with app.state.session_factory() as s:
+        await settings_store.save_join_script(s, "tok1", "#!/bin/sh\necho живой", "linux", later)
+        await settings_store.save_join_script(s, "tok2", "#!/bin/sh\necho старый", "linux", past)
+
+    r = await client.get("/join/tok1")
+    assert r.status_code == 200 and "живой" in r.text
+    assert r.headers["content-type"].startswith("text/plain")
+    assert (await client.get("/join/tok2")).status_code == 404  # протух вместе с ключом
+    assert (await client.get("/join/нет-такого")).status_code == 404

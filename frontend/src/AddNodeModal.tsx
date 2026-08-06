@@ -36,6 +36,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [agentCmd, setAgentCmd] = useState('')
   const [agentCopied, setAgentCopied] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [cmdCopied, setCmdCopied] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // поллинг статуса подключения ноды
@@ -92,6 +93,17 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
       setError(err instanceof Error ? err.message : t('Ошибка'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function copyCmd() {
+    if (!result?.join_cmd) return
+    try {
+      await navigator.clipboard.writeText(result.join_cmd)
+      setCmdCopied(true)
+      setTimeout(() => setCmdCopied(false), 1500)
+    } catch {
+      /* clipboard недоступен — выделят вручную */
     }
   }
 
@@ -185,21 +197,55 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
               {t('Пока создан только одноразовый ключ. Нода появится в списке, когда подключится.')}
               {exitNode && ' ' + t('Затем одобри exit-маршрут в «Маршрутах».')}
             </p>
-            {(os === 'linux' || os === 'macos') && (
+            {os === 'windows' && (
+              <p className="muted small">
+                {t('PowerShell должен быть запущен ОТ АДМИНИСТРАТОРА: команда ставит клиент Tailscale на машину. Если установка не пройдёт, скрипт назовёт код ошибки и путь к подробному логу.')}
+              </p>
+            )}
+            {(os === 'linux' || os === 'macos') && !result.join_cmd && (
               <p className="muted small">
                 {t('Ключ не попадёт в историю шелла — скрипт первой строкой отключает её запись. Ваша история при этом сохраняется. В zsh (macOS) опции нет: там надёжнее сохранить скрипт в файл и запустить.')}
               </p>
             )}
-            <pre className="enroll-script">{result.script}</pre>
-            <div className="enroll-actions">
-              <button onClick={copy}>
-                {copied
-                  ? t('Скопировано ✓')
-                  : os === 'android'
-                    ? t('Скопировать')
-                    : t('Скопировать скрипт')}
-              </button>
-            </div>
+            {result.join_cmd ? (
+              <>
+                {/* Одна команда вместо простыни: вставленный целиком скрипт
+                    консоль выполняет построчно, и падение в середине не
+                    останавливает остальное — человек получает каскад вторичных
+                    ошибок вместо причины. Команда исполняется как одно целое,
+                    а ключ не оседает ни в истории, ни в буфере обмена. */}
+                <pre className="enroll-script cmd-oneline">{result.join_cmd}</pre>
+                <div className="enroll-actions">
+                  <button onClick={copyCmd}>
+                    {cmdCopied ? t('Скопировано ✓') : t('Скопировать команду')}
+                  </button>
+                </div>
+                <details className="enroll-full">
+                  <summary className="muted small">
+                    {t('Показать сам скрипт (если хотите сначала прочитать)')}
+                  </summary>
+                  <pre className="enroll-script">{result.script}</pre>
+                  <div className="enroll-actions">
+                    <button className="ghost small" onClick={copy}>
+                      {copied ? t('Скопировано ✓') : t('Скопировать скрипт')}
+                    </button>
+                  </div>
+                </details>
+              </>
+            ) : (
+              <>
+                <pre className="enroll-script">{result.script}</pre>
+                <div className="enroll-actions">
+                  <button onClick={copy}>
+                    {copied
+                      ? t('Скопировано ✓')
+                      : os === 'android'
+                        ? t('Скопировать')
+                        : t('Скопировать скрипт')}
+                  </button>
+                </div>
+              </>
+            )}
 
             <div className={`enroll-status${connected ? ' enroll-status-ok' : ''}`}>
               <span className={`dot ${connected ? 'dot-ok' : 'dot-unknown'}`} />

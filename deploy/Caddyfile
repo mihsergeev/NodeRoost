@@ -40,6 +40,10 @@
 	handle /agent/* {
 		reverse_proxy frontend:80
 	}
+	# Скрипт подключения по ссылке: одна команда вместо простыни в консоли.
+	handle /join/* {
+		reverse_proxy frontend:80
+	}
 	# Всё остальное — узловой контур headscale: регистрация, /ts2021, /derp, /health.
 	handle {
 		reverse_proxy headscale:8080

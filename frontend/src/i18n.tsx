@@ -122,6 +122,10 @@ const EN: Record<string, string> = {
   'Ключ не попадёт в историю шелла — скрипт первой строкой отключает её запись. Ваша история при этом сохраняется. В zsh (macOS) опции нет: там надёжнее сохранить скрипт в файл и запустить.':
     'The key stays out of shell history — the script disables recording on its first line. Your own history is kept. zsh (macOS) has no such option: there it is safer to save the script to a file and run it.',
   'Скопировать скрипт': 'Copy script',
+  'Показать сам скрипт (если хотите сначала прочитать)':
+    'Show the script itself (if you would rather read it first)',
+  'PowerShell должен быть запущен ОТ АДМИНИСТРАТОРА: команда ставит клиент Tailscale на машину. Если установка не пройдёт, скрипт назовёт код ошибки и путь к подробному логу.':
+    'PowerShell has to be running AS ADMINISTRATOR: the command installs the Tailscale client on the machine. If the install fails, the script names the error code and the path to a verbose log.',
   'Скопировано ✓': 'Copied ✓',
   'IP добавлен в вайтлист — фаервол откроется в течение ~минуты.':
     'IP added to the allow-list — the firewall opens within ~a minute.',
