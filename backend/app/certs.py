@@ -1,4 +1,4 @@
-"""Сертификаты для имён внутри сети: панель заказывает, нода хранит ключ.
+"""Сертификаты для имён внутри сети: панель подписывает, ключ живёт на ноде.
 
 Как это устроено целиком:
 
@@ -7,14 +7,15 @@
 2. Агент ноды видит это в своём состоянии, генерит **у себя** ключ и CSR и шлёт
    панели только CSR. Приватный ключ не покидает машину: панель его не видит, в
    базе его нет, в бэкапе его нет.
-3. Панель проводит ACME-заказ (`app/acme.py`) и отвечает готовым сертификатом.
-   Проверку владения Let's Encrypt делает по 80-му порту самой панели — потому
-   что имя (одной wildcard-записью) ведёт на неё.
+3. Панель подписывает CSR своим корнем (`app/ca.py`) и отвечает цепочкой.
 4. Агент кладёт файлы на ноду и дёргает свой хук перезагрузки сервиса.
 
-Почему выпускает панель, а не сама нода: у ноды снаружи может не быть вообще
-ничего — ни 80-го порта, ни публичного адреса. У панели он есть по определению,
-она и так публична для нод.
+Почему подписывает панель, а не каждая нода сама себе: право подписи одно на
+сеть, и раздать его по машинам значит раздать возможность выписать сертификат на
+любое имя сети. Панель этим правом распоряжается так же, как и маршрутами.
+
+Публичного центра сертификации здесь нет намеренно: он подписывает только имена,
+которые видно из интернета, а эти имена наружу не смотрят по определению.
 """
 
 import asyncio
@@ -26,59 +27,19 @@ from cryptography.hazmat.primitives import hashes
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import acme, ca, settings_store
+from app import ca, settings_store
 from app.config import Settings
 from app.models import Certificate
 
 log = logging.getLogger("noderoost.certs")
 
-ACCOUNT_KEY = "acme_account_key"  # ключ ACME-аккаунта (секрет)
-ACCOUNT_KID = "acme_account_kid"  # адрес аккаунта у Let's Encrypt
-CHALLENGES = "acme_challenges"  # {токен: ответ} — живут минуты, пока идёт проверка
-
-# Один заказ на имя за раз: агент спрашивает раз в минуту, а заказ идёт секунды —
-# без замка два перекрывшихся запроса сожгли бы лимит проверок на ровном месте.
+# Один выпуск на имя за раз: агент спрашивает раз в минуту, и два перекрывшихся
+# запроса завели бы два сертификата на одно имя.
 _locks: dict[str, asyncio.Lock] = {}
 
 
 def _lock(name: str) -> asyncio.Lock:
     return _locks.setdefault(name, asyncio.Lock())
-
-
-async def account_key(session: AsyncSession) -> str:
-    """Ключ ACME-аккаунта; при первом обращении создаётся и сохраняется.
-
-    Терять его нельзя: новый ключ — это новый аккаунт, а на создание аккаунтов у
-    Let's Encrypt свой лимит. Поэтому он лежит в базе и уезжает в бэкап.
-    """
-    raw = await settings_store.get_raw(session, ACCOUNT_KEY)
-    if raw:
-        return raw
-    key = acme.new_account_key()
-    await settings_store.set_raw(session, ACCOUNT_KEY, key)
-    return key
-
-
-async def _challenges(session: AsyncSession) -> dict:
-    import json
-
-    raw = await settings_store.get_raw(session, CHALLENGES)
-    return json.loads(raw) if raw else {}
-
-
-async def _save_challenges(session: AsyncSession, data: dict) -> None:
-    import json
-
-    await settings_store.set_raw(session, CHALLENGES, json.dumps(data))
-
-
-async def answer_for(session: AsyncSession, token: str) -> str | None:
-    """Ответ на челлендж по токену — то, что отдаёт публичная ручка.
-
-    Хранится в базе, а не в памяти процесса: перезапуск бэкенда посреди проверки
-    иначе оставлял бы Let's Encrypt перед 404, и имя попадало бы в лимит отказов.
-    """
-    return (await _challenges(session)).get(token)
 
 
 def cert_not_after(pem: str) -> datetime | None:
@@ -94,8 +55,8 @@ def csr_names(csr_der: bytes) -> set[str]:
     """Имена из CSR: CN плюс SAN. Нужны, чтобы нода не заказала чужое имя."""
     csr = x509.load_der_x509_csr(csr_der)
     if not csr.is_signature_valid:
-        # Подпись CSR доказывает, что просящий владеет ключом. Let's Encrypt это
-        # и сам проверит, но отказать здесь дешевле, чем сходить к нему впустую.
+        # Подпись CSR доказывает, что просящий владеет ключом, к которому просит
+        # сертификат. Без проверки мы подписали бы чужой ключ по чужой просьбе.
         raise ValueError("подпись CSR неверна")
     names = {
         str(a.value).lower()
@@ -129,7 +90,7 @@ async def wanted_for_node(
     """Что панель хочет от ноды по сертификатам: [(имя, отпечаток, нужен CSR)].
 
     Отпечаток пустой — сертификата ещё нет. «Нужен CSR» ставится, когда его нет,
-    когда он скоро истечёт или когда прошлая попытка провалилась и пауза вышла.
+    когда он скоро истечёт или когда прошлая попытка кончилась ошибкой.
     """
     out: list[tuple[str, str, bool]] = []
     for rec in await settings_store.get_dns_records(session):
@@ -147,14 +108,6 @@ async def wanted_for_node(
             )
         )
     return sorted(out)
-
-
-async def issuer_of(session: AsyncSession, name: str) -> str:
-    """Кто выпускает сертификат для этого имени: «le» или «ca» (по записи в панели)."""
-    for rec in await settings_store.get_dns_records(session):
-        if str(rec.get("name") or "") == name:
-            return "ca" if rec.get("issuer") == "ca" else "le"
-    return "le"
 
 
 async def all_certs(session: AsyncSession) -> list[Certificate]:
@@ -184,7 +137,6 @@ async def issue(
     name: str,
     node_id: str,
     csr_der: bytes,
-    issuer: str = "le",
 ) -> Certificate:
     """Выпустить (или перевыпустить) сертификат для имени по CSR ноды.
 
@@ -200,70 +152,23 @@ async def issue(
             row = Certificate(name=name, node_id=node_id)
             session.add(row)
         row.node_id = node_id
-        now = datetime.now(timezone.utc)
-        if row.retry_after and row.retry_after > now:
-            return row  # ждём паузы после отказа — Let's Encrypt считает попытки
         if (
             row.status == "ok"
             and row.cert_pem
             and not needs_renewal(row, settings.cert_renew_days)
         ):
-            # Действующий сертификат есть — отдаём его, а не заказываем новый.
-            # Иначе нода (или тот, у кого её токен) повторными запросами сожгла бы
-            # недельный лимит Let's Encrypt на ВЕСЬ домен, задев чужие имена.
+            # Действующий сертификат есть — отдаём его, а не выписываем новый:
+            # иначе повторный запрос плодил бы сертификаты на одно имя, и никто
+            # бы не знал, какой из них где лежит.
             return row
         row.status = "issuing"
         await session.commit()
 
-        if issuer == "ca":
-            # Своя CA: ни интернета, ни публичного DNS, ни лимитов — подписываем
-            # сами. Отказать тут может только кривой CSR, и это ошибка ввода, а не
-            # повод держать паузу как с Let's Encrypt.
-            try:
-                pem = await ca.sign_csr(session, name, csr_der)
-            except Exception as e:  # noqa: BLE001
-                row.status = "error"
-                row.error = str(e)[:500]
-                row.updated_at = datetime.now(timezone.utc)
-                await session.commit()
-                log.warning("своя CA не подписала %s: %s", name, e)
-                return row
-            row.status = "ok"
-            row.error = ""
-            row.retry_after = None
-            row.cert_pem = pem
-            row.not_after = cert_not_after(pem)
-            row.updated_at = datetime.now(timezone.utc)
-            await session.commit()
-            log.info("свой CA выдал сертификат для %s до %s", name, row.not_after)
-            return row
-
-        key_pem = await account_key(session)
-        kid = await settings_store.get_raw(session, ACCOUNT_KID) or ""
-        client = acme.AcmeClient(key_pem, settings.acme_directory, kid=kid)
-
-        async def publish(token: str, value: str) -> None:
-            data = await _challenges(session)
-            data[token] = value
-            await _save_challenges(session, data)
-
-        async def unpublish(token: str) -> None:
-            data = await _challenges(session)
-            if data.pop(token, None) is not None:
-                await _save_challenges(session, data)
-
         try:
-            new_kid = await client.ensure_account(settings.acme_email)
-            if new_kid != kid:
-                await settings_store.set_raw(session, ACCOUNT_KID, new_kid)
-            pem = await client.issue(name, csr_der, publish, unpublish)
+            pem = await ca.sign_csr(session, name, csr_der)
         except Exception as e:  # noqa: BLE001 — любой отказ показываем как есть
             row.status = "error"
             row.error = str(e)[:500]
-            # Пауза после отказа: у Let's Encrypt лимит 5 неудачных проверок в час
-            # на имя, а агент спрашивает раз в минуту — без паузы он сожжёт его
-            # за пять минут и потом будет ждать час.
-            row.retry_after = datetime.now(timezone.utc) + timedelta(minutes=15)
             row.updated_at = datetime.now(timezone.utc)
             await session.commit()
             log.warning("сертификат для %s не выдан: %s", name, e)
@@ -271,7 +176,6 @@ async def issue(
 
         row.status = "ok"
         row.error = ""
-        row.retry_after = None
         row.cert_pem = pem
         row.not_after = cert_not_after(pem)
         row.updated_at = datetime.now(timezone.utc)
@@ -280,13 +184,21 @@ async def issue(
         return row
 
 
+# Пауза после отказа. Причина (имя вне разрешённых зон, битый CSR) сама собой не
+# исчезает, а агент спрашивает раз в минуту — без паузы панель молотила бы отказ
+# шестьдесят раз в час и засыпала бы этим журнал.
+RETRY_AFTER_ERROR = timedelta(minutes=15)
+
+
 def needs_renewal(cert: Certificate | None, renew_days: int) -> bool:
     """Пора ли просить у ноды новый CSR: сертификата нет, он скоро истечёт или
     прошлая попытка закончилась ошибкой и пауза вышла."""
-    now = datetime.now(timezone.utc)
-    if cert is None or cert.status != "ok" or not cert.cert_pem:
-        return cert is None or not cert.retry_after or cert.retry_after <= now
+    if cert is None:
+        return True
+    if cert.status == "error" and cert.updated_at:
+        return datetime.now(timezone.utc) - cert.updated_at > RETRY_AFTER_ERROR
+    if cert.status != "ok" or not cert.cert_pem:
+        return True
     if cert.not_after is None:
         return True
-    left = cert.not_after - now
-    return left <= timedelta(days=renew_days)
+    return cert.not_after - datetime.now(timezone.utc) <= timedelta(days=renew_days)

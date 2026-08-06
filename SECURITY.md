@@ -12,8 +12,8 @@ public issue. We aim to acknowledge reports within a few days.
 
 **A backup archive is the network.** `data/backups/*.tar.gz` carries the
 second-factor secret in the clear, the admin's password hash, the node agents'
-tokens, headscale's database and its private keys — noise and DERP — and, once you
-use them, the panel's own CA key and its Let's Encrypt account key. Anyone holding
+tokens, headscale's database and its private keys — noise and DERP — and the panel's
+own CA key, which signs every internal name. Anyone holding
 the file can generate your 2FA codes, work on the password hash offline and stand up
 a control server with your identity. The panel writes archives `0600` inside a `0700`
 directory; keep them somewhere you would keep a private key. `ops/backup-offsite.sh`
@@ -43,11 +43,9 @@ root itself: it carries X.509 name constraints and can only sign the zones you l
 Inside those zones the panel is as trusted as it already is for routing; outside them
 it can sign nothing at all. Choose the zones as narrowly as your names allow, and if
 even that is too much, turn the automatic install off and put the root only where you
-want it — or use Let's Encrypt, whose every issuance lands in public
-certificate-transparency logs. Roots created before name constraints existed carry
-none; reissue such a root (DNS → "Reissue the root") to bound it. The certificates'
-own private keys are not affected either way: those are generated on the nodes and
-never sent to the panel.
+want it. Roots created before name constraints existed carry none; reissue such a root
+(DNS → "Configure") to bound it. The certificates' own private keys are not affected
+either way: those are generated on the nodes and never sent to the panel.
 
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at

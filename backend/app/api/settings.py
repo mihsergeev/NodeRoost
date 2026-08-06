@@ -310,7 +310,6 @@ async def _records_out(
                 ip=str(rec.get("ip") or ""),
                 enabled=bool(rec.get("enabled", True)),
                 cert=bool(rec.get("cert", False)),
-                issuer=("ca" if rec.get("issuer") == "ca" else "le"),
                 cert_status=(cert.status if cert else ("issuing" if rec.get("cert") else "")),
                 cert_until=(
                     cert.not_after.date().isoformat() if cert and cert.not_after else ""
@@ -365,18 +364,17 @@ async def update_ca(
     """
     await ca.set_auto_install(session, body.auto)
     if body.rotate_suffixes:
-        await ca.rotate(session, body.rotate_suffixes)
-        names = {
-            str(r.get("name") or "")
-            for r in await settings_store.get_dns_records(session)
-            if r.get("issuer") == "ca"
-        }
+        await ca.rotate(session, body.rotate_suffixes, body.rotate_years)
+        # Всё, подписанное старым корнем, стало бесполезным — забываем, чтобы
+        # ноды прислали CSR следующим же опросом и получили бумаги от нового.
         for row in await certs.all_certs(session):
-            if row.name in names:
-                await session.delete(row)
+            await session.delete(row)
         await session.commit()
         await audit.record(
-            session, user.username, "ca_rotate", ", ".join(body.rotate_suffixes)
+            session,
+            user.username,
+            "ca_rotate",
+            f"{', '.join(body.rotate_suffixes)} на {body.rotate_years} лет",
         )
     else:
         await audit.record(
@@ -447,7 +445,6 @@ async def update_dns_records(
             "ip": r.ip,
             "enabled": r.enabled,
             "cert": r.cert,
-            "issuer": r.issuer,
         }
         for r in body.records
     ]
