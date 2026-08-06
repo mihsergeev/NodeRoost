@@ -20,6 +20,8 @@ dependencies = [
     "httpx>=0.27",
     "PyYAML>=6.0",
     "ruamel.yaml>=0.18",
+    # ACME-клиент: ключи, подпись JWS, разбор CSR и сертификатов
+    "cryptography>=44",
 ]
 
 [project.optional-dependencies]
