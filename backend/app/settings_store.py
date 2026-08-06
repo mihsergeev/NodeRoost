@@ -407,17 +407,26 @@ async def touch_agent_poll(session: AsyncSession, token: str) -> None:
         return
 
 
-async def mark_agent_applied(session: AsyncSession, token: str, state_hash: str) -> None:
+async def mark_agent_applied(
+    session: AsyncSession, token: str, state_hash: str, script: str = ""
+) -> None:
     """Отметка «агент ПРИМЕНИЛ состояние» + хеш применённого. По ней панель отличает
     работающего агента от ноды, которая только опрашивает URL, и видит отставание."""
     all_cfg = await get_agent_all(session)
     for node_id, cfg in all_cfg.items():
         if cfg.get("token") != token:
             continue
-        if cfg.get("applied_hash") == state_hash and cfg.get("last_applied"):
+        if (
+            cfg.get("applied_hash") == state_hash
+            and cfg.get("last_applied")
+            and cfg.get("script") == script
+        ):
             return  # ничего не изменилось — лишняя запись в БД ни к чему
         cfg["last_applied"] = datetime.now(timezone.utc).isoformat()
         cfg["applied_hash"] = state_hash
+        # версия скрипта агента: пусто = агент старее, чем эта возможность, и
+        # новых строк состояния (например сертификатов) он просто не понимает
+        cfg["script"] = script
         all_cfg[node_id] = cfg
         await set_agent_all(session, all_cfg)
         return
