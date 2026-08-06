@@ -277,7 +277,17 @@ async def agent_csr(token: str, name: str, request: Request, session: SessionDep
     Ключ остаётся на ноде: сюда приезжает только запрос на подпись.
     """
     node_id = await _node_may_ask(session, token, name)
-    pem = (await request.body()).decode("utf-8", "replace")
+    # Читаем с потолком: CSR — это пара килобайт, а тело запроса приходит с чужой
+    # машины. Без предела нода (или тот, кто добрался до её токена) отправила бы
+    # гигабайт и съела память панели одним запросом.
+    raw = b""
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > 16 * 1024:
+            raise HTTPException(
+                413, "CSR не может быть таким большим"
+            )
+    pem = raw.decode("utf-8", "replace")
     try:
         csr_der = x509.load_pem_x509_csr(pem.encode()).public_bytes(Encoding.DER)
     except Exception as e:  # noqa: BLE001 — сюда приходит текст с чужой машины

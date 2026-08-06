@@ -126,3 +126,53 @@ async def test_node_cannot_ask_for_a_name_that_is_not_its_own(client):
     assert r.status_code == 403
     # и неизвестный токен не даёт ничего
     assert (await client.get("/agent/нет-такого/cert?name=x.example.com")).status_code == 404
+
+
+async def test_a_name_with_traversal_is_never_written_by_the_agent():
+    """Имя приходит от панели, а файлы кладутся под root. Без проверки «имя» вида
+    ../../ssl/certs/ca-certificates заставило бы агента переписать системное
+    хранилище корней — то есть отдать машину тому, кто захватил панель."""
+    from app import agent as agent_mod
+
+    setup = agent_mod.build_setup("https://hs.example/agent/tok")
+    assert "имя сертификата отвергнуто" in setup
+    # пропускаем только то, что бывает DNS-именем: без слешей, без «..», без прочего
+    assert r"''|.*|*..*|*[!a-z0-9.-]*)" in setup
+
+
+async def test_a_huge_csr_is_refused(client):
+    """Тело запроса приходит с чужой машины: без предела один запрос съел бы память."""
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await settings_store.set_agent_all(s, {"7": {"token": "tokbig"}})
+        await settings_store.set_dns_records(
+            s, [{"name": "big.example.com", "node_id": "7", "cert": True}]
+        )
+    r = await client.post(
+        "/agent/tokbig/csr?name=big.example.com", content=b"x" * (32 * 1024)
+    )
+    assert r.status_code == 413
+
+
+async def test_a_valid_certificate_is_not_reissued(session):
+    """Повторные запросы не должны жечь недельный лимит Let's Encrypt на весь
+    домен: пока сертификат действует, отдаём тот же самый."""
+    first = await certs.issue(
+        session, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca"
+    )
+    pem = first.cert_pem
+    again = await certs.issue(
+        session, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca"
+    )
+    assert again.cert_pem == pem  # тот же, а не новый выпуск
+
+
+def test_a_csr_with_a_broken_signature_is_refused():
+    """Подпись CSR доказывает владение ключом. Битую отвергаем сами, не ходя к LE."""
+    import pytest
+
+    good = _csr("nas.mesh")
+    broken = bytearray(good)
+    broken[-1] ^= 0xFF  # портим подпись
+    with pytest.raises(ValueError):
+        certs.csr_names(bytes(broken))
