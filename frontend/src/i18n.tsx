@@ -606,6 +606,11 @@ const EN: Record<string, string> = {
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
+  'Ноды панель обслуживает сама. Машину, которую подключали руками, проще всего научить доверять одной командой — она снимет прежний сертификат панели и поставит текущий:':
+    'Nodes are handled by the panel itself. A machine you joined by hand is easiest to teach with a single command — it removes the panel’s previous certificate and installs the current one:',
+  'Linux и macOS': 'Linux and macOS',
+  'Скрипт печатает отпечаток поставленного сертификата — сверьте с тем, что выше. Android и iOS скриптом не научить: скачайте сертификат кнопкой, перенесите на устройство и включите полное доверие в настройках.':
+    'The script prints the fingerprint of what it installed — compare it with the one above. Android and iOS cannot be scripted: download the certificate with the button, move it to the device and switch on full trust in settings.',
   'любые внутренние имена, кроме {n} публичных доменов':
     'any internal name except {n} public domains',
   'только {zones} (CA старого образца)': 'only {zones} (CA of the older kind)',
@@ -621,9 +626,6 @@ const EN: Record<string, string> = {
   'Выпустить CA заново? Прежний сертификат перестанет действовать.':
     'Issue a new root? The old one stops working.',
   'Выпустить заново': 'Issue a new one',
-  'Как поставить на устройство': 'How to install it on a device',
-  'Ноды панель обслуживает сама. Вручную — только то, что подключали не скриптом: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие. После установки сверьте отпечаток.':
-    'Nodes are handled by the panel itself. By hand you only do the machines you joined without the script: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” → “Always Trust”, Linux — /usr/local/share/ca-certificates then update-ca-certificates, Android and iOS — install the profile and switch on full trust. Check the fingerprint afterwards.',
   'сертификат': 'certificate',
   'Выпустить сертификат для этого имени': 'Issue a certificate for this name',
   'Сертификат подписывает панель своим корнем, а ключ генерится на самой ноде и никуда с неё не уезжает. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':

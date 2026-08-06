@@ -151,3 +151,51 @@ async def enroll_status(
                 n = renamed.get("node") or renamed
         return EnrollStatusOut(connected=True, node=_map_node(n), reused_from=reused)
     return EnrollStatusOut(connected=False)
+
+# --- Сертификат CA: поставить одной командой ---
+# Публично и без токена намеренно: сертификат CA и так стоит на каждой ноде, а
+# знать по нему нечего — внутренних имён в нём нет (он лишь запрещает публичные
+# домены). Ставит его на машину человек с правами администратора, поэтому
+# доступность ссылки ничего никому не даёт.
+
+
+async def _ca_or_404(session) -> str:
+    pem = await ca.root_cert(session)
+    if not pem:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Центр сертификации ещё не создан — он появится с первым именем, "
+            "которому включён сертификат",
+        )
+    return pem
+
+
+@public_router.get("/ca/noderoost-ca.crt")
+async def ca_file(session: SessionDep) -> Response:
+    """Сам сертификат — для телефонов и для `curl --cacert`."""
+    pem = await _ca_or_404(session)
+    return Response(
+        content=pem,
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": 'attachment; filename="noderoost-ca.crt"'},
+    )
+
+
+@public_router.get("/ca/install.sh")
+async def ca_install_sh(session: SessionDep) -> Response:
+    pem = await _ca_or_404(session)
+    fp = ca.root_info(pem).get("fingerprint", "")
+    return Response(
+        content=enroll.ca_install_script("linux", pem, fp),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
+@public_router.get("/ca/install.ps1")
+async def ca_install_ps1(session: SessionDep) -> Response:
+    pem = await _ca_or_404(session)
+    fp = ca.root_info(pem).get("fingerprint", "")
+    return Response(
+        content=enroll.ca_install_script("windows", pem, fp),
+        media_type="text/plain; charset=utf-8",
+    )
