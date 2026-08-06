@@ -11,7 +11,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app import agent, audit, certs, routing, settings_store
+from app import agent, audit, ca, certs, routing, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, PublicRateLimit, SessionDep
 from app.schemas import AgentIn, AgentOut
@@ -245,11 +245,31 @@ async def agent_state(token: str, session: SessionDep) -> Response:
     # Заказ обновления живёт в настройках ноды: его ставит администратор кнопкой,
     # и он висит, пока агент не отчитается уже новой версией скрипта.
     want = int(cfg.get("update") or 0)
+    # Корень своей CA: нода должна ему доверять, чтобы имена внутри сети
+    # открывались без ругани. Отпечаток отдаём только когда автоустановка
+    # включена — выключенная галочка обязана снимать доверие, а не замораживать.
+    root = await ca.root_cert(session) if await ca.auto_install(session) else ""
     body += agent.extra_lines(
         await certs.wanted_for_node(session, settings, node_id),
         want if want > 0 else 0,
+        ca.fingerprint(root),
     )
     return Response(content=body, media_type="text/plain")
+
+
+@public_router.get("/agent/{token}/ca")
+async def agent_ca(token: str, session: SessionDep) -> Response:
+    """Корневой сертификат панели — нода ставит его себе в доверенные.
+
+    Секрета тут нет (приватный ключ остаётся в панели), но ручка всё равно за
+    токеном: посторонним незачем знать, какие внутренние зоны существуют.
+    """
+    if await settings_store.get_agent_by_token(session, token) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
+    pem = await ca.root_cert(session)
+    if not pem:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "своя CA не создана")
+    return Response(content=pem, media_type="application/x-pem-file")
 
 
 async def _node_may_ask(session, token: str, name: str) -> str:

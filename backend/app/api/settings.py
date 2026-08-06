@@ -23,6 +23,7 @@ from app.schemas import (
     DerpInfo,
     DnsInfo,
     CaInfo,
+    CaSettingsIn,
     DnsRecordOut,
     DnsRecordsOut,
     DnsRecordsUpdateIn,
@@ -273,11 +274,11 @@ async def _hs_nodes() -> list[dict]:
         return []
 
 
-def _ca_info(cert_pem: str) -> CaInfo:
+def _ca_info(cert_pem: str, auto: bool = True) -> CaInfo:
     if not cert_pem:
-        return CaInfo()
+        return CaInfo(auto=auto)
     info = ca.root_info(cert_pem)
-    return CaInfo(exists=True, **info)
+    return CaInfo(exists=True, auto=auto, **info)
 
 
 async def _records_out(
@@ -319,7 +320,7 @@ async def _records_out(
                 note=note,
             )
         )
-    root = _ca_info(cfg_root)
+    root = _ca_info(cfg_root, await ca.auto_install(session))
     return DnsRecordsOut(
         records=out,
         ca=root,
@@ -349,6 +350,39 @@ async def download_ca(_: CurrentUser, session: SessionDep) -> Response:
         media_type="application/x-pem-file",
         headers={"Content-Disposition": 'attachment; filename="noderoost-ca.crt"'},
     )
+
+
+@router.put("/ca", response_model=CaInfo)
+async def update_ca(
+    body: CaSettingsIn, user: CurrentUser, session: SessionDep
+) -> CaInfo:
+    """Автоустановка корня на ноды и — по явной просьбе — перевыпуск корня.
+
+    Перевыпуск обесценивает всё, что подписано старым корнем, поэтому он делается
+    только когда переданы зоны, и никогда — побочным эффектом сохранения галочки.
+    Сертификаты имён панель после этого забывает: ноды пришлют CSR следующим же
+    опросом и получат бумаги от нового корня, без ручной работы.
+    """
+    await ca.set_auto_install(session, body.auto)
+    if body.rotate_suffixes:
+        await ca.rotate(session, body.rotate_suffixes)
+        names = {
+            str(r.get("name") or "")
+            for r in await settings_store.get_dns_records(session)
+            if r.get("issuer") == "ca"
+        }
+        for row in await certs.all_certs(session):
+            if row.name in names:
+                await session.delete(row)
+        await session.commit()
+        await audit.record(
+            session, user.username, "ca_rotate", ", ".join(body.rotate_suffixes)
+        )
+    else:
+        await audit.record(
+            session, user.username, "ca_auto", "включена" if body.auto else "выключена"
+        )
+    return _ca_info(await ca.root_cert(session), await ca.auto_install(session))
 
 
 @router.get("/hs-info/dns-records", response_model=DnsRecordsOut)

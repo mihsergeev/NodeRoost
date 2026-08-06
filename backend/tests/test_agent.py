@@ -211,3 +211,35 @@ def test_failed_update_is_not_retried_every_minute():
     минуту незачем."""
     setup = agent.build_setup("https://hs.example/agent/tok")
     assert ".update-try" in setup and "3600" in setup
+
+
+def test_root_of_the_ca_is_installed_by_fingerprint():
+    """Корень едет на ноду отпечатком, а сам файл нода берёт по нему же.
+
+    Так состояние остаётся коротким (его читают раз в минуту), а нода сверяет
+    скачанное — панель не может подсунуть под видом корня что-то другое, не
+    расходясь при этом со своим же состоянием.
+    """
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "WANT_CA=" in setup
+    assert "/usr/local/share/ca-certificates/noderoost-ca.crt" in setup
+    assert "/etc/pki/ca-trust/source/anchors/noderoost-ca.crt" in setup  # RHEL
+    assert "update-ca-certificates" in setup and "update-ca-trust extract" in setup
+    assert r'GOT" = "\$WANT_CA' in setup  # без совпадения отпечатка не ставим
+
+
+def test_ca_line_is_not_part_of_the_state_hash():
+    """Иначе смена корня показывала бы все ноды «отставшими» по маршрутам."""
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "-e '^ca='" in setup
+    lines = agent.extra_lines([], 0, "abc123")
+    assert "ca=abc123" in lines
+    assert "ca=" not in agent.extra_lines([], 0, "")  # корня нет — строки нет
+
+
+def test_removing_the_agent_removes_the_trust():
+    """Снятый агент, оставивший корень, означал бы, что машина по-прежнему верит
+    всему, что панель подпишет, — а сняли его ровно затем, чтобы не верила."""
+    remove = agent.build_remove()
+    assert "noderoost-ca.crt" in remove
+    assert "update-ca-certificates" in remove

@@ -33,14 +33,21 @@ the wrong hands can withhold updates or offer an old signed one — the anti-rol
 check refuses that — but cannot forge a new one. The same reasoning is why the
 post-certificate reload hook is a file the node's own administrator writes.
 
-**The panel's own CA is as trusted as the panel.** Names issued by it are trusted by
-every device where its root is installed, and that root's private key sits in the
-panel's database — so a panel in the wrong hands can mint a certificate for any
-internal name and, combined with the DNS records it hands out, impersonate an internal
-service to your own machines. That is the price of not needing a public domain; where
-it is too high, use Let's Encrypt instead, whose every issuance lands in public
-certificate-transparency logs. The certificates' own private keys are not affected
-either way: those are generated on the nodes and never sent to the panel.
+**The panel's own CA is as trusted as the panel, and its root is constrained for
+exactly that reason.** The root's private key sits in the panel's database, and the
+panel installs that root into every node's system trust store, so a panel in the wrong
+hands could mint a certificate for a name and — combined with the DNS records it hands
+out — impersonate that service to your own machines. What bounds the damage is the
+root itself: it carries X.509 name constraints and can only sign the zones you listed
+(`mesh`, `lan`, `int.example.com`), never a public domain, and never an IP address.
+Inside those zones the panel is as trusted as it already is for routing; outside them
+it can sign nothing at all. Choose the zones as narrowly as your names allow, and if
+even that is too much, turn the automatic install off and put the root only where you
+want it — or use Let's Encrypt, whose every issuance lands in public
+certificate-transparency logs. Roots created before name constraints existed carry
+none; reissue such a root (DNS → "Reissue the root") to bound it. The certificates'
+own private keys are not affected either way: those are generated on the nodes and
+never sent to the panel.
 
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at

@@ -108,3 +108,67 @@ async def test_own_ca_issues_without_internet(session):
     assert row.status == "ok", row.error
     assert row.not_after is not None
     assert "BEGIN CERTIFICATE" in row.cert_pem
+
+
+def test_root_constrained_to_its_zones():
+    """Корень, стоящий в доверенных на каждой ноде, обязан быть ограничен.
+
+    Иначе автоустановка означает: панель может выписать сертификат на любой сайт
+    в интернете, и все наши машины ему поверят.
+    """
+    _, cert_pem = ca.build_root("Тест", ["mesh", "int.example.com"])
+    cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    ext = cert.extensions.get_extension_for_class(x509.NameConstraints)
+    assert ext.critical is True  # некритичное клиент вправе не соблюдать
+    assert [d.value for d in ext.value.permitted_subtrees] == ["mesh", "int.example.com"]
+    # IP-адреса запрещаем отдельно: тип имени, не упомянутый в permitted,
+    # RFC 5280 считает НЕограниченным — то есть на IP корень бы всё подписал
+    assert len(ext.value.excluded_subtrees) == 2
+
+
+def test_covered():
+    assert ca.covered("nas.mesh", ["mesh"])
+    assert ca.covered("a.b.mesh", ["mesh"])
+    assert not ca.covered("nas.lan", ["mesh"])
+    assert not ca.covered("evilmesh", ["mesh"])  # не суффикс по точке — не в зоне
+    assert ca.covered("что угодно", [])  # старый корень без ограничений
+
+
+async def test_root_takes_its_zone_from_the_first_name(session):
+    await ca.ensure_root(session, for_name="nas.mesh")
+    assert await ca.suffixes(session) == ["mesh"]
+    assert ca.root_info(await ca.root_cert(session))["suffixes"] == ["mesh"]
+
+
+async def test_name_outside_the_zone_is_refused(session):
+    await ca.ensure_root(session, for_name="nas.mesh")
+    try:
+        await ca.sign_csr(session, "www.google.com", _csr("www.google.com"))
+    except ValueError as e:
+        # говорим, что делать: клиенты такой сертификат всё равно отвергнут, и
+        # «выпущен» в панели при ошибке в браузере — худшее из состояний
+        assert "перевыпустите корень" in str(e)
+    else:
+        raise AssertionError("подписал имя вне разрешённых зон")
+
+
+async def test_rotate_replaces_the_root(session):
+    first = await ca.ensure_root(session, for_name="nas.mesh")
+    second = await ca.rotate(session, ["mesh", "lan"])
+    assert second != first
+    assert await ca.suffixes(session) == ["mesh", "lan"]
+    # новый корень уже подписывает то, ради чего его перевыпускали
+    chain = await ca.sign_csr(session, "router.lan", _csr("router.lan"))
+    root = x509.load_pem_x509_certificate(second.encode())
+    leaf = x509.load_pem_x509_certificate(chain.encode())
+    root.public_key().verify(
+        leaf.signature, leaf.tbs_certificate_bytes, ec.ECDSA(hashes.SHA256())
+    )
+
+
+async def test_fingerprint_matches_openssl_form(session):
+    pem = await ca.ensure_root(session)
+    cert = x509.load_pem_x509_certificate(pem.encode())
+    # ровно то, что нода считает через `openssl x509 -fingerprint -sha256`
+    assert ca.fingerprint(pem) == cert.fingerprint(hashes.SHA256()).hex()
+    assert ca.fingerprint("") == ""
