@@ -364,6 +364,67 @@ input:focus {
   font-size: 0.95rem;
 }
 
+.ca-head-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Галочка в строку: глобальный label — flex-column, и без этого чекбокс
+   растягивался во всю ширину карточки, а браузер рисовал его по центру. */
+.ca-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.6rem;
+  cursor: pointer;
+}
+
+.ca-rotate {
+  border-top: 1px solid var(--border);
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+}
+
+.ca-rotate-fields {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.ca-rotate-fields > label:first-child {
+  flex: 1 1 auto;
+}
+
+.ca-years {
+  width: 6rem;
+  flex: 0 0 auto;
+}
+
+/* отпечаток длинный: пусть переносится, а не распирает карточку вбок */
+.ca-fp {
+  word-break: break-all;
+  text-align: right;
+}
+
+.ca-help {
+  margin-top: 0.5rem;
+}
+
+.ca-help summary {
+  cursor: pointer;
+}
+
+@media (max-width: 620px) {
+  .ca-rotate-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ca-years {
+    width: 100%;
+  }
+}
+
 /* поля резолверов/MagicDNS в две колонки: по одному на строку было длинно */
 .dns-srv-grid {
   display: grid;

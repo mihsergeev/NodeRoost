@@ -245,64 +245,39 @@ button and says plainly that the release is unsigned.
 
 ## Certificates for names inside the network
 
-You want to open a service on the network over `https://` without the browser
-complaining, and the usual road to a certificate runs into the fact that the name
-does not face the world: Let's Encrypt has nowhere to come and check. The panel
-does that part for you — with no DNS-provider API keys and no proxy plugins.
+A service inside the network wants to open over `https://` without browser
+warnings. A public certificate authority cannot help here by construction: it signs
+only names visible from the internet and publishes every one of them in CT logs —
+that is, it asks you to expose exactly what you did not want exposed.
 
-**One DNS record is needed. Once, with any provider:**
+So the panel issues them itself: it has its own root, and that root needs no
+domain, no DNS record, no open port and no internet. The name can be anything
+(`nas.mesh`, `router.lan`), issuing is instant and there are no rate limits.
 
-```
-*.int.example.com   A   <the panel's public IP>
-```
+In the **DNS** section every name that points at a node has a "certificate" tick.
+Tick it and the service has its papers a minute later:
 
-Then in the panel's `.env`:
-
-```
-NODEROOST_CERT_DOMAIN=*.int.example.com
-```
-
-and `docker compose up -d`, so the reverse proxy picks up the new block. That is all.
-
-Now, in the **DNS** section, any name that points at a node has a padlock tick.
-Tick it and the service has a certificate a minute later:
-
-1. The panel orders it from Let's Encrypt. The check arrives on port 80 at the
-   name itself — that wildcard record brings it to the panel, and the panel answers.
-2. The key is generated **on the node** (`openssl` needed) and never leaves it:
-   only a request to sign goes up.
+1. The key is generated **on the node** (`openssl` needed) and never leaves it:
+   only the signing request (CSR) travels up.
+2. The panel signs it with its root and answers with the chain.
 3. The agent writes `/etc/noderoost/certs/<name>.crt` and `.key` and, if you put a
    `/lib65/noderoost-agent/cert-hook.sh` next to it, runs that — to reload nginx,
-   caddy or a container. The panel sends no commands to run: what to restart is
+   caddy or a container. The panel sends no commands to execute: what to restart is
    decided on the node.
 4. A month before expiry the whole thing repeats on its own.
 
-Worth knowing up front:
+### The root: domains, validity, installing it
 
-* **The name lands in public CT logs.** Let's Encrypt publishes every certificate
-  it issues, so the existence of `nas.int.example.com` becomes known. Its address
-  and its contents do not.
-* **Port 80 of the panel must stay reachable** from outside: both the first check
-  and every renewal arrive there.
-* **Publicly the name resolves to the panel's address.** That grants nothing — on
-  those names only the challenge path is served, everything else answers 404.
-### Your own CA — when the name must not exist publicly
+The panel creates the root with the first such name and **hands it out on its
+own**: a server joined with the enrollment script gets it while it joins, and a
+node running the agent puts it into the system trust store and keeps the right one
+there (the state carries the fingerprint, and the node fetches the file by it).
+Clear "install the root on nodes automatically" in the DNS section and the nodes
+remove it again — trust switched off has to disappear, not merely stop being
+refreshed.
 
-Each name in the DNS section picks its issuer: **Let's Encrypt** or **your own CA**.
-The second needs no domain, no public DNS record, no internet and no open ports — the
-name can be anything (`nas.mesh`, `router.lan`), issuing is instant and there are no
-rate limits. Nothing reaches the CT logs either: from outside, the name's existence
-stays unknown.
-
-The panel creates the root certificate itself with the first such name, and **hands it
-out on its own**: a server joined with the enrollment script gets it while it joins,
-and a node running the agent puts it into the system trust store and keeps the right
-one there (the state carries the fingerprint, and the node fetches the file by it).
-Clear "install the root on nodes automatically" in the DNS section and the nodes remove
-it again — trust switched off has to disappear, not merely stop being refreshed.
-
-What is left by hand are the machines nobody joins with a script — laptops and phones.
-The panel hands you the file and shows the fingerprint to check it against:
+What is left by hand are the machines nobody joins with a script — laptops and
+phones. The panel hands you the file and shows the fingerprint to check it against:
 
 | System | Where |
 |---|---|
@@ -311,24 +286,27 @@ The panel hands you the file and shows the fingerprint to check it against:
 | Linux | `/usr/local/share/ca-certificates/`, then `update-ca-certificates` |
 | Android / iOS | install the profile and switch on full trust in settings |
 
-**The root is constrained to its zones.** Once it sits in every node's trust store,
-"what can it sign" stops being theoretical: unconstrained, whoever took the panel could
-mint a certificate for any public domain and your own machines would believe it. So the
-root carries X.509 name constraints — it may sign only the listed zones (`mesh`, `lan`,
-`int.example.com`) and never an IP address. The first zone comes from the first name
-(`nas.mesh` → `mesh`); the list changes with "Reissue the root" in the DNS section,
-which is also what you press when a name appears in a new zone. Reissuing voids
-everything the old root signed: the panel reorders the names' certificates itself
-within a minute, but on laptops and phones the old root has to be replaced by hand.
+**Domains and validity are set with "Configure"** in the same card: the domains as
+a comma-separated list (`mesh, lan, home.example.com`) and the root's lifetime in
+years (10 by default, up to 30 — the root is installed by hand on every device and
+nobody wants to redo that yearly). Saving issues a new root.
 
-That CA's private key lives in the panel's database and travels in its backup: whoever
-holds the panel can mint a certificate for any name **inside the permitted zones**. For
-a network the panel already governs that is acceptable; if it is not, use Let's Encrypt,
-where everything issued is visible in public logs.
+**The root is constrained to those domains, and that is not a formality.** Once it
+sits in every node's trust store, "what can it sign" stops being theoretical:
+unconstrained, whoever took the panel could mint a certificate for any public domain
+and your own machines would believe it. So the root carries X.509 name constraints:
+it may sign only the listed domains and never an IP address. The first one comes
+from the first name (`nas.mesh` → `mesh`); a name in a new domain needs that domain
+added to the list and the root issued again.
 
-* To try the setup without spending real attempts, point it at the staging
-  directory: `NODEROOST_ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory`.
-  Browsers do not trust those certificates, but the limits are gentle.
+Reissuing voids everything the old root signed: the panel reorders the names'
+certificates itself within a minute, but on laptops and phones the old root has to
+be replaced by hand. So list the domains generously the first time.
+
+That CA's private key lives in the panel's database and travels in its backup:
+whoever holds the panel can mint a certificate for any name **inside the permitted
+domains**. For a network the panel already governs that is acceptable; if it is not,
+switch the automatic install off and place the root only where you want it.
 
 ## When something is wrong
 

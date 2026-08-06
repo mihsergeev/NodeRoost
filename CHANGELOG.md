@@ -5,6 +5,31 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.9.0] — 2026-08-06
+
+### Changed
+
+- **Let's Encrypt is gone; certificates come from the panel's own CA only.** It
+  arrived here as the familiar answer to "what about https", but for a name that
+  does not and should not exist in public DNS a public CA cannot work by
+  construction: getting a certificate meant publishing a wildcard record, keeping
+  port 80 open and handing the name to CT logs — publishing exactly what you set out
+  not to publish. The own CA needs none of that, and keeping both paths around for
+  the sake of the unused one doubles the settings and the explanations. Removed: the
+  ACME client, the per-name issuer choice, `NODEROOST_CERT_DOMAIN` and its block in
+  the reverse proxy, the public `/.well-known/acme-challenge/` endpoint, the
+  after-failure pause (it existed for LE's limits) and the `retry_after` column.
+- **The root's validity and domains are set in the panel.** The lifetime used to be
+  hardcoded (10 years) and the domains changed through a button you had to guess
+  existed. The "Root certificate" card now has "Configure": domains as a
+  comma-separated list and the lifetime in years (1–30), both applied by one reissue.
+- **The root card stopped being a wall of text.** Three paragraphs that showed
+  neither the domains nor where to change them collapsed into four lines: the
+  auto-install tick, the domains, the expiry and the fingerprint. The per-OS install
+  instructions moved under a disclosure, and the tick itself now sits on one line —
+  the global label style used to stretch the checkbox to full width, leaving it
+  hanging in the middle of the card for no reason.
+
 ## [0.8.0] — 2026-08-06
 
 ### Added

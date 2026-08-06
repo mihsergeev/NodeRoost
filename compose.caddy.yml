@@ -34,16 +34,6 @@ services:
       caddy.@denied.not.remote_ip: ${NODEROOST_ALLOW_IPS:-127.0.0.1}
       caddy.abort: "@denied"
       caddy.reverse_proxy: "{{upstreams 80}}"
-      # Второй сайт-блок — проверка Let's Encrypt для имён внутри сети. Приходит
-      # на САМО имя сервиса (оно ведёт сюда wildcard-записью), а не на домен
-      # панели, поэтому нужен отдельный хост. Только 80-й порт и только путь
-      # проверки: остальное на этих именах наружу отдавать нечего.
-      # NODEROOST_CERT_DOMAIN не задан — подставляется имя, которого не бывает,
-      # и блок просто никогда не срабатывает.
-      caddy_1: http://${NODEROOST_CERT_DOMAIN:-acme-not-configured.invalid}
-      caddy_1.handle_0: /.well-known/acme-challenge/*
-      caddy_1.handle_0.reverse_proxy: noderoost-frontend:80
-      caddy_1.handle_1.respond: "404"
 
   headscale:
     networks:

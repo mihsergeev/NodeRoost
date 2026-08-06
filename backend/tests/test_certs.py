@@ -69,25 +69,12 @@ def test_needs_renewal_covers_the_whole_life():
         name="x", status="ok", cert_pem="pem", not_after=now + timedelta(days=5)
     )
     assert certs.needs_renewal(soon, 30) is True
-    # после отказа держим паузу: у Let's Encrypt лимит на неудачные проверки
-    waiting = Certificate(name="x", status="error", retry_after=now + timedelta(minutes=10))
-    assert certs.needs_renewal(waiting, 30) is False
-    passed = Certificate(name="x", status="error", retry_after=now - timedelta(minutes=1))
-    assert certs.needs_renewal(passed, 30) is True
-
-
-async def test_challenge_answer_is_stored_and_removed(session):
-    from app.certs import _save_challenges
-
-    await _save_challenges(session, {"tok": "tok.thumb"})
-    assert await certs.answer_for(session, "tok") == "tok.thumb"
-    assert await certs.answer_for(session, "другой") is None
-
-
-async def test_account_key_is_created_once(session):
-    first = await certs.account_key(session)
-    assert "BEGIN PRIVATE KEY" in first
-    assert await certs.account_key(session) == first  # новый ключ = новый аккаунт
+    # прошлая попытка кончилась ошибкой — просим CSR снова, но не сразу: причина
+    # (имя вне разрешённых зон) сама не исчезнет, а агент спрашивает раз в минуту
+    failed = Certificate(name="x", status="error", updated_at=now - timedelta(minutes=1))
+    assert certs.needs_renewal(failed, 30) is False
+    old_failure = Certificate(name="x", status="error", updated_at=now - timedelta(hours=1))
+    assert certs.needs_renewal(old_failure, 30) is True
 
 
 async def test_forget_drops_names_that_are_gone(session):
@@ -99,19 +86,6 @@ async def test_forget_drops_names_that_are_gone(session):
 
 
 # --- публичные ручки агента ------------------------------------------------
-
-
-async def test_challenge_endpoint_answers_only_a_known_token(client):
-    """Ручка публичная по замыслу: сюда приходит проверяющий Let's Encrypt, и
-    единственный секрет здесь — сам токен."""
-    from app.certs import _save_challenges
-
-    app = client._transport.app
-    async with app.state.session_factory() as s:
-        await _save_challenges(s, {"tok": "tok.thumb"})
-    r = await client.get("/.well-known/acme-challenge/tok")
-    assert r.status_code == 200 and r.text == "tok.thumb"
-    assert (await client.get("/.well-known/acme-challenge/чужой")).status_code == 404
 
 
 async def test_node_cannot_ask_for_a_name_that_is_not_its_own(client):
@@ -156,20 +130,16 @@ async def test_a_huge_csr_is_refused(client):
 
 
 async def test_a_valid_certificate_is_not_reissued(session):
-    """Повторные запросы не должны жечь недельный лимит Let's Encrypt на весь
-    домен: пока сертификат действует, отдаём тот же самый."""
-    first = await certs.issue(
-        session, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca"
-    )
+    """Пока сертификат действует, повторный запрос получает ТОТ ЖЕ: иначе на одно
+    имя копились бы сертификаты, и было бы не понять, какой из них где лежит."""
+    first = await certs.issue(session, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
     pem = first.cert_pem
-    again = await certs.issue(
-        session, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca"
-    )
+    again = await certs.issue(session, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
     assert again.cert_pem == pem  # тот же, а не новый выпуск
 
 
 def test_a_csr_with_a_broken_signature_is_refused():
-    """Подпись CSR доказывает владение ключом. Битую отвергаем сами, не ходя к LE."""
+    """Подпись CSR доказывает владение ключом: без неё подписали бы чужой."""
     import pytest
 
     good = _csr("nas.mesh")
@@ -222,10 +192,10 @@ async def test_rotation_reorders_the_certificates(client):
     app = client._transport.app
     async with app.state.session_factory() as s:
         await settings_store.set_dns_records(
-            s, [{"name": "nas.mesh", "node_id": "7", "cert": True, "issuer": "ca"}]
+            s, [{"name": "nas.mesh", "node_id": "7", "cert": True}]
         )
         await ca.ensure_root(s, for_name="nas.mesh")
-        await certs.issue(s, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca")
+        await certs.issue(s, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
         assert (await s.get(Certificate, "nas.mesh")).status == "ok"
 
     login = await client.post(

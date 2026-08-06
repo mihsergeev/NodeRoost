@@ -69,7 +69,7 @@ class NodeMetricSample(Base):
 
 
 class Certificate(Base):
-    """Сертификат для имени внутри сети (Let's Encrypt через панель).
+    """Сертификат для имени внутри сети (подписан своим корнем панели).
 
     Приватного ключа здесь НЕТ и быть не должно: его генерит нода, панель видит
     только CSR и подписанный сертификат. Поэтому строка безопасна для бэкапа и
@@ -87,12 +87,6 @@ class Certificate(Base):
         DateTime(timezone=True), nullable=True
     )
     error: Mapped[str] = mapped_column(Text, default="")
-    # Раньше этого времени за выпуском не ходим. У Let's Encrypt лимит на
-    # неудачные проверки (5 в час на имя), и агент, спрашивающий раз в минуту,
-    # сжёг бы его за пять минут — а потом ждал бы час на ровном месте.
-    retry_after: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

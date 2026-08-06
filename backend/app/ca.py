@@ -1,22 +1,22 @@
 """Свой центр сертификации панели: сертификаты для имён, которых нет наружу.
 
-Зачем он рядом с Let's Encrypt. LE выдаёт сертификат только на имя, которое
-существует в публичном DNS, и публикует его в CT-логах — то есть само
-существование `nas.int.example.com` становится известно всем. Своя CA этого не
-требует вовсе: имя может быть любым (`nas.mesh`, `router.lan`), домен покупать не
-нужно, интернет для выпуска не нужен, лимитов нет.
+Публичный ЦС тут не годится по устройству: он подписывает только имя, которое
+существует в публичном DNS, и публикует каждое в CT-логах — то есть требует
+вывести наружу ровно то, что наружу выводить не хотят. Своя CA не требует ни
+домена, ни DNS-записи, ни интернета: имя любое (`nas.mesh`, `router.lan`), выпуск
+мгновенный, лимитов нет.
 
-Цена ровно одна: корневой сертификат надо один раз поставить на каждое
-устройство, с которого ходите. Панель отдаёт его файлом и объясняет, куда его
-класть.
+Цена — корень надо раздать по машинам. Ноды панель обслуживает сама (скрипт
+подключения кладёт корень сразу, агент следит дальше), ноутбуки и телефоны
+остаются на администраторе: файл и отпечаток панель отдаёт.
 
-Что важно понимать про доверие: приватный ключ этой CA лежит в базе панели.
-Значит захваченная панель сможет выписать сертификат на любое имя — для
-внутренней сети это приемлемо (она и так распоряжается тем, кто куда ходит), но
-про это надо знать. Ключ уезжает в бэкап вместе с остальными секретами сети.
+Что важно понимать про доверие: приватный ключ этой CA лежит в базе панели, и
+корень стоит в системном хранилище каждой ноды. Поэтому корень ОГРАНИЧЕН зонами
+(X.509 Name Constraints): внутри них захваченная панель всевластна ровно так же,
+как и в маршрутах, а за их пределами — не может ничего. Ключ уезжает в бэкап
+вместе с остальными секретами сети.
 
-Ключ самого сертификата, как и с Let's Encrypt, генерит нода: сюда приходит
-только CSR.
+Ключ самого сертификата генерит нода: сюда приходит только CSR.
 """
 
 import ipaddress
@@ -40,9 +40,10 @@ CA_SUFFIXES = "ca_suffixes"  # какие имена корню разрешен
 CA_AUTO = "ca_auto"  # ставить ли корень на ноды автоматически (агентом)
 
 # Корень живёт долго: его ставят руками на каждое устройство, и делать это раз в
-# год никто не будет. Сертификаты сервисов — наоборот, короткие: их продлевает
-# панель сама, и короткий срок ограничивает ущерб от утёкшего ключа ноды.
-ROOT_DAYS = 3650
+# год никто не будет (срок задаётся при перевыпуске, по умолчанию 10 лет).
+# Сертификаты сервисов — наоборот, короткие: их продлевает панель сама, и
+# короткий срок ограничивает ущерб от утёкшего ключа ноды.
+ROOT_YEARS = 10
 LEAF_DAYS = 90
 
 
@@ -69,7 +70,9 @@ def covered(name: str, suffixes: list[str]) -> bool:
     return any(name == s or name.endswith("." + s) for s in suffixes)
 
 
-def build_root(name: str, suffixes: list[str] | None = None) -> tuple[str, str]:
+def build_root(
+    name: str, suffixes: list[str] | None = None, years: int = 10
+) -> tuple[str, str]:
     """Создать корневой сертификат. Возвращает (ключ PEM, сертификат PEM).
 
     `suffixes` — какие имена этому корню позволено подписывать (X.509 Name
@@ -94,7 +97,7 @@ def build_root(name: str, suffixes: list[str] | None = None) -> tuple[str, str]:
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(_now() - timedelta(minutes=5))  # запас на разъехавшиеся часы
-        .not_valid_after(_now() + timedelta(days=ROOT_DAYS))
+        .not_valid_after(_now() + timedelta(days=365 * max(1, years)))
         .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
         .add_extension(
             x509.KeyUsage(
@@ -169,6 +172,7 @@ async def ensure_root(
     session: AsyncSession,
     name: str = "NodeRoost internal CA",
     for_name: str = "",
+    years: int = ROOT_YEARS,
 ) -> str:
     """Корневой сертификат: создаётся при первом обращении, дальше берётся из базы.
 
@@ -189,14 +193,16 @@ async def ensure_root(
     if not allowed and for_name:
         allowed = [parent_suffix(for_name)]
         await set_suffixes(session, allowed)
-    key_pem, cert_pem = build_root(name, allowed)
+    key_pem, cert_pem = build_root(name, allowed, years)
     await settings_store.set_raw(session, CA_KEY, key_pem)
     await settings_store.set_raw(session, CA_CERT, cert_pem)
     log.info("создан корневой сертификат панели (%s), зоны: %s", name, allowed or "любые")
     return cert_pem
 
 
-async def rotate(session: AsyncSession, allowed: list[str]) -> str:
+async def rotate(
+    session: AsyncSession, allowed: list[str], years: int = ROOT_YEARS
+) -> str:
     """Выпустить корень заново с новым списком разрешённых зон.
 
     Старый корень после этого бесполезен: сертификаты, им подписанные, перестают
@@ -206,10 +212,13 @@ async def rotate(session: AsyncSession, allowed: list[str]) -> str:
     обойти руками, поэтому решение всегда за администратором.
     """
     await set_suffixes(session, allowed)
-    key_pem, cert_pem = build_root("NodeRoost internal CA", allowed)
+    key_pem, cert_pem = build_root("NodeRoost internal CA", allowed, years)
     await settings_store.set_raw(session, CA_KEY, key_pem)
     await settings_store.set_raw(session, CA_CERT, cert_pem)
-    log.warning("корневой сертификат панели перевыпущен, зоны: %s", allowed or "любые")
+    log.warning(
+        "корневой сертификат панели перевыпущен на %s лет, зоны: %s",
+        years, allowed or "любые",
+    )
     return cert_pem
 
 
