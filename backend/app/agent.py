@@ -88,8 +88,14 @@ grep -q '^routes=' "\$TMP" || { rm -f "\$TMP"; exit 0; }   # мусор вмес
 # вверх) — иначе можно было бы вернуть ноды на старый уязвимый релиз.
 WANT_REL=\$(grep '^update=' "\$TMP" | cut -d= -f2-)
 case "\$WANT_REL" in ''|*[!0-9]*) WANT_REL="";; esac
-if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGENT_RELEASE" ]; then
+# Провалившееся обновление не повторяем чаще раза в час: причина (не сошлась
+# подпись или sha) сама собой не исчезнет, а качать манифест каждую минуту незачем.
+STAMP="$DIR/.update-try"
+LAST=\$(cat "\$STAMP" 2>/dev/null || echo 0)
+NOW=\$(date +%s)
+if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGENT_RELEASE" ]    && { [ "\$(cat "$DIR/.update-rel" 2>/dev/null || echo 0)" != "\$WANT_REL" ] || [ \$((NOW - LAST)) -gt 3600 ]; }; then
   set +e
+  echo "\$NOW" > "\$STAMP"; echo "\$WANT_REL" > "$DIR/.update-rel"
   UPD=\$(mktemp -d)
   printf '%s' "\$AGENT_PUB_B64" | base64 -d > "\$UPD/agent.pub" 2>/dev/null
   curl -fsS --max-time 30 -o "\$UPD/manifest.json" "$STATE_URL/manifest" 2>/dev/null
@@ -217,7 +223,7 @@ if [ -n "\$CERTS" ]; then
   set -e
 fi
 # Состояние без строк cert=: только оно сравнивается, сохраняется и хешируется.
-grep -v -e '^cert=' -e '^script=' "\$TMP" > "\$TMP.core" || true
+grep -v -e '^cert=' -e '^script=' -e '^update=' "\$TMP" > "\$TMP.core" || true
 
 # tailscale set дёргаем ТОЛЬКО при изменении состояния, а состояние сохраняем лишь
 # после успеха: сбойный set (напр. exit-нода ещё не видна в netmap) не «замораживает»
@@ -247,7 +253,7 @@ rm -f "\$TMP"
 # агента от ноды, которая просто дёргает свой URL и ничего не делает. Шлём хеш
 # применённого состояния — по нему видно и то, что нода отстала от задания.
 HASH=\$(sha256sum "$DIR/state" 2>/dev/null | cut -d' ' -f1)
-[ -n "\$HASH" ] && curl -fsS --max-time 10 -X POST "$STATE_URL/applied?h=\$HASH&s=\$SCRIPT_V" >/dev/null 2>&1 || true
+[ -n "\$HASH" ] && curl -fsS --max-time 10 -X POST "$STATE_URL/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
 EOF
 chmod +x "$DIR/apply.sh"
 

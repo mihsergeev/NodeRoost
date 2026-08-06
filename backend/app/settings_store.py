@@ -408,7 +408,11 @@ async def touch_agent_poll(session: AsyncSession, token: str) -> None:
 
 
 async def mark_agent_applied(
-    session: AsyncSession, token: str, state_hash: str, script: str = ""
+    session: AsyncSession,
+    token: str,
+    state_hash: str,
+    script: str = "",
+    release: int = 0,
 ) -> None:
     """Отметка «агент ПРИМЕНИЛ состояние» + хеш применённого. По ней панель отличает
     работающего агента от ноды, которая только опрашивает URL, и видит отставание."""
@@ -420,6 +424,7 @@ async def mark_agent_applied(
             cfg.get("applied_hash") == state_hash
             and cfg.get("last_applied")
             and cfg.get("script") == script
+            and cfg.get("release") == release
         ):
             return  # ничего не изменилось — лишняя запись в БД ни к чему
         cfg["last_applied"] = datetime.now(timezone.utc).isoformat()
@@ -427,10 +432,12 @@ async def mark_agent_applied(
         # версия скрипта агента: пусто = агент старее, чем эта возможность, и
         # новых строк состояния (например сертификатов) он просто не понимает
         cfg["script"] = script
-        # Отчёт пришёл — значит обновление или состоялось, или не состоится молча.
-        # Заказ снимаем в любом случае: висящий «обнови себя» на каждом цикле
-        # заставлял бы ноду ходить за манифестом впустую.
-        cfg.pop("update", None)
+        cfg["release"] = release
+        # Заказ снимаем, только когда нода отчиталась НУЖНЫМ релизом. Снимать его
+        # по любому отчёту было ошибкой: отчёт приходит и от ноды, которая
+        # обновление ещё не делала, — заказ исчезал раньше, чем срабатывал.
+        if release and release >= int(cfg.get("update") or 0):
+            cfg.pop("update", None)
         all_cfg[node_id] = cfg
         await set_agent_all(session, all_cfg)
         return
