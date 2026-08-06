@@ -112,6 +112,36 @@ async def put_agent(
     return _out(cfg, await _wanted_hash(session, node_id, cfg))
 
 
+@router.post("/{node_id}/update", response_model=AgentOut)
+async def request_agent_update(
+    node_id: str, user: CurrentUser, session: SessionDep
+) -> AgentOut:
+    """Заказать ноде обновление агента до текущего подписанного релиза.
+
+    Обновление начинает человек, а не релиз панели: выкатка нового скрипта сама
+    по себе ничего на чужих машинах не запускает. Нода при этом проверит подпись
+    и всё равно откажется ставить неподписанное — так что кнопка не даёт панели
+    власти выполнить на ноде произвольный код.
+    """
+    if not agent.signed_and_current():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Скрипт агента не подписан этой версией панели: нода отвергнет "
+            "обновление. Подпишите релиз (agent-signing/release.py) и выкатите панель.",
+        )
+    all_cfg = await settings_store.get_agent_all(session)
+    cfg = all_cfg.get(node_id, {})
+    if not cfg.get("token"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "у этой ноды нет агента")
+    cfg["update"] = agent.release()
+    all_cfg[node_id] = cfg
+    await settings_store.set_agent_all(session, all_cfg)
+    await audit.record(
+        session, user.username, "agent_update", node_id, f"релиз {agent.release()}"
+    )
+    return _out(cfg, await _wanted_hash(session, node_id, cfg))
+
+
 async def _wanted_hash(session, node_id: str, cfg: dict) -> str:
     """sha256 состояния, которое панель отдаёт ноде СЕЙЧАС, — ровно того текста,
     что агент кладёт в файл и хеширует у себя."""
@@ -132,6 +162,41 @@ async def agent_setup(token: str, session: SessionDep) -> Response:
     return Response(
         content=agent.build_setup(_state_url(token)), media_type="text/plain"
     )
+
+
+@public_router.get("/agent/{token}/manifest")
+async def agent_manifest(token: str, session: SessionDep) -> Response:
+    """Подписанный манифест релиза: что именно нода имеет право поставить."""
+    if await settings_store.get_agent_by_token(session, token) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
+    raw = agent._dist("manifest.json")
+    if not raw:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "релиз агента не подписан")
+    return Response(content=raw, media_type="application/json")
+
+
+@public_router.get("/agent/{token}/manifest.sig")
+async def agent_manifest_sig(token: str, session: SessionDep) -> Response:
+    """Подпись манифеста офлайн-ключом. Панель её только раздаёт: приватного
+    ключа у неё нет, поэтому подделать содержимое обновления она не может."""
+    if await settings_store.get_agent_by_token(session, token) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
+    sig = agent.manifest_signature()
+    if not sig:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "подписи нет")
+    return Response(content=sig, media_type="application/octet-stream")
+
+
+@public_router.get("/agent/{token}/setup.tmpl")
+async def agent_setup_template(token: str, session: SessionDep) -> Response:
+    """Скрипт агента БЕЗ подстановок — ровно те байты, что покрыты подписью.
+
+    Свои значения (адрес состояния, ключ подписи) нода подставляет сама: возьми
+    она их отсюда, подпись защищала бы не то, что важно.
+    """
+    if await settings_store.get_agent_by_token(session, token) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
+    return Response(content=agent.TEMPLATE, media_type="text/plain")
 
 
 @public_router.get("/agent/{token}/remove")
@@ -173,9 +238,12 @@ async def agent_state(token: str, session: SessionDep) -> Response:
         str(cfg.get("use_exit") or ""),
     )
     settings = get_settings()
+    # Заказ обновления живёт в настройках ноды: его ставит администратор кнопкой,
+    # и он висит, пока агент не отчитается уже новой версией скрипта.
+    want = int(cfg.get("update") or 0)
     body += agent.extra_lines(
         await certs.wanted_for_node(session, settings, node_id),
-        settings.agent_self_update,
+        want if want > 0 else 0,
     )
     return Response(content=body, media_type="text/plain")
 

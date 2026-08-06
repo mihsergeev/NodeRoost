@@ -12,9 +12,17 @@ JSON в нём получается хрупким (sed по кавычкам л
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
+import os
 
-_SETUP = r"""#!/bin/sh
+# Подписанный релиз скрипта: манифест, подпись и публичный ключ. Кладёт сюда
+# agent-signing/release.py, приватного ключа на сервере панели НЕТ и быть не
+# должно — в этом весь смысл: панель раздаёт подписанное, но не подписывает.
+DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_dist")
+
+TEMPLATE = r"""#!/bin/sh
 # Подавления истории здесь НЕТ намеренно. Скрипт доставляется через `curl … | sh`,
 # то есть исполняется неинтерактивным шеллом, у которого истории нет вовсе, а токен
 # в историю попадает из URL, который админ набирает руками — телом скрипта на это
@@ -43,6 +51,12 @@ cat > "$DIR/apply.sh" <<EOF
 # «ничего не происходит», причём молча — панель ждала от ноды того, чего её агент
 # делать не умеет.
 SCRIPT_V="@@SCRIPT_V@@"
+# Публичный ключ подписи релизов и номер установленного релиза. Ключ вшивается
+# ОДИН РАЗ — сейчас, когда установку запустил человек. Дальше нода принимает
+# обновление, только если оно подписано этим ключом: захваченная панель своего
+# скрипта не подсунет, потому что приватного ключа на её сервере нет.
+AGENT_PUB_B64="@@PUBKEY@@"
+AGENT_RELEASE="@@RELEASE@@"
 # Тянет желаемое состояние с панели и применяет, ТОЛЬКО если оно изменилось —
 # иначе tailscale set дёргался бы каждую минуту без нужды.
 set -e
@@ -64,30 +78,53 @@ fi
 [ "\$CODE" = 200 ] || { rm -f "\$TMP"; exit 0; }
 grep -q '^routes=' "\$TMP" || { rm -f "\$TMP"; exit 0; }   # мусор вместо ответа
 
-# --- самообновление агента ---
-# Скрипт живёт на ноде и сам себя не чинит: пока его не переустановят руками, нода
-# не умеет ничего, чего не умела в день установки. Поэтому при расхождении версий
-# перезапускаем установку — она идемпотентна и переписывает этот же файл. Не чаще
-# раза в час (штамп): если версия почему-то не сойдётся и после установки, нода не
-# должна дёргать панель каждую минуту.
-# Переустановка САМА СЕБЯ — единственное место, где нода выполняет присланный
-# панелью код. Поэтому она идёт только по явному разрешению (selfupdate=1 в
-# состоянии, включается в .env панели): захваченная панель иначе раздала бы под
-# root что угодно и сразу всем. Без разрешения панель просто покажет, что агент
-# устарел, а переустановит его человек.
-WANT_V=\$(grep '^script=' "\$TMP" | cut -d= -f2-)
-ALLOW_UPD=\$(grep '^selfupdate=' "\$TMP" | cut -d= -f2-)
-if [ "\$ALLOW_UPD" = "1" ] && [ -n "\$WANT_V" ] && [ "\$WANT_V" != "\$SCRIPT_V" ]; then
-  STAMP="$DIR/.selfupdate"
-  NOW=\$(date +%s)
-  LAST=\$(cat "\$STAMP" 2>/dev/null || echo 0)
-  if [ \$((NOW - LAST)) -gt 3600 ]; then
-    echo "\$NOW" > "\$STAMP"
-    echo "NodeRoost: агент обновляется до версии \$WANT_V (был \$SCRIPT_V)" >&2
-    rm -f "\$TMP"
-    curl -fsSL --max-time 60 "$STATE_URL/setup" | sh && exit 0
-    exit 0
+# --- обновление агента: ставим ТОЛЬКО подписанное ---
+# Обновление запрашивает администратор в панели (update=<номер релиза> в
+# состоянии), но доверия к панели здесь нет никакого: нода ставит новый скрипт,
+# только если он подписан офлайн-ключом, публичная половина которого вшита сюда
+# при установке — то есть тогда, когда установку запускал человек. Приватного
+# ключа на сервере панели нет, поэтому захваченная панель своего кода не подсунет:
+# максимум откажется обновлять. Откат назад тоже закрыт (номер релиза только
+# вверх) — иначе можно было бы вернуть ноды на старый уязвимый релиз.
+WANT_REL=\$(grep '^update=' "\$TMP" | cut -d= -f2-)
+case "\$WANT_REL" in ''|*[!0-9]*) WANT_REL="";; esac
+if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGENT_RELEASE" ]; then
+  set +e
+  UPD=\$(mktemp -d)
+  printf '%s' "\$AGENT_PUB_B64" | base64 -d > "\$UPD/agent.pub" 2>/dev/null
+  curl -fsS --max-time 30 -o "\$UPD/manifest.json" "$STATE_URL/manifest" 2>/dev/null
+  curl -fsS --max-time 30 -o "\$UPD/manifest.sig" "$STATE_URL/manifest.sig" 2>/dev/null
+  curl -fsS --max-time 60 -o "\$UPD/setup.tmpl" "$STATE_URL/setup.tmpl" 2>/dev/null
+  if ! openssl dgst -sha256 -verify "\$UPD/agent.pub" -signature "\$UPD/manifest.sig" \
+       "\$UPD/manifest.json" >/dev/null 2>&1; then
+    echo "NodeRoost: ПОДПИСЬ ОБНОВЛЕНИЯ НЕВЕРНА — отказ (панель могла быть подменена)" >&2
+    rm -rf "\$UPD"
+  else
+    REL=\$(sed -n 's/.*"release":\([0-9]*\).*/\1/p' "\$UPD/manifest.json")
+    SUM=\$(sed -n 's/.*"script_sha256":"\([0-9a-f]*\)".*/\1/p' "\$UPD/manifest.json")
+    GOT=\$(sha256sum "\$UPD/setup.tmpl" 2>/dev/null | cut -d' ' -f1)
+    if [ "\$REL" = "\$WANT_REL" ] && [ -n "\$SUM" ] && [ "\$SUM" = "\$GOT" ]; then
+      # Свои значения подставляем САМИ: ни адрес состояния, ни ключ подписи из
+      # присланного файла не берём — иначе подпись защищала бы не то, что важно.
+      # Имена плейсхолдеров склеиваем на лету: напиши их здесь целиком — панель
+      # подставила бы значения прямо в эту строку, когда генерировала файл, и
+      # обновлённый скрипт остался бы с незаполненными местами.
+      P='@'; P="\$P\$P"
+      sed -e "s|\${P}STATE_URL\${P}|$STATE_URL|" \\
+          -e "s|\${P}SCRIPT_V\${P}|\$(printf %s "\$SUM" | cut -c1-8)|" \\
+          -e "s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" \\
+          -e "s|\${P}RELEASE\${P}|\$REL|" \\
+          "\$UPD/setup.tmpl" > "\$UPD/setup.sh"
+      echo "NodeRoost: агент обновляется до релиза \$REL (был \$AGENT_RELEASE), подпись проверена" >&2
+      rm -f "\$TMP"
+      sh "\$UPD/setup.sh"
+      rm -rf "\$UPD"
+      exit 0
+    fi
+    echo "NodeRoost: обновление отклонено — манифест не сошёлся (релиз \$REL, sha \$SUM)" >&2
+    rm -rf "\$UPD"
   fi
+  set -e
 fi
 
 ROUTES=\$(grep '^routes=' "\$TMP" | cut -d= -f2-)
@@ -275,12 +312,59 @@ echo "NodeRoost: агент снят. Маршруты остаются таки
 
 # Версия скрипта агента = хеш его текста. Меняем скрипт — меняется и она, и ноды
 # со старой версией обновляются сами (см. блок самообновления внутри apply.sh).
-SCRIPT_VERSION = hashlib.sha256(_SETUP.encode()).hexdigest()[:8]
+SCRIPT_VERSION = hashlib.sha256(TEMPLATE.encode()).hexdigest()[:8]
+
+
+def _dist(name: str) -> bytes:
+    try:
+        with open(os.path.join(DIST, name), "rb") as f:
+            return f.read()
+    except OSError:
+        return b""
+
+
+def manifest() -> dict:
+    """Подписанный манифест релиза агента (release, script_sha256, released_at).
+
+    Пусто — релиз не подписан: обновлять нечем, и панель об этом скажет прямо,
+    вместо того чтобы предлагать кнопку, которая ничего не сделает.
+    """
+    raw = _dist("manifest.json")
+    try:
+        return json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+
+
+def manifest_signature() -> bytes:
+    return _dist("manifest.sig")
+
+
+def pubkey_b64() -> str:
+    """Публичный ключ подписи одной строкой — вшивается в скрипт при установке."""
+    pem = _dist("agent.pub")
+    return base64.b64encode(pem).decode() if pem else ""
+
+
+def release() -> int:
+    return int(manifest().get("release", 0) or 0)
+
+
+def signed_and_current() -> bool:
+    """Подпись есть И она про ТОТ скрипт, который панель раздаёт сейчас.
+
+    Иначе обновлять нельзя: нода сверит sha256 и откажется, а админ получит
+    кнопку, которая молча не работает. Значит забыли выпустить релиз подписью.
+    """
+    return bool(manifest().get("script_sha256") == hashlib.sha256(TEMPLATE.encode()).hexdigest())
 
 
 def build_setup(state_url: str) -> str:
-    return _SETUP.replace("@@STATE_URL@@", state_url).replace(
-        "@@SCRIPT_V@@", SCRIPT_VERSION
+    return (
+        TEMPLATE.replace("@@STATE_URL@@", state_url)
+        .replace("@@SCRIPT_V@@", SCRIPT_VERSION)
+        .replace("@@PUBKEY@@", pubkey_b64())
+        .replace("@@RELEASE@@", str(release()))
     )
 
 
@@ -289,21 +373,21 @@ def build_remove() -> str:
 
 
 def extra_lines(
-    wanted: list[tuple[str, str, bool]], self_update: bool = False
+    wanted: list[tuple[str, str, bool]], update_release: int = 0
 ) -> str:
-    """Довесок к состоянию: версия скрипта агента, разрешение на самообновление и
-    сертификаты.
+    """Довесок к состоянию: версия скрипта агента, заказ обновления и сертификаты.
 
     В хешируемое состояние НЕ входит — иначе смена скрипта или выпуск сертификата
     показывали бы все ноды «отставшими», хотя маршруты у них ровно те, что нужно.
 
-    `selfupdate=1` уходит, только если это разрешено в .env панели. Сам по себе
-    факт «версии разошлись» ноду переустанавливать не заставляет: выполнение
-    присланного панелью кода — решение администратора, а не следствие релиза.
+    `update=<релиз>` появляется, только когда обновление запросил АДМИНИСТРАТОР
+    кнопкой в панели. Само по себе расхождение версий ноду не трогает: панель
+    показывает, что агент устарел, а решение остаётся за человеком — и даже после
+    его нажатия нода поставит только то, что подписано офлайн-ключом.
     """
     lines = f"script={SCRIPT_VERSION}\n"
-    if self_update:
-        lines += "selfupdate=1\n"
+    if update_release:
+        lines += f"update={update_release}\n"
     return lines + cert_lines(wanted)
 
 

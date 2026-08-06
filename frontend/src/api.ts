@@ -220,6 +220,12 @@ export type AgentCfg = {
 export function getAgent(nodeId: string): Promise<AgentCfg> {
   return api<AgentCfg>(`/api/agent/${nodeId}`)
 }
+// Заказать ноде обновление агента до текущего подписанного релиза. Нода поставит
+// его, только если подпись сойдётся с ключом, вшитым при установке.
+export function updateAgent(nodeId: string): Promise<AgentCfg> {
+  return api<AgentCfg>(`/api/agent/${nodeId}/update`, { method: 'POST' })
+}
+
 export function setAgent(
   nodeId: string,
   routes: string[],
