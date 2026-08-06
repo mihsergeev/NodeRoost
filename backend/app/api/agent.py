@@ -283,7 +283,14 @@ async def agent_csr(token: str, name: str, request: Request, session: SessionDep
     except Exception as e:  # noqa: BLE001 — сюда приходит текст с чужой машины
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"не похоже на CSR: {e}") from e
     try:
-        row = await certs.issue(session, get_settings(), name, node_id, csr_der)
+        row = await certs.issue(
+            session,
+            get_settings(),
+            name,
+            node_id,
+            csr_der,
+            await certs.issuer_of(session, name),
+        )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     if row.status != "ok":

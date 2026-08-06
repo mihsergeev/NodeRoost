@@ -8,9 +8,9 @@ from urllib.parse import urlparse
 
 import httpx
 import yaml
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app import audit, certs, dnsrecords, settings_store, tsmirror
+from app import audit, ca, certs, dnsrecords, settings_store, tsmirror
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import get_client
@@ -22,6 +22,7 @@ from app.schemas import (
     ApiKeyOut,
     DerpInfo,
     DnsInfo,
+    CaInfo,
     DnsRecordOut,
     DnsRecordsOut,
     DnsRecordsUpdateIn,
@@ -272,10 +273,18 @@ async def _hs_nodes() -> list[dict]:
         return []
 
 
+def _ca_info(cert_pem: str) -> CaInfo:
+    if not cert_pem:
+        return CaInfo()
+    info = ca.root_info(cert_pem)
+    return CaInfo(exists=True, **info)
+
+
 async def _records_out(
     session, stored: list[dict], nodes: list[dict], cfg: dict, config_path: str
 ) -> DnsRecordsOut:
     settings = get_settings()
+    cfg_root = await ca.root_cert(session)
     by_id = {str(n.get("id", "")): n for n in nodes}
     out: list[DnsRecordOut] = []
     for rec in stored:
@@ -300,6 +309,7 @@ async def _records_out(
                 ip=str(rec.get("ip") or ""),
                 enabled=bool(rec.get("enabled", True)),
                 cert=bool(rec.get("cert", False)),
+                issuer=("ca" if rec.get("issuer") == "ca" else "le"),
                 cert_status=(cert.status if cert else ("issuing" if rec.get("cert") else "")),
                 cert_until=(
                     cert.not_after.date().isoformat() if cert and cert.not_after else ""
@@ -309,12 +319,35 @@ async def _records_out(
                 note=note,
             )
         )
+    root = _ca_info(cfg_root)
     return DnsRecordsOut(
         records=out,
+        ca=root,
         active=dnsrecords.hs_path_configured(
             cfg, settings.headscale_extra_records_path_in_hs
         ),
         restart_pending=os.path.exists(_restart_flag_path(config_path)),
+    )
+
+
+@router.get("/ca")
+async def download_ca(_: CurrentUser, session: SessionDep) -> Response:
+    """Корневой сертификат панели — тот самый файл, который ставят на устройства.
+
+    Секрета в нём нет (приватный ключ остаётся в панели), но и раздавать его без
+    входа незачем: он говорит, какие внутренние имена вообще существуют.
+    """
+    pem = await ca.root_cert(session)
+    if not pem:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Свой центр сертификации ещё не создан — он появится с первым именем, "
+            "которому выбран издатель «своя CA»",
+        )
+    return Response(
+        content=pem,
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": 'attachment; filename="noderoost-ca.crt"'},
     )
 
 
@@ -380,6 +413,7 @@ async def update_dns_records(
             "ip": r.ip,
             "enabled": r.enabled,
             "cert": r.cert,
+            "issuer": r.issuer,
         }
         for r in body.records
     ]

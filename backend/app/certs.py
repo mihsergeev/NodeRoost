@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives import hashes
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import acme, settings_store
+from app import acme, ca, settings_store
 from app.config import Settings
 from app.models import Certificate
 
@@ -145,6 +145,14 @@ async def wanted_for_node(
     return sorted(out)
 
 
+async def issuer_of(session: AsyncSession, name: str) -> str:
+    """Кто выпускает сертификат для этого имени: «le» или «ca» (по записи в панели)."""
+    for rec in await settings_store.get_dns_records(session):
+        if str(rec.get("name") or "") == name:
+            return "ca" if rec.get("issuer") == "ca" else "le"
+    return "le"
+
+
 async def all_certs(session: AsyncSession) -> list[Certificate]:
     return list(await session.scalars(select(Certificate)))
 
@@ -167,7 +175,12 @@ async def forget(session: AsyncSession, names: set[str]) -> int:
 
 
 async def issue(
-    session: AsyncSession, settings: Settings, name: str, node_id: str, csr_der: bytes
+    session: AsyncSession,
+    settings: Settings,
+    name: str,
+    node_id: str,
+    csr_der: bytes,
+    issuer: str = "le",
 ) -> Certificate:
     """Выпустить (или перевыпустить) сертификат для имени по CSR ноды.
 
@@ -188,6 +201,29 @@ async def issue(
             return row  # ждём паузы после отказа — Let's Encrypt считает попытки
         row.status = "issuing"
         await session.commit()
+
+        if issuer == "ca":
+            # Своя CA: ни интернета, ни публичного DNS, ни лимитов — подписываем
+            # сами. Отказать тут может только кривой CSR, и это ошибка ввода, а не
+            # повод держать паузу как с Let's Encrypt.
+            try:
+                pem = await ca.sign_csr(session, name, csr_der)
+            except Exception as e:  # noqa: BLE001
+                row.status = "error"
+                row.error = str(e)[:500]
+                row.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+                log.warning("своя CA не подписала %s: %s", name, e)
+                return row
+            row.status = "ok"
+            row.error = ""
+            row.retry_after = None
+            row.cert_pem = pem
+            row.not_after = cert_not_after(pem)
+            row.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+            log.info("свой CA выдал сертификат для %s до %s", name, row.not_after)
+            return row
 
         key_pem = await account_key(session)
         kid = await settings_store.get_raw(session, ACCOUNT_KID) or ""
