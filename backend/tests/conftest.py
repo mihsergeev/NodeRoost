@@ -52,3 +52,18 @@ async def session(tmp_path):
     async with factory() as s:
         yield s
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def session_factory(tmp_path):
+    """Фабрика сессий — для кода, который сам открывает и закрывает сессии
+    (коллектор делает это по нескольку раз за проход)."""
+    from app.db import create_engine_and_factory
+
+    engine, factory = create_engine_and_factory(
+        f"sqlite+aiosqlite:///{tmp_path.as_posix()}/col.db"
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield factory
+    await engine.dispose()
