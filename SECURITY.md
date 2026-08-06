@@ -19,6 +19,17 @@ directory; keep them somewhere you would keep a private key. `ops/backup-offsite
 ships them into a restic repository, which is encrypted — mail attachments, object
 storage without encryption and ticket systems are not.
 
+**The agent does not run code the panel sends — unless you let it.** The agent
+applies a fixed set of commands to what the panel asks for (routes, exit node,
+certificate files); a compromised panel can rearrange the node's networking, which
+is bad enough, but it cannot run arbitrary code there. The one exception is agent
+self-update, and it is **off by default** (`NODEROOST_AGENT_SELF_UPDATE=0`): switched
+on, a node that sees a newer script version reinstalls itself from the panel, so
+whoever holds the panel can hand every node a script to run as root within a minute.
+With it off the panel only reports that a node's agent is out of date and offers the
+command; a human runs it. The same reasoning is why the post-certificate reload hook
+is a file the node's own administrator writes, not a command the panel sends.
+
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at
 the next start — that is the recovery path for a locked-out administrator, and the

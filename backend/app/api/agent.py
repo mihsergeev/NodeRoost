@@ -172,8 +172,10 @@ async def agent_state(token: str, session: SessionDep) -> Response:
         bool(cfg.get("exit", False)),
         str(cfg.get("use_exit") or ""),
     )
+    settings = get_settings()
     body += agent.extra_lines(
-        await certs.wanted_for_node(session, get_settings(), node_id)
+        await certs.wanted_for_node(session, settings, node_id),
+        settings.agent_self_update,
     )
     return Response(content=body, media_type="text/plain")
 
