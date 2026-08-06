@@ -131,13 +131,26 @@ often instead of connecting directly, which is slower.
 
 ## Joining machines
 
-In the panel: **Servers → Add server** (or **Devices → Add device**). Give it a
-name, pick the OS, and the panel shows a ready script carrying a single-use key.
-Copy it and run it on the machine as root:
+Joining is one command; the panel hands it to you under "Add" in **Servers** or
+**Devices**. Windows (PowerShell **as administrator**):
 
-```bash
-sudo sh -c "the script you copied"
 ```
+irm https://hs.example.com/join/<token> | iex
+```
+
+Linux and macOS:
+
+```
+curl -fsSL https://hs.example.com/join/<token> | sudo sh
+```
+
+The script behind that link installs the pinned Tailscale client, joins the machine
+to your control server and puts the panel's root into its trust store. The link
+lives for an hour — as long as the one-time key inside it. The script itself is
+shown next to the command for anyone who wants to read it first.
+
+Where to get it: **Servers → Add server** (or **Devices → Add device**), then a
+name and the OS.
 
 It installs the right Tailscale version — from the panel's local mirror first,
 falling back to the official site — and joins the machine. It shows up in the

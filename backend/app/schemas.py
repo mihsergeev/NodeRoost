@@ -269,6 +269,10 @@ class EnrollOut(BaseModel):
     script: str
     key_id: str
     expires_at: str
+    # Одна команда вместо простыни: скрипт лежит по ссылке (живёт столько же,
+    # сколько ключ внутри него), и машина забирает его сама.
+    join_cmd: str = ""
+    join_url: str = ""
 
 
 class ReconnectIn(RequestModel):

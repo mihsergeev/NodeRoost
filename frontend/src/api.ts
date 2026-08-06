@@ -599,6 +599,9 @@ export type EnrollResult = {
   script: string
   key_id: string
   expires_at: string
+  // одна команда вместо простыни: скрипт лежит по ссылке и живёт как ключ в нём
+  join_cmd: string
+  join_url: string
 }
 
 export type EnrollStatus = {

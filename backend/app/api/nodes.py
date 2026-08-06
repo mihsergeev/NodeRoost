@@ -457,6 +457,9 @@ async def reconnect_node(
         body.os, settings, key.get("key", ""), name, version=version,
         force_reauth=True, ca_pem=ca_pem,
     )
+    from app.api.enroll import _join_link
+
+    url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
     await audit.record(session, user.username, "node_reconnect", node_id, name)
     await apply_policy(session, client, settings)
     return EnrollOut(
@@ -466,6 +469,8 @@ async def reconnect_node(
         script=script,
         key_id=str(key.get("id", "")),
         expires_at=exp_iso,
+        join_url=url,
+        join_cmd=cmd,
     )
 
 
