@@ -5,6 +5,27 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.12.1] — 2026-08-06
+
+### Changed
+
+- **"Root certificate" is now "Certificate authority (CA)".** The word "root" is
+  clear to someone who already knows how a PKI is put together, and the card is
+  there for everyone else. A line under the heading now says what the thing is: it
+  signs the certificates for names inside the network, and its own certificate has
+  to be installed on your devices. "Download" became "Download the certificate",
+  and the tick reads "install the certificate on nodes automatically" (agent
+  release 6 — the node-side messages were renamed with it).
+
+### Fixed
+
+- **The "Edit node" dialog fell apart: the "Admin" label on one line, its tick
+  underneath, hard to hit.** The `.field-row` class was declared TWICE in the
+  stylesheet and the second declaration won — a 200-pixel grid that pulled the
+  label and the tick into separate cells. The dead declaration is gone, and a tick
+  row is now the same everywhere: tick on the left, label on the right, the whole
+  row clickable rather than an 18×18 square.
+
 ## [0.12.0] — 2026-08-06
 
 ### Added

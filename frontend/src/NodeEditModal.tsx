@@ -249,14 +249,14 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
         )}
 
         {kind === 'device' && (
-          <label className="field field-row">
-            <span>{t('Админ — полный доступ ко всем серверам')}</span>
+          <label className="field field-check">
             <input
               type="checkbox"
               className="field-checkbox"
               checked={admin}
               onChange={(e) => setAdmin(e.target.checked)}
             />
+            <span>{t('Админ — полный доступ ко всем серверам')}</span>
           </label>
         )}
 
