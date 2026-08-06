@@ -358,24 +358,19 @@ async def update_ca(
     """Автоустановка корня на ноды и — по явной просьбе — перевыпуск корня.
 
     Перевыпуск обесценивает всё, что подписано старым корнем, поэтому он делается
-    только когда переданы зоны, и никогда — побочным эффектом сохранения галочки.
+    только по флагу, и никогда — побочным эффектом сохранения галочки.
     Сертификаты имён панель после этого забывает: ноды пришлют CSR следующим же
     опросом и получат бумаги от нового корня, без ручной работы.
     """
     await ca.set_auto_install(session, body.auto)
-    if body.rotate_suffixes:
-        await ca.rotate(session, body.rotate_suffixes, body.rotate_years)
+    if body.reissue:
+        await ca.rotate(session, body.years)
         # Всё, подписанное старым корнем, стало бесполезным — забываем, чтобы
         # ноды прислали CSR следующим же опросом и получили бумаги от нового.
         for row in await certs.all_certs(session):
             await session.delete(row)
         await session.commit()
-        await audit.record(
-            session,
-            user.username,
-            "ca_rotate",
-            f"{', '.join(body.rotate_suffixes)} на {body.rotate_years} лет",
-        )
+        await audit.record(session, user.username, "ca_rotate", f"на {body.years} лет")
     else:
         await audit.record(
             session, user.username, "ca_auto", "включена" if body.auto else "выключена"

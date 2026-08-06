@@ -158,7 +158,7 @@ async def test_node_gets_the_root_and_its_fingerprint(client):
     app = client._transport.app
     async with app.state.session_factory() as s:
         await settings_store.set_agent_all(s, {"7": {"token": "tok7"}})
-        pem = await ca.ensure_root(s, for_name="nas.mesh")
+        pem = await ca.ensure_root(s)
         fp = ca.fingerprint(pem)
 
     state = await client.get("/agent/tok7")
@@ -176,7 +176,7 @@ async def test_trust_is_withdrawn_when_the_tick_is_cleared(client):
     app = client._transport.app
     async with app.state.session_factory() as s:
         await settings_store.set_agent_all(s, {"7": {"token": "tok7"}})
-        await ca.ensure_root(s, for_name="nas.mesh")
+        await ca.ensure_root(s)
         await ca.set_auto_install(s, False)
 
     state = await client.get("/agent/tok7")
@@ -194,7 +194,7 @@ async def test_rotation_reorders_the_certificates(client):
         await settings_store.set_dns_records(
             s, [{"name": "nas.mesh", "node_id": "7", "cert": True}]
         )
-        await ca.ensure_root(s, for_name="nas.mesh")
+        await ca.ensure_root(s)
         await certs.issue(s, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
         assert (await s.get(Certificate, "nas.mesh")).status == "ok"
 
@@ -203,10 +203,10 @@ async def test_rotation_reorders_the_certificates(client):
     )
     r = await client.put(
         "/api/ca",
-        json={"auto": True, "rotate_suffixes": ["mesh", "lan"]},
+        json={"auto": True, "reissue": True, "years": 20},
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
     assert r.status_code == 200
-    assert r.json()["suffixes"] == ["mesh", "lan"]
+    assert r.json()["blocked"] > 500  # публичные домены корню запрещены
     async with app.state.session_factory() as s:
         assert await s.get(Certificate, "nas.mesh") is None  # закажется заново
