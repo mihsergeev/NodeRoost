@@ -5,6 +5,22 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.9.1] — 2026-08-06
+
+### Fixed
+
+- **The collector cycle had been dying halfway through since 0.5.1.** It called
+  `certs.forget` without importing it, so every pass raised `NameError` on that
+  line. Metrics, node-down and key-expiry alerts and the internal-name file came
+  before it and worked; everything after it never ran at all: auto-approving routes
+  requested in the panel, pruning spent one-time keys, and ACL self-healing (a
+  policy rebuild when the set of nodes changed outside the panel). From outside it
+  did not look like breakage, just like those things not happening. Found while
+  shipping this release — the traceback had been in the log every minute with
+  nobody reading it.
+  The test now holds the whole pass rather than its individual pieces: remove the
+  import and it fails.
+
 ## [0.9.0] — 2026-08-06
 
 ### Changed

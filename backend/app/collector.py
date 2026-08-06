@@ -9,7 +9,7 @@ from math import ceil
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app import alerts, dnsrecords, policy_apply, routing, settings_store
+from app import alerts, certs, dnsrecords, policy_apply, routing, settings_store
 from app.config import Settings
 from app.hs_client import HeadscaleError, get_client
 from app.models import NodeMetricSample, NodeStatus
