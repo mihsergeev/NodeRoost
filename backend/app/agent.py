@@ -188,7 +188,7 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
     | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
   if [ -z "\$WANT_CA" ]; then
     [ -f "\$CA_DST" ] && { rm -f "\$CA_DST"; \$CA_UPD >/dev/null 2>&1; \\
-      echo "NodeRoost: корень панели убран из доверенных" >&2; }
+      echo "NodeRoost: сертификат CA панели убран из доверенных" >&2; }
   elif [ "\$WANT_CA" != "\$HAVE" ]; then
     if curl -fsS --max-time 30 -o "\$TMP.ca" "$STATE_URL/ca" 2>/dev/null; then
       GOT=\$(openssl x509 -in "\$TMP.ca" -noout -fingerprint -sha256 2>/dev/null \\
@@ -196,10 +196,10 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
       if [ -n "\$GOT" ] && [ "\$GOT" = "\$WANT_CA" ]; then
         cat "\$TMP.ca" > "\$CA_DST"; chmod 644 "\$CA_DST"
         \$CA_UPD >/dev/null 2>&1 \\
-          && echo "NodeRoost: корень панели добавлен в доверенные (\$CA_DST)" >&2 \\
+          && echo "NodeRoost: сертификат CA панели добавлен в доверенные (\$CA_DST)" >&2 \\
           || echo "NodeRoost: не удалось обновить хранилище корней (\$CA_UPD)" >&2
       else
-        echo "NodeRoost: корень не поставлен — отпечаток скачанного не совпал" >&2
+        echo "NodeRoost: сертификат CA не поставлен — отпечаток скачанного не совпал" >&2
       fi
       rm -f "\$TMP.ca"
     fi
@@ -376,7 +376,7 @@ for d in /usr/local/share/ca-certificates /etc/pki/ca-trust/source/anchors; do
 done
 update-ca-certificates >/dev/null 2>&1 || update-ca-trust extract >/dev/null 2>&1
 rm -rf /lib65/noderoost-agent
-echo "NodeRoost: агент снят, корень панели убран из доверенных."
+echo "NodeRoost: агент снят, сертификат CA панели убран из доверенных."
 echo "Сертификаты сервисов в /etc/noderoost/certs оставлены — они ещё работают, пока не истекут."
 """
 

@@ -231,12 +231,6 @@ input:focus {
   margin: 0.5rem 0;
 }
 
-.field-row {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .field-checkbox {
   width: 18px;
   height: 18px;
@@ -386,14 +380,8 @@ input:focus {
   gap: 0.4rem;
 }
 
-/* Галочка в строку: глобальный label — flex-column, и без этого чекбокс
-   растягивался во всю ширину карточки, а браузер рисовал его по центру. */
 .ca-check {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5rem;
   margin: 0.4rem 0 0.6rem;
-  cursor: pointer;
 }
 
 .ca-rotate {
@@ -2451,11 +2439,22 @@ button.node-group-head {
 }
 
 /* чекбокс слева от подписи — привязан к тексту, а не улетает к краю карточки */
-.field-check {
+/* Строка с галочкой: подпись рядом, а не под ней (глобальный label — колонка),
+   и вся строка кликабельна — попадать пикселем в квадратик не нужно. */
+.field-check,
+.ca-check {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 0.55rem;
+  min-height: 2rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.field-checkbox {
+  cursor: pointer;
+  margin: 0;
 }
 
 /* выбор источников направления: тот же список, что в выдаче доступов */
