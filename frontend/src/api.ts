@@ -382,21 +382,22 @@ export type CaInfo = {
   subject: string
   not_after: string
   fingerprint: string
-  // зоны, которые корню позволено подписывать (пусто = любые)
+  // домены старого корня с разрешающим списком (пусто у нынешнего)
   suffixes: string[]
+  // сколько публичных доменов верхнего уровня корню запрещено
+  blocked: number
   // ставить ли корень на ноды самим (агент + скрипт подключения)
   auto: boolean
 }
 
 export function setCa(body: {
   auto: boolean
-  // непустой список = перевыпустить корень с этими зонами и сроком
-  rotate_suffixes?: string[]
-  rotate_years?: number
+  reissue?: boolean // выпустить корень заново (обесценивает выданное)
+  years?: number
 }): Promise<CaInfo> {
   return api<CaInfo>('/api/ca', {
     method: 'PUT',
-    body: JSON.stringify({ rotate_suffixes: [], rotate_years: 10, ...body }),
+    body: JSON.stringify({ reissue: false, years: 20, ...body }),
   })
 }
 

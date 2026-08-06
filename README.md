@@ -72,8 +72,10 @@ but taken from the node, so a node reconnecting does not break the record.
 signs it with its own root while the key is generated on the node itself and never
 leaves it — only a request to sign goes up. No domain, no DNS record, no open port
 and no internet: the name can be anything, `nas.mesh` included. The panel hands the
-root out to the nodes itself and constrains it to your domains — it cannot issue a
-certificate for someone else's public domain. Renewal takes care of itself.
+root out to the nodes itself, and that root can only sign invented internal domains:
+every real one is forbidden to it, so the panel cannot impersonate someone else's
+site to your machines — and a new project needs no reissuing. Renewal takes care of
+itself.
 
 **Internet egress through gateways.** Mark a server as an exit gateway and pick
 which devices may use it. In the Tailscale tray each user sees only the exits you

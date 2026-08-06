@@ -38,14 +38,15 @@ exactly that reason.** The root's private key sits in the panel's database, and 
 panel installs that root into every node's system trust store, so a panel in the wrong
 hands could mint a certificate for a name and — combined with the DNS records it hands
 out — impersonate that service to your own machines. What bounds the damage is the
-root itself: it carries X.509 name constraints and can only sign the zones you listed
-(`mesh`, `lan`, `int.example.com`), never a public domain, and never an IP address.
-Inside those zones the panel is as trusted as it already is for routing; outside them
-it can sign nothing at all. Choose the zones as narrowly as your names allow, and if
-even that is too much, turn the automatic install off and put the root only where you
-want it. Roots created before name constraints existed carry none; reissue such a root
-(DNS → "Configure") to bound it. The certificates' own private keys are not affected
-either way: those are generated on the nodes and never sent to the panel.
+root itself: it carries X.509 name constraints, written as exclusions — every
+top-level domain that exists on the internet (the IANA root zone) and every IP address
+are forbidden to it. So the panel is as trusted inside your invented internal domains
+as it already is for routing, and it can sign nothing at all for a real site: a leaf
+for `www.google.com` fails validation with "excluded subtree violation" in every
+client that enforces constraints. Roots issued by earlier versions carry a permit-list
+instead; reissue such a root (DNS → "Configure") to get the exclusions. The
+certificates' own private keys are not affected either way: those are generated on the
+nodes and never sent to the panel.
 
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at

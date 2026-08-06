@@ -5,6 +5,34 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.11.0] — 2026-08-06
+
+### Changed
+
+- **The root is constrained by exclusion rather than permission — and a new project
+  now needs nothing.** The permit-list is baked into the root, so every new project
+  meant issuing a new root and visiting every laptop and phone with it. That is
+  exactly the work a panel exists to remove. It is the other way round now: every
+  top-level domain that really exists on the internet (the IANA root zone, 1438 of
+  them, `backend/app/data/public_tlds.txt`) and every IP address are forbidden to the
+  root; everything else is free. A new project's domain does not exist on the
+  internet, so it is not forbidden, and `grafana.newproj` gets its certificate
+  immediately, with nothing done to the root.
+  The protection did not weaken — it got more honest: a compromised panel still
+  cannot mint a certificate for a bank or a mail service, and a leaf for
+  `www.google.com` is rejected with "excluded subtree violation" by every client that
+  enforces constraints (checked with `openssl verify`). The flip side is stated
+  plainly: a name in a REAL domain (`nas.example.com`) will not be signed either.
+  The list is refreshed with `python ops/build-tlds.py`. Roots from earlier versions
+  keep working with their permit-list, and the panel offers to issue a new one.
+- **The root no longer travels inside the certificate file.** It weighs a couple of
+  dozen kilobytes (it carries the whole list of forbidden domains), and there is no
+  point sending that in every handshake: a client that has the root installed does
+  not need it in the chain.
+- **Only the lifetime is left in the card.** The domains field is gone — the panel
+  does not need to be told about them. In its place: "Signs: any internal name except
+  1438 public domains", and a name in a real domain is flagged in advance.
+
 ## [0.10.0] — 2026-08-06
 
 ### Changed
