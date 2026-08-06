@@ -587,6 +587,15 @@ const EN: Record<string, string> = {
     'The first name has to be shown to headscale once: it will restart (~10–15 s), pausing node registration meanwhile. Later edits apply without a restart.',
   'Сохранено — имена уже раздаются нодам': 'Saved — the names are already going out to the nodes',
   'адрес вручную': 'address by hand',
+  'Сертификат Let’s Encrypt для этого имени': 'A Let’s Encrypt certificate for this name',
+  'Сертификат возможен только для имени, ведущего на ноду':
+    'A certificate is only possible for a name that points at a node',
+  'сертификат до {date}': 'certificate until {date}',
+  'сертификат не выдан: {err}': 'certificate not issued: {err}',
+  'сертификат заказан — нода заберёт его в течение минуты':
+    'certificate ordered — the node will pick it up within a minute',
+  'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Чтобы это работало, нужна одна DNS-запись — раз и навсегда: маска ваших внутренних имён (например *.int.example.com) A-записью на адрес панели, плюс NODEROOST_CERT_DOMAIN в её .env. Продление идёт само за месяц до конца; готовые файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':
+    'The panel orders the certificate; the key is generated on the node itself and never leaves it. For this to work you need one DNS record, once and for all: your internal-name mask (say *.int.example.com) as an A record pointing at the panel, plus NODEROOST_CERT_DOMAIN in its .env. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
   'нода не найдена': 'node not found',
   'Добавить имя': 'Add a name',
   'Сеть меша (IP-диапазон)': 'Mesh network (IP range)',

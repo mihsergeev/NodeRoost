@@ -5,6 +5,28 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.5.0] — 2026-08-04
+
+### Added
+
+- **The panel issues certificates for names inside the network.** A name that leads
+  inside is only half the way to opening a service over https: the certificate is the
+  other half, and the usual road to one runs into the name not facing the world —
+  Let's Encrypt has nowhere to come and check. The panel closes that: one DNS record,
+  once (`*.int.example.com` at the panel's address), a tick next to the name, and a
+  minute later the service has a real certificate that renews itself. No DNS-provider
+  API keys, no plugins built into the proxy — the way most guides tell you to do it —
+  so it works the same for whoever's DNS hosting has no API at all.
+  **The private key is generated on the node and never leaves it:** only a request to
+  sign travels up, so the panel has nothing to lose if it is broken into. The agent
+  writes the files and runs a hook the node's own admin left there — the panel sends
+  no commands to execute.
+  A node can only ask for names the panel assigned to it; without that check, whoever
+  owned any node could issue certificates for other people's names on the network.
+  A failed attempt waits fifteen minutes before the next one: Let's Encrypt counts
+  five failed checks an hour per name, and an agent asking every minute would burn
+  that in five.
+
 ## [0.4.2] — 2026-08-04
 
 ### Changed
