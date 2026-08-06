@@ -5,6 +5,15 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.6.1] — 2026-08-06
+
+### Changed
+
+- **The certificate hook is told which names changed** (agent release 2). It used to
+  be called with nothing at all, so the only thing a node could do on a renewal was
+  reload everything that might be involved — work and risk out of proportion to one
+  renewed name.
+
 ## [0.6.0] — 2026-08-06
 
 ### Added

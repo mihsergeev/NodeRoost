@@ -174,6 +174,7 @@ if [ -n "\$CERTS" ]; then
   else
     mkdir -p /etc/noderoost/certs && chmod 700 /etc/noderoost/certs
     CHANGED=0
+    CHANGED_NAMES=""  # какие именно имена сменились — уходит в хук аргументами
     printf '%s\n' "\$CERTS" > "\$TMP.certs"
     # именно перенаправлением, а не «echo | while»: в dash пайп — это подшелл,
     # и выставленный внутри CHANGED наружу не вернулся бы
@@ -192,7 +193,8 @@ if [ -n "\$CERTS" ]; then
         CODE=\$(curl -sS --max-time 120 -X POST --data-binary @"\$TMP.csr" -o "\$TMP.crt" \
           -w '%{http_code}' "$STATE_URL/csr?name=\$NAME" 2>/dev/null || echo 000)
         if [ "\$CODE" = 200 ]; then
-          mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"; CHANGED=1
+          mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"
+          CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
         else
           echo "NodeRoost: сертификат для \$NAME не выдан (HTTP \$CODE) — причина в панели, раздел DNS" >&2
         fi
@@ -200,12 +202,17 @@ if [ -n "\$CERTS" ]; then
       elif [ -n "\$FP" ] && [ "\$FP" != "\$LOCAL" ]; then
         CODE=\$(curl -sS --max-time 30 -o "\$TMP.crt" -w '%{http_code}' \
           "$STATE_URL/cert?name=\$NAME" 2>/dev/null || echo 000)
-        [ "\$CODE" = 200 ] && { mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"; CHANGED=1; }
+        [ "\$CODE" = 200 ] && {
+          mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"
+          CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
+        }
         rm -f "\$TMP.crt"
       fi
     done < "\$TMP.certs"
     rm -f "\$TMP.certs"
-    [ "\$CHANGED" = 1 ] && [ -x "$DIR/cert-hook.sh" ] && "$DIR/cert-hook.sh"
+    # Хук получает имена, у которых сертификат сменился: перезагружать весь
+    # набор сервисов из-за одного продлённого имени — лишняя работа и лишний риск.
+    [ "\$CHANGED" = 1 ] && [ -x "$DIR/cert-hook.sh" ] && "$DIR/cert-hook.sh" \$CHANGED_NAMES
   fi
   set -e
 fi
