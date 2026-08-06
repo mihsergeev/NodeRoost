@@ -51,6 +51,7 @@ services:
       # 2.13, в отличие от суффиксных not_N матчеров):
       #  0) /api/v1/*  — управляющий API: наружу 404 (доступен только по внутр. сети)
       #  1) /swagger*  — swagger-доки API: наружу 404
+      #  4) /join/*    — скрипт подключения по ссылке: машину подключают отовсюду
       #  2) /pkgs/*    — локальный мирор бинарей Tailscale: раздаёт фронт (nginx),
       #     ноды в закрытом меше видят только hs-домен, поэтому качают клиент отсюда.
       #  3) /agent/*    — желаемое состояние ноды (какие маршруты анонсировать);
@@ -67,7 +68,9 @@ services:
       caddy.handle_2.reverse_proxy: noderoost-frontend:80
       caddy.handle_3: /agent/*
       caddy.handle_3.reverse_proxy: noderoost-frontend:80
-      caddy.handle_4.reverse_proxy: "{{upstreams 8080}}"
+      caddy.handle_4: /join/*
+      caddy.handle_4.reverse_proxy: noderoost-frontend:80
+      caddy.handle_5.reverse_proxy: "{{upstreams 8080}}"
 
 networks:
   caddy:
