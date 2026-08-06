@@ -5,6 +5,23 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.10.0] — 2026-08-06
+
+### Changed
+
+- **The domains are yours to invent, and the panel now asks to add them.** A name
+  like `loki.mirabah` or `portainer-dev.bironex` could always be created, but it
+  silently got no certificate: the root may sign only the domains it lists, and
+  adding one means issuing a new root — something you had to guess by opening
+  "Configure". The panel now works the domains out itself and, as soon as a ticked
+  name falls outside them, says in the DNS section which domain is not allowed and
+  what follows from that, with a button that adds it to the list. Any domain works:
+  there is no public DNS involved here, so whether the domain is "real" is beside
+  the point.
+- **The root lives 20 years instead of 10.** It is installed by hand on every
+  laptop and phone; ten years was not security but a promise to walk around all the
+  machines again.
+
 ## [0.9.1] — 2026-08-06
 
 ### Fixed

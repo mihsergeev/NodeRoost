@@ -598,13 +598,16 @@ const EN: Record<string, string> = {
   'Действует до': 'Valid until',
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
+  'Корню разрешены только домены {have}. Для {want} сертификат выдан не будет, пока домен не добавлен — ограничение зашито в сам корень.':
+    'The root is limited to {have}. Nothing will be issued for {want} until that domain is added — the constraint is baked into the root itself.',
+  'Добавить домены и выпустить корень заново': 'Add the domains and issue a new root',
+  'Домены свои, любые: bironex, mirabah, mesh — тогда имена вида loki.mirabah и portainer-dev.bironex получат сертификат. Корень подписывает только их, и этим ограничена власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново — ноды подхватят его сами за минуту, а на ноутбуках и телефонах его надо будет поставить ещё раз, поэтому перечисляйте домены с запасом.':
+    'The domains are yours to invent: bironex, mirabah, mesh — then names like loki.mirabah and portainer-dev.bironex get certificates. The root signs those and nothing else, which is also the limit of the panel’s power: it cannot issue for someone else’s domain. Saving issues a new root — nodes pick it up themselves within a minute, but on laptops and phones it has to be installed again, so list the domains generously.',
   'Свернуть': 'Collapse',
   'Домены': 'Domains',
   'любые (ограничений нет)': 'any (no constraints)',
   'Домены (через запятую)': 'Domains (comma-separated)',
   'Срок, лет': 'Valid for, years',
-  'Корень подписывает имена только в этих доменах — этим ограничена и власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново: сертификаты имён панель закажет сама, а на ноутбуках и телефонах корень надо будет поставить заново.':
-    'The root signs names in these domains only — which is also the limit of the panel’s power: it cannot issue a certificate for someone else’s domain. Saving issues a new root: the panel reorders the names’ certificates itself, but on laptops and phones the root has to be installed again.',
   'Выпустить корень заново? Старый перестанет действовать.':
     'Issue a new root? The old one stops working.',
   'Выпустить заново': 'Issue a new root',

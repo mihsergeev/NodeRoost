@@ -156,3 +156,34 @@ async def test_fingerprint_matches_openssl_form(session):
     # ровно то, что нода считает через `openssl x509 -fingerprint -sha256`
     assert ca.fingerprint(pem) == cert.fingerprint(hashes.SHA256()).hex()
     assert ca.fingerprint("") == ""
+
+
+def test_root_lives_two_decades_by_default():
+    """Корень ставят руками по ноутбукам и телефонам. Короткий срок здесь — не
+    безопасность, а обещание обойти все машины заново через несколько лет."""
+    _, cert_pem = ca.build_root("Тест", ["bironex"])
+    cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    years = (cert.not_valid_after_utc - cert.not_valid_before_utc).days / 365
+    assert 19 < years < 21
+
+
+async def test_own_second_level_domains(session):
+    """Домены придумывает администратор: bironex, mirabah — что угодно.
+
+    Публичного DNS тут нет вовсе, поэтому и «настоящность» домена ни при чём:
+    важно лишь, чтобы корню было разрешено его подписывать.
+    """
+    await ca.set_suffixes(session, ["bironex", "mirabah"])
+    await ca.ensure_root(session)
+    for name in ("portainer-dev.bironex", "loki.mirabah"):
+        chain = await ca.sign_csr(session, name, _csr(name))
+        leaf = x509.load_pem_x509_certificate(chain.encode())
+        san = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        assert san.get_values_for_type(x509.DNSName) == [name]
+    # а вот сосед по алфавиту, которого в списке нет, — уже нет
+    try:
+        await ca.sign_csr(session, "grafana.othertown", _csr("grafana.othertown"))
+    except ValueError as e:
+        assert "othertown" in str(e)
+    else:
+        raise AssertionError("подписал имя вне разрешённых доменов")

@@ -53,7 +53,7 @@ export function DnsPage({ onUnauthorized }: Props) {
   // обесценивает всё, что подписано, и заставляет обойти устройства заново
   const [rotOpen, setRotOpen] = useState(false)
   const [zones, setZones] = useState('')
-  const [years, setYears] = useState(10)
+  const [years, setYears] = useState(20)
   const [caBusy, setCaBusy] = useState(false)
 
   // резолверы и MagicDNS — вторая половина раздела: настраивается один раз и
@@ -109,6 +109,29 @@ export function DnsPage({ onUnauthorized }: Props) {
   function update(i: number, patch: Partial<RecRow>) {
     setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   }
+
+  // Домен имени: portainer-dev.bironex → bironex. Ровно так же считает панель,
+  // когда решает, вправе ли корень подписать это имя.
+  function zoneOf(name: string): string {
+    const i = name.indexOf('.')
+    return i === -1 ? name : name.slice(i + 1)
+  }
+
+  // Имя с сертификатом, чей домен корню не разрешён, сертификата НЕ получит:
+  // ограничение зашито в сам корень, и добавить домен можно только выпуском
+  // нового. Молчать об этом нельзя — снаружи это выглядит как «поставил галочку,
+  // ничего не произошло», а причина видна только в строке ошибки под именем.
+  const caZones = recs?.ca.suffixes ?? []
+  const missingZones = caZones.length
+    ? [
+        ...new Set(
+          rows
+            .filter((r) => r.cert && r.name.includes('.'))
+            .map((r) => zoneOf(r.name.trim().toLowerCase()))
+            .filter((z) => z && !caZones.includes(z)),
+        ),
+      ]
+    : []
 
   // на что имя ведёт прямо сейчас: адрес берётся у ноды, а не запоминается
   function nodeAddr(id: string): string {
@@ -358,6 +381,26 @@ export function DnsPage({ onUnauthorized }: Props) {
           </div>
         )}
 
+        {missingZones.length > 0 && (
+          <div className="ca-missing">
+            <p className="small">
+              {t(
+                'Корню разрешены только домены {have}. Для {want} сертификат выдан не будет, пока домен не добавлен — ограничение зашито в сам корень.',
+                { have: caZones.join(', '), want: missingZones.join(', ') },
+              )}
+            </p>
+            <button
+              className="ghost small"
+              onClick={() => {
+                setZones([...caZones, ...missingZones].join(', '))
+                setRotOpen(true)
+              }}
+            >
+              {t('Добавить домены и выпустить корень заново')}
+            </button>
+          </div>
+        )}
+
         {/* Корень своей CA: одна строка про суть, подробности — под
             «Настроить». Раньше здесь висели три абзаца, из которых не было
             видно ни доменов, ни того, где их менять. */}
@@ -448,7 +491,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                 </div>
                 <p className="muted small">
                   {t(
-                    'Корень подписывает имена только в этих доменах — этим ограничена и власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново: сертификаты имён панель закажет сама, а на ноутбуках и телефонах корень надо будет поставить заново.',
+                    'Домены свои, любые: bironex, mirabah, mesh — тогда имена вида loki.mirabah и portainer-dev.bironex получат сертификат. Корень подписывает только их, и этим ограничена власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново — ноды подхватят его сами за минуту, а на ноутбуках и телефонах его надо будет поставить ещё раз, поэтому перечисляйте домены с запасом.',
                   )}
                 </p>
                 <div className="dns-actions">

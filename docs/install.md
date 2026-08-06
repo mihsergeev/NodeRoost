@@ -287,9 +287,16 @@ phones. The panel hands you the file and shows the fingerprint to check it again
 | Android / iOS | install the profile and switch on full trust in settings |
 
 **Domains and validity are set with "Configure"** in the same card: the domains as
-a comma-separated list (`mesh, lan, home.example.com`) and the root's lifetime in
-years (10 by default, up to 30 — the root is installed by hand on every device and
-nobody wants to redo that yearly). Saving issues a new root.
+a comma-separated list and the root's lifetime in years (20 by default, up to 30 —
+the root is installed by hand on every device and nobody wants to redo that every
+few years). Saving issues a new root.
+
+The domains are **yours to invent**: no public DNS is involved here, so whether a
+domain is "real" does not matter. Name them after your projects — `bironex`,
+`mirabah`, `mesh` — and put whatever you need under them: `portainer-dev.bironex`,
+`loki.mirabah`. Create a name in a domain the root does not know and the panel says
+so in the DNS section and offers a button to add it, instead of leaving you to
+wonder why no certificate appeared.
 
 **The root is constrained to those domains, and that is not a formality.** Once it
 sits in every node's trust store, "what can it sign" stops being theoretical:

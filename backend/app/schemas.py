@@ -721,7 +721,7 @@ class CaSettingsIn(RequestModel):
     rotate_suffixes: list[str] = Field(default_factory=list, max_length=32)
     # Срок жизни нового корня, лет. Ставят его руками на каждое устройство,
     # поэтому короткий срок здесь — не безопасность, а обход всех машин заново.
-    rotate_years: int = Field(default=10, ge=1, le=30)
+    rotate_years: int = Field(default=20, ge=1, le=30)
 
     @field_validator("rotate_suffixes")
     @classmethod
