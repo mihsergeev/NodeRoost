@@ -519,16 +519,34 @@ export function DnsPage({ onUnauthorized }: Props) {
               </div>
             )}
 
-            <details className="ca-help">
-              <summary className="muted small">
-                {t('Как поставить на устройство')}
-              </summary>
-              <p className="muted small">
-                {t(
-                  'Ноды панель обслуживает сама. Вручную — только то, что подключали не скриптом: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие. После установки сверьте отпечаток.',
+            {(recs.ca.install_sh || recs.ca.install_ps1) && (
+              <div className="ca-install">
+                <p className="muted small">
+                  {t(
+                    'Ноды панель обслуживает сама. Машину, которую подключали руками, проще всего научить доверять одной командой — она снимет прежний сертификат панели и поставит текущий:',
+                  )}
+                </p>
+                {recs.ca.install_ps1 && (
+                  <>
+                    <span className="muted small">
+                      {t('Windows (PowerShell от администратора)')}
+                    </span>
+                    <pre className="enroll-script cmd-oneline">{recs.ca.install_ps1}</pre>
+                  </>
                 )}
-              </p>
-            </details>
+                {recs.ca.install_sh && (
+                  <>
+                    <span className="muted small">{t('Linux и macOS')}</span>
+                    <pre className="enroll-script cmd-oneline">{recs.ca.install_sh}</pre>
+                  </>
+                )}
+                <p className="muted small">
+                  {t(
+                    'Скрипт печатает отпечаток поставленного сертификата — сверьте с тем, что выше. Android и iOS скриптом не научить: скачайте сертификат кнопкой, перенесите на устройство и включите полное доверие в настройках.',
+                  )}
+                </p>
+              </div>
+            )}
             {caErr && <p className="form-error">{caErr}</p>}
           </div>
         )}

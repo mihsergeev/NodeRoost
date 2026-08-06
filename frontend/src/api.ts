@@ -386,6 +386,9 @@ export type CaInfo = {
   suffixes: string[]
   // сколько публичных доменов верхнего уровня корню запрещено
   blocked: number
+  // команды установки сертификата на машину
+  install_sh: string
+  install_ps1: string
   // ставить ли корень на ноды самим (агент + скрипт подключения)
   auto: boolean
 }

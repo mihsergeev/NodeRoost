@@ -70,7 +70,9 @@ services:
       caddy.handle_3.reverse_proxy: noderoost-frontend:80
       caddy.handle_4: /join/*
       caddy.handle_4.reverse_proxy: noderoost-frontend:80
-      caddy.handle_5.reverse_proxy: "{{upstreams 8080}}"
+      caddy.handle_5: /ca/*
+      caddy.handle_5.reverse_proxy: noderoost-frontend:80
+      caddy.handle_6.reverse_proxy: "{{upstreams 8080}}"
 
 networks:
   caddy:

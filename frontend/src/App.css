@@ -411,6 +411,16 @@ input:focus {
   text-align: right;
 }
 
+.ca-install {
+  border-top: 1px solid var(--border);
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+}
+
+.ca-install .enroll-script {
+  margin: 0.25rem 0 0.6rem;
+}
+
 .ca-help {
   margin-top: 0.5rem;
 }
