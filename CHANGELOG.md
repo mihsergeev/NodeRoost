@@ -5,6 +5,20 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.5.2] — 2026-08-06
+
+### Security
+
+- **Agent self-update is off unless you switch it on.** Shipped a release earlier the
+  same day, it quietly moved a boundary: until then the agent only ever ran a fixed
+  set of commands, so a compromised panel could rearrange a node's networking but not
+  run code on it. Self-update makes the panel able to hand every node a script that
+  runs as root within a minute — which is exactly the reason the certificate reload
+  hook is a file the node's own administrator writes rather than a command from the
+  panel. It now takes `NODEROOST_AGENT_SELF_UPDATE=1` in the panel's `.env` — not the
+  database, so the panel cannot grant itself the privilege. Off, the panel still says
+  a node's agent is out of date and offers the command; a human runs it.
+
 ## [0.5.1] — 2026-08-06
 
 ### Added
