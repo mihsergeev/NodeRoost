@@ -298,7 +298,9 @@ curl -fsSL https://hs.example.com/ca/install.sh | sudo sh  # Linux and macOS
 ```
 
 The script removes the panel's previous certificate, installs the current one and
-prints its fingerprint — compare it with the one in the card. Android and iOS
+prints its fingerprint — compare it with the one in the card. Run it as a command:
+saved to a `.ps1` file, Windows PowerShell 5.1 reads it as ANSI and chokes on the
+non-ASCII text (if you do save it, save as UTF-8 **with a BOM**). Android and iOS
 cannot be scripted: download the file (`https://hs.example.com/ca/noderoost-ca.crt`
 or the button in the panel), move it to the device and switch on full trust in
 settings.
