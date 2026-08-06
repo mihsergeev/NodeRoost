@@ -587,8 +587,13 @@ const EN: Record<string, string> = {
     'The first name has to be shown to headscale once: it will restart (~10–15 s), pausing node registration meanwhile. Later edits apply without a restart.',
   'Сохранено — имена уже раздаются нодам': 'Saved — the names are already going out to the nodes',
   'адрес вручную': 'address by hand',
-  'На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Свежий обновляется сам; этому нужно помочь один раз, выполнив на ноде под root:':
-    'The node runs an agent from an earlier release — it does not understand the panel’s newer abilities. A current one updates itself; this one needs a hand, once, as root on the node:',
+  'На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Обновление ставится только с подписью: нода проверит её ключом, вшитым при установке, и чужой скрипт не примет.':
+    'The node runs an agent from an earlier release — it does not understand the panel’s newer abilities. An update installs only when signed: the node checks it against the key baked in at install time and refuses anything else.',
+  'Обновить агента': 'Update the agent',
+  'Отправляем…': 'Sending…',
+  '…или командой на ноде': '…or by command on the node',
+  'Заказано — нода проверит подпись и обновится в течение минуты':
+    'Asked — the node will check the signature and update within a minute',
   'Сертификат Let’s Encrypt для этого имени': 'A Let’s Encrypt certificate for this name',
   'Сертификат возможен только для имени, ведущего на ноду':
     'A certificate is only possible for a name that points at a node',

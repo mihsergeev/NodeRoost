@@ -210,6 +210,39 @@ For caddy-docker-proxy there is a ready override: `compose.caddy.yml`.
 
 ---
 
+## Updating the agent on nodes
+
+The agent is a small script that lives on the node. A new panel release does not
+change it by itself: a person asks for the update, and the node installs **only what
+is signed**.
+
+On the node's card (Routes) the panel says the agent is from an earlier release and
+offers **Update the agent**. The node then:
+
+1. fetches the release manifest and its signature;
+2. verifies the signature with the **public key baked into it at install time** — the
+   one the panel had when a human started the installation;
+3. checks the sha256 of the script it received against the signed manifest;
+4. refuses a release no newer than its own (anti-rollback);
+5. fills in its own values — the panel address and the verification key come from
+   itself, not from the file it was sent — and reinstalls.
+
+The private signing key **is not on the panel's host**. A panel in the wrong hands can
+withhold updates or offer an old signed release (the rollback check refuses it), but
+cannot hand out a script of its own.
+
+**Running your own build?** Issue your own key pair:
+
+```bash
+python agent-signing/keygen.py            # once; the private key stays out of git
+python agent-signing/protect_key.py       # close it with a passphrase
+python agent-signing/release.py 2         # sign the current script (number only goes up)
+```
+
+`release.py` signs exactly the script text the panel hands to nodes and puts the
+manifest and signature into the panel's image. Forget to sign, and the panel offers no
+button and says plainly that the release is unsigned.
+
 ## Certificates for names inside the network
 
 You want to open a service on the network over `https://` without the browser

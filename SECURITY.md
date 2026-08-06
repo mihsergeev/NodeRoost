@@ -19,16 +19,18 @@ directory; keep them somewhere you would keep a private key. `ops/backup-offsite
 ships them into a restic repository, which is encrypted — mail attachments, object
 storage without encryption and ticket systems are not.
 
-**The agent does not run code the panel sends — unless you let it.** The agent
-applies a fixed set of commands to what the panel asks for (routes, exit node,
-certificate files); a compromised panel can rearrange the node's networking, which
-is bad enough, but it cannot run arbitrary code there. The one exception is agent
-self-update, and it is **off by default** (`NODEROOST_AGENT_SELF_UPDATE=0`): switched
-on, a node that sees a newer script version reinstalls itself from the panel, so
-whoever holds the panel can hand every node a script to run as root within a minute.
-With it off the panel only reports that a node's agent is out of date and offers the
-command; a human runs it. The same reasoning is why the post-certificate reload hook
-is a file the node's own administrator writes, not a command the panel sends.
+**The agent installs nothing the panel could have written.** The agent applies a
+fixed set of commands to what the panel asks for — routes, exit node, certificate
+files — so a compromised panel can rearrange a node's networking, which is bad
+enough, but it cannot run code there. Updating the agent itself is the one thing
+that would, and it is signed: an administrator asks for the update from the panel,
+and the node installs the new script only if it verifies against the public key
+baked in when a human first installed the agent, matches the sha256 in the signed
+manifest, and carries a release number higher than the one it runs. The private key
+lives on the maintainer's machine and never touches the panel's host, so a panel in
+the wrong hands can withhold updates or offer an old signed one — the anti-rollback
+check refuses that — but cannot forge a new one. The same reasoning is why the
+post-certificate reload hook is a file the node's own administrator writes.
 
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at
