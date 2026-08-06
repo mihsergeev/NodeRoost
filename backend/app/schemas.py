@@ -630,6 +630,9 @@ class DnsRecordIn(RequestModel):
     # Выключенное имя не раздаётся нодам: внутри сети оно снова ведёт туда же,
     # куда снаружи. Так «внутрь» и «как обычно» переключаются, не теряя запись.
     enabled: bool = True
+    # Выпускать ли для имени сертификат Let's Encrypt. Только для имён, ведущих
+    # на ноду: ключ живёт на ней, и класть сертификат больше некуда.
+    cert: bool = False
 
     @field_validator("name")
     @classmethod
@@ -654,6 +657,11 @@ class DnsRecordIn(RequestModel):
     def _one_target(self) -> "DnsRecordIn":
         if bool(self.node_id) == bool(self.ip):
             raise ValueError("У имени должна быть одна цель: либо нода, либо адрес")
+        if self.cert and not self.node_id:
+            raise ValueError(
+                "Сертификат выпускается только для имени, ведущего на ноду: "
+                "ключ генерится на ней, и положить его больше некуда"
+            )
         return self
 
 
@@ -663,6 +671,11 @@ class DnsRecordOut(BaseModel):
     node_name: str = ""  # для показа: id ноды администратору ни о чём не говорит
     ip: str = ""
     enabled: bool = True
+    cert: bool = False
+    # состояние сертификата для показа: ok | issuing | error | ""
+    cert_status: str = ""
+    cert_until: str = ""  # до какого числа действует
+    cert_error: str = ""
     # на что имя ведёт внутри сети ПРЯМО СЕЙЧАС (у записи на ноду — её адреса)
     addresses: list[str] = []
     note: str = ""  # почему запись сейчас не раздаётся (нода удалена и т.п.)
