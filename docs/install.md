@@ -210,6 +210,53 @@ For caddy-docker-proxy there is a ready override: `compose.caddy.yml`.
 
 ---
 
+## Certificates for names inside the network
+
+You want to open a service on the network over `https://` without the browser
+complaining, and the usual road to a certificate runs into the fact that the name
+does not face the world: Let's Encrypt has nowhere to come and check. The panel
+does that part for you — with no DNS-provider API keys and no proxy plugins.
+
+**One DNS record is needed. Once, with any provider:**
+
+```
+*.int.example.com   A   <the panel's public IP>
+```
+
+Then in the panel's `.env`:
+
+```
+NODEROOST_CERT_DOMAIN=*.int.example.com
+```
+
+and `docker compose up -d`, so the reverse proxy picks up the new block. That is all.
+
+Now, in the **DNS** section, any name that points at a node has a padlock tick.
+Tick it and the service has a certificate a minute later:
+
+1. The panel orders it from Let's Encrypt. The check arrives on port 80 at the
+   name itself — that wildcard record brings it to the panel, and the panel answers.
+2. The key is generated **on the node** (`openssl` needed) and never leaves it:
+   only a request to sign goes up.
+3. The agent writes `/etc/noderoost/certs/<name>.crt` and `.key` and, if you put a
+   `/lib65/noderoost-agent/cert-hook.sh` next to it, runs that — to reload nginx,
+   caddy or a container. The panel sends no commands to run: what to restart is
+   decided on the node.
+4. A month before expiry the whole thing repeats on its own.
+
+Worth knowing up front:
+
+* **The name lands in public CT logs.** Let's Encrypt publishes every certificate
+  it issues, so the existence of `nas.int.example.com` becomes known. Its address
+  and its contents do not.
+* **Port 80 of the panel must stay reachable** from outside: both the first check
+  and every renewal arrive there.
+* **Publicly the name resolves to the panel's address.** That grants nothing — on
+  those names only the challenge path is served, everything else answers 404.
+* To try the setup without spending real attempts, point it at the staging
+  directory: `NODEROOST_ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory`.
+  Browsers do not trust those certificates, but the limits are gentle.
+
 ## When something is wrong
 
 **The panel does not open and there is no certificate.** Check that both domains

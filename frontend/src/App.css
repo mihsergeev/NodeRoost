@@ -266,9 +266,30 @@ input:focus {
   display: grid;
   grid-template-columns:
     1.4rem minmax(9rem, 1.3fr) 0.9rem
-    minmax(8rem, 1fr) minmax(7rem, 0.9fr) 1.6rem;
+    minmax(8rem, 1fr) minmax(7rem, 0.9fr) 2.6rem 1.6rem;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* галочка сертификата: замок рядом с ней, чтобы столбец читался без подписи */
+.dns-rec-cert {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.dns-rec-cert.off {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* состояние сертификата — отдельной строкой под именем, во всю ширину */
+.dns-rec-certline {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  padding-left: 1.9rem;
 }
 
 .dns-rec-head {
@@ -351,8 +372,15 @@ input:focus {
   }
   .dns-rec-row input,
   .dns-rec-row select,
-  .dns-rec-row .dns-rec-addr {
+  .dns-rec-row .dns-rec-addr,
+  .dns-rec-row .dns-rec-cert {
     grid-column: 2 / 3;
+  }
+  .dns-rec-row .dns-rec-cert input {
+    grid-column: auto;
+  }
+  .dns-rec-certline {
+    padding-left: 0;
   }
 }
 

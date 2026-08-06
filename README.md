@@ -68,6 +68,12 @@ hands the nodes a *name → address on the network* record. Public DNS is left a
 so from outside the name leads where it always did. The address is not remembered
 but taken from the node, so a node reconnecting does not break the record.
 
+**Certificates for those names.** Each name has a padlock tick: the panel orders a
+Let's Encrypt certificate while the key is generated on the node itself and never
+leaves it — only a request to sign goes up. One DNS record is needed, once (the mask
+of your internal names pointing at the panel): no DNS-provider API keys, no proxy
+plugins. Renewal takes care of itself.
+
 **Internet egress through gateways.** Mark a server as an exit gateway and pick
 which devices may use it. In the Tailscale tray each user sees only the exits you
 allowed — the choice is theirs, the set is yours. A node's whole outbound traffic can
