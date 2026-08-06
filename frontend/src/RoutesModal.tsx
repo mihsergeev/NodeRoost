@@ -5,6 +5,7 @@ import {
   resolveHost,
   setAgent,
   setNodeRoutes,
+  updateAgent,
   type AgentCfg,
   type Node,
 } from './api'
@@ -29,6 +30,11 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState('')
+  // заказ обновления агента: панель ставит его ноде, а нода примет только
+  // подписанное — кнопка не даёт панели выполнить на ней произвольный код
+  const [updBusy, setUpdBusy] = useState(false)
+  const [updMsg, setUpdMsg] = useState<string | null>(null)
+  const [updErr, setUpdErr] = useState<string | null>(null)
 
   // маршруты, которые нода анонсирует САМА (не через агента) — их по-прежнему
   // одобряем галками, чтобы ручной сценарий не сломался
@@ -95,6 +101,21 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
       handle(err)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function askUpdate() {
+    setUpdBusy(true)
+    setUpdErr(null)
+    setUpdMsg(null)
+    try {
+      setAgentCfg(await updateAgent(node.id))
+      setUpdMsg(t('Заказано — нода проверит подпись и обновится в течение минуты'))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else setUpdErr(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setUpdBusy(false)
     }
   }
 
@@ -166,12 +187,16 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
             {!agent.script_current && (
               <div className="exit-setup">
                 <p className="muted small">
-                  {t('На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Свежий обновляется сам; этому нужно помочь один раз, выполнив на ноде под root:')}
+                  {t('На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Обновление ставится только с подписью: нода проверит её ключом, вшитым при установке, и чужой скрипт не примет.')}
                 </p>
-                <pre className="enroll-script cmd-oneline">{agent.setup_oneline}</pre>
+                {updErr && <p className="form-error">{updErr}</p>}
+                {updMsg && <p className="form-ok">{updMsg}</p>}
                 <div className="enroll-actions">
-                  <button onClick={() => copy(agent.setup_oneline, 'setup')}>
-                    {copied === 'setup' ? t('Скопировано ✓') : t('Скопировать команду установки')}
+                  <button onClick={askUpdate} disabled={updBusy}>
+                    {updBusy ? t('Отправляем…') : t('Обновить агента')}
+                  </button>
+                  <button className="ghost" onClick={() => copy(agent.setup_oneline, 'setup')}>
+                    {copied === 'setup' ? t('Скопировано ✓') : t('…или командой на ноде')}
                   </button>
                 </div>
               </div>

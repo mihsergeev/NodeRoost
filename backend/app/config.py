@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # Версия панели. Двигается вместе с pyproject.toml, frontend/package.json
     # и NODEROOST_VERSION в .env.example (последний задаёт теги образов) —
     # иначе панель показывает не ту версию, что установлена.
-    version: str = "0.5.2"
+    version: str = "0.6.0"
     debug: bool = False
 
     db_url: str = "sqlite+aiosqlite:///./data/panel.db"
@@ -32,14 +32,6 @@ class Settings(BaseSettings):
     headscale_extra_records_path: str = "/data/headscale/config/extra-records.json"
     # тот же файл глазами headscale — это значение уходит в config.yaml
     headscale_extra_records_path_in_hs: str = "/etc/headscale/extra-records.json"
-    # Разрешить агентам ПЕРЕУСТАНАВЛИВАТЬ СЕБЯ, когда панель отдаёт скрипт новее
-    # того, что стоит на ноде. Удобно — но это единственное место, где панель
-    # выполняет на чужой машине произвольный код: взломанная панель раздала бы
-    # свой скрипт всем нодам под root в течение минуты. Без включения панель
-    # только ПОКАЗЫВАЕТ, что агент устарел, и даёт команду переустановки — решает
-    # человек. Держится в .env, а не в базе: настройку, ограничивающую саму
-    # панель, панель менять не должна.
-    agent_self_update: bool = False
     # Сертификаты для имён внутри сети (ACME/Let's Encrypt). Тестовый каталог
     # (acme-staging-v02) отдаёт недоверенные сертификаты, зато без жёстких
     # лимитов — им проверяют настройку, прежде чем жечь боевые попытки.

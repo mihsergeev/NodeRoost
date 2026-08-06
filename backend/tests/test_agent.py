@@ -122,22 +122,53 @@ def test_certificates_do_not_enter_the_state_hash():
     assert setup.index(strip) < setup.index(r'cmp -s "\$TMP.core"')
 
 
-def test_agent_updates_itself_when_the_panel_script_changed():
-    """Скрипт живёт на ноде и сам себя не чинил: агент, поставленный до появления
-    возможности, не умел её никогда — и панель об этом молчала."""
+def test_agent_installs_only_a_signed_update():
+    """Обновление раздаёт панель, но доверия к ней здесь нет: нода ставит только
+    подписанное офлайн-ключом, сверяет сам скрипт с манифестом и не принимает
+    откат назад. Иначе захваченная панель выполнила бы на всех нодах что угодно.
+    """
     setup = agent.build_setup("https://hs.example/agent/tok")
     assert f'SCRIPT_V="{agent.SCRIPT_VERSION}"' in setup
-    assert "/setup\" | sh" in setup  # переустановка при расхождении версий
-    assert ".selfupdate" in setup and "3600" in setup  # не чаще раза в час
-    # …и только с явного разрешения панели: выполнение присланного ею кода —
-    # решение администратора. Иначе взломанная панель раздала бы под root что
-    # угодно сразу всем нодам, а до этого такой возможности у неё не было.
-    assert "ALLOW_UPD" in setup
-    assert "selfupdate=1" not in agent.extra_lines([])
-    assert "selfupdate=1" in agent.extra_lines([], self_update=True)
-    # версию агент сообщает вместе с отчётом о применении — по ней панель видит старого
-    assert "&s=\\$SCRIPT_V" in setup
+    assert "openssl dgst -sha256 -verify" in setup   # подпись проверяется
+    assert "AGENT_PUB_B64" in setup                  # ключом, вшитым при установке
+    # внутри heredoc переменные экранированы — сравниваем в этом же виде
+    assert r'[ "\$WANT_REL" -gt "\$AGENT_RELEASE" ]' in setup  # только вперёд
+    assert "sha256sum" in setup                      # скрипт сверяется с манифестом
+    # версию агент сообщает вместе с отчётом — по ней панель видит устаревшего
+    assert r"&s=\$SCRIPT_V" in setup
     assert agent.extra_lines([]).startswith(f"script={agent.SCRIPT_VERSION}")
+
+
+def test_placeholders_of_the_update_are_not_filled_in_advance():
+    """Строку подстановки панель заполнять НЕ должна.
+
+    Имена плейсхолдеров пишутся в скрипте целиком — и панель, генерируя файл,
+    подставляла значения прямо в ту строку, которой агент подставляет их сам.
+    Обновлённый скрипт оставался бы с незаполненными местами, то есть сломанным.
+    """
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert r"s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" in setup
+    # адрес подставляется СВОЙ: в скрипте установки это ещё переменная, её
+    # раскрывает heredoc на самой ноде — из присланного файла адрес не берётся
+    assert r"s|\${P}STATE_URL\${P}|$STATE_URL|" in setup
+    assert "@@PUBKEY@@" not in setup and "@@RELEASE@@" not in setup
+
+
+def test_update_is_asked_for_by_a_person_not_by_a_release():
+    """Выкатка новой панели сама по себе ничего на чужих машинах не запускает:
+    строка update= появляется только после кнопки администратора."""
+    assert "update=" not in agent.extra_lines([])
+    assert "update=7" in agent.extra_lines([], update_release=7)
+
+
+def test_without_a_signed_release_updates_are_impossible():
+    """Нет подписи — нет и обновления: агент без вшитого ключа за манифестом не
+    ходит, а панель не предлагает кнопку, которая ничего не сделает."""
+    if agent.pubkey_b64():
+        return  # в этом рабочем дереве релиз подписан — проверять нечего
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert 'AGENT_PUB_B64=""' in setup
+    assert agent.signed_and_current() is False
 
 
 def test_cert_line_format():
