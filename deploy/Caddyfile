@@ -44,6 +44,10 @@
 	handle /join/* {
 		reverse_proxy frontend:80
 	}
+	# Сертификат CA и установщики к нему — тоже одной командой.
+	handle /ca/* {
+		reverse_proxy frontend:80
+	}
 	# Всё остальное — узловой контур headscale: регистрация, /ts2021, /derp, /health.
 	handle {
 		reverse_proxy headscale:8080
