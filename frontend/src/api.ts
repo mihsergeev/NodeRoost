@@ -369,7 +369,6 @@ export type DnsRecord = {
   enabled: boolean
   // сертификат для этого имени (выпускает панель, ключ генерится на ноде)
   cert: boolean
-  issuer: 'le' | 'ca' // Let's Encrypt или своя CA панели
   cert_status: string // ok | issuing | error | ''
   cert_until: string
   cert_error: string
@@ -391,11 +390,13 @@ export type CaInfo = {
 
 export function setCa(body: {
   auto: boolean
+  // непустой список = перевыпустить корень с этими зонами и сроком
   rotate_suffixes?: string[]
+  rotate_years?: number
 }): Promise<CaInfo> {
   return api<CaInfo>('/api/ca', {
     method: 'PUT',
-    body: JSON.stringify({ rotate_suffixes: [], ...body }),
+    body: JSON.stringify({ rotate_suffixes: [], rotate_years: 10, ...body }),
   })
 }
 
@@ -417,7 +418,6 @@ export function setDnsRecords(
     ip: string
     enabled: boolean
     cert: boolean
-    issuer: 'le' | 'ca'
   }[],
 ): Promise<DnsRecords> {
   return api<DnsRecords>('/api/hs-info/dns-records', {

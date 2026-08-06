@@ -292,7 +292,7 @@ async def _node_may_ask(session, token: str, name: str) -> str:
 
 @public_router.post("/agent/{token}/csr")
 async def agent_csr(token: str, name: str, request: Request, session: SessionDep) -> Response:
-    """Нода прислала CSR — панель проводит ACME-заказ и отвечает сертификатом.
+    """Нода прислала CSR — панель подписывает его своим корнем и отвечает.
 
     Ключ остаётся на ноде: сюда приезжает только запрос на подпись.
     """
@@ -319,12 +319,11 @@ async def agent_csr(token: str, name: str, request: Request, session: SessionDep
             name,
             node_id,
             csr_der,
-            await certs.issuer_of(session, name),
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     if row.status != "ok":
-        # Агент не должен долбиться в ответ на отказ: причина и пауза — в панели
+        # Агент не должен долбиться в ответ на отказ: причина видна в панели
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, row.error or "сертификат не выдан"
         )
@@ -340,12 +339,3 @@ async def agent_cert(token: str, name: str, session: SessionDep) -> Response:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "сертификата ещё нет")
     return Response(content=row.cert_pem, media_type="application/x-pem-file")
 
-
-@public_router.get("/.well-known/acme-challenge/{token}")
-async def acme_challenge(token: str, session: SessionDep) -> Response:
-    """Ответ на проверку Let's Encrypt. Публично и без авторизации — по замыслу:
-    сюда приходит не человек, а проверяющий, и токен здесь единственный секрет."""
-    answer = await certs.answer_for(session, token)
-    if not answer:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
-    return Response(content=answer, media_type="text/plain")

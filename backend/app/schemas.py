@@ -636,10 +636,6 @@ class DnsRecordIn(RequestModel):
     # Выпускать ли для имени сертификат. Только для имён, ведущих на ноду: ключ
     # живёт на ней, и класть сертификат больше некуда.
     cert: bool = False
-    # Кто выпускает: «le» — Let's Encrypt (публично доверенный, но имя обязано
-    # существовать в публичном DNS и попадёт в CT-логи), «ca» — своя CA панели
-    # (имя любое, ничего наружу, но корень надо поставить на устройства).
-    issuer: Literal["le", "ca"] = "le"
 
     @field_validator("name")
     @classmethod
@@ -679,7 +675,6 @@ class DnsRecordOut(BaseModel):
     ip: str = ""
     enabled: bool = True
     cert: bool = False
-    issuer: str = "le"
     # состояние сертификата для показа: ok | issuing | error | ""
     cert_status: str = ""
     cert_until: str = ""  # до какого числа действует
@@ -724,6 +719,9 @@ class CaSettingsIn(RequestModel):
     # корень вовсе: перевыпуск обесценивает всё, что им подписано, и делать это
     # побочным эффектом сохранения галочки нельзя.
     rotate_suffixes: list[str] = Field(default_factory=list, max_length=32)
+    # Срок жизни нового корня, лет. Ставят его руками на каждое устройство,
+    # поэтому короткий срок здесь — не безопасность, а обход всех машин заново.
+    rotate_years: int = Field(default=10, ge=1, le=30)
 
     @field_validator("rotate_suffixes")
     @classmethod
