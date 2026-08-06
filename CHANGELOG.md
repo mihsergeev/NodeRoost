@@ -5,6 +5,25 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.12.0] — 2026-08-06
+
+### Added
+
+- **Joining a machine is one command.** The script sits behind a link on the
+  control-server domain, and the panel shows a single line like
+  `irm https://hs.example.com/join/<token> | iex` (for Linux and macOS,
+  `curl -fsSL … | sudo sh`). The script itself is still there, under a disclosure,
+  for anyone who would rather read it first.
+  This is not about looks. The script is pasted into a console as a whole, and the
+  console executes pasted text **line by line**: a failure in the middle does not
+  stop the rest, and the person gets a cascade of secondary errors instead of the
+  cause — which is exactly what happened on a real Windows machine. A command runs
+  as one unit. It also keeps the one-time key out of the clipboard and out of shell
+  history: only the address is left there.
+  The link lives as long as the key inside it (an hour) and is exactly as secret;
+  it is served by the same public surface as the agent state, under the same
+  per-source rate limit.
+
 ## [0.11.1] — 2026-08-06
 
 ### Fixed
