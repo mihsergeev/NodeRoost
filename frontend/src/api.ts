@@ -367,8 +367,9 @@ export type DnsRecord = {
   ip: string
   // выключенное имя не раздаётся нодам: внутри сети оно ведёт туда же, куда снаружи
   enabled: boolean
-  // сертификат Let's Encrypt для этого имени (выпускает панель, ключ — на ноде)
+  // сертификат для этого имени (выпускает панель, ключ генерится на ноде)
   cert: boolean
+  issuer: 'le' | 'ca' // Let's Encrypt или своя CA панели
   cert_status: string // ok | issuing | error | ''
   cert_until: string
   cert_error: string
@@ -376,8 +377,17 @@ export type DnsRecord = {
   note: string
 }
 
+// корневой сертификат панели: появляется с первым именем, которому выбрана своя CA
+export type CaInfo = {
+  exists: boolean
+  subject: string
+  not_after: string
+  fingerprint: string
+}
+
 export type DnsRecords = {
   records: DnsRecord[]
+  ca: CaInfo
   active: boolean
   restart_pending: boolean
 }
@@ -393,12 +403,29 @@ export function setDnsRecords(
     ip: string
     enabled: boolean
     cert: boolean
+    issuer: 'le' | 'ca'
   }[],
 ): Promise<DnsRecords> {
   return api<DnsRecords>('/api/hs-info/dns-records', {
     method: 'PUT',
     body: JSON.stringify({ records }),
   })
+}
+
+// Корневой сертификат — файлом: его ставят на устройства, с которых ходят по
+// внутренним именам. Скачиваем через fetch с токеном: обычная ссылка ушла бы без
+// авторизации и вернула 401.
+export async function downloadCa(): Promise<void> {
+  const res = await fetch('/api/ca', {
+    headers: { Authorization: `Bearer ${getToken() ?? ''}` },
+  })
+  if (!res.ok) throw new ApiError(await res.text(), res.status)
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'noderoost-ca.crt'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export function setHsNetwork(net: {

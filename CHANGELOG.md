@@ -5,6 +5,26 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.7.0] — 2026-08-06
+
+### Added
+
+- **The panel can be its own certificate authority.** Let's Encrypt only signs names
+  that exist in public DNS, and publishes every one of them in the transparency logs —
+  so a service nobody outside should know about is exactly the thing it cannot serve.
+  Each name now picks its issuer: Let's Encrypt as before, or the panel's own CA. The
+  latter asks for no domain, no DNS record, no open port and no internet at all; the
+  name can be `nas.mesh` or `router.lan`, issuing is instant, and nothing about it
+  leaves the network. The root is created with the first such name; the panel hands it
+  out as a file and shows its fingerprint, because installing a root certificate you
+  cannot check is not much better than not checking certificates at all.
+  The certificate's private key still never leaves the node — the panel signs the CSR
+  it is sent, exactly as it does with Let's Encrypt — and renewal is the same
+  machinery, a month before expiry. What the CA does cost is stated plainly in
+  SECURITY.md: its own key lives in the panel's database, so whoever holds the panel
+  can mint a certificate for any internal name. That is the trade for not needing a
+  public domain, and where it is too steep, Let's Encrypt remains one dropdown away.
+
 ## [0.6.2] — 2026-08-06
 
 ### Fixed
