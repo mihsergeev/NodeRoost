@@ -278,7 +278,16 @@ def _ca_info(cert_pem: str, auto: bool = True) -> CaInfo:
     if not cert_pem:
         return CaInfo(auto=auto)
     info = ca.root_info(cert_pem)
-    return CaInfo(exists=True, auto=auto, **info)
+    # Команды, а не инструкция «зайдите в связку ключей»: ставить сертификат
+    # руками по пунктам — работа, которую панель обязана взять на себя.
+    base = (get_settings().headscale_server_url or "").rstrip("/")
+    return CaInfo(
+        exists=True,
+        auto=auto,
+        install_sh=f"curl -fsSL {base}/ca/install.sh | sudo sh" if base else "",
+        install_ps1=f"irm {base}/ca/install.ps1 | iex" if base else "",
+        **info,
+    )
 
 
 async def _records_out(

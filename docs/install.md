@@ -289,15 +289,19 @@ Clear "install the root on nodes automatically" in the DNS section and the nodes
 remove it again — trust switched off has to disappear, not merely stop being
 refreshed.
 
-What is left by hand are the machines nobody joins with a script — laptops and
-phones. The panel hands you the file and shows the fingerprint to check it against:
+A machine joined by hand is not sent wandering through settings either — the card
+carries a command:
 
-| System | Where |
-|---|---|
-| Windows | "Trusted Root Certification Authorities" in the **Local Machine** store |
-| macOS | Keychain → "System", then set "Always Trust" |
-| Linux | `/usr/local/share/ca-certificates/`, then `update-ca-certificates` |
-| Android / iOS | install the profile and switch on full trust in settings |
+```
+irm https://hs.example.com/ca/install.ps1 | iex            # admin PowerShell
+curl -fsSL https://hs.example.com/ca/install.sh | sudo sh  # Linux and macOS
+```
+
+The script removes the panel's previous certificate, installs the current one and
+prints its fingerprint — compare it with the one in the card. Android and iOS
+cannot be scripted: download the file (`https://hs.example.com/ca/noderoost-ca.crt`
+or the button in the panel), move it to the device and switch on full trust in
+settings.
 
 **The domains are yours to invent, and there is nothing to add.** The root is
 constrained by EXCLUSION rather than permission: every top-level domain that really

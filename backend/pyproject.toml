@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noderoost-backend"
-version = "0.12.1"
+version = "0.13.0"
 description = "NodeRoost — backend for the self-hosted headscale management panel"
 requires-python = ">=3.12"
 dependencies = [

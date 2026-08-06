@@ -349,11 +349,18 @@ _ANDROID_INSTRUCTIONS = r"""NodeRoost — подключение Android к та
 # телефоне не будет никогда, а на сервере он появится минутой позже — «сразу»
 # значит сразу.
 _CA_LINUX = """
-# NodeRoost: корень панели в доверенные — чтобы имена внутри сети открывались
-# без ругани на сертификат. Убрать: rm .../noderoost-ca.crt + update-ca-*
+# NodeRoost: сертификат CA панели в доверенные — чтобы имена внутри сети
+# открывались без ругани. Убрать: rm .../noderoost-ca.crt + update-ca-*
 cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
 @@CAPEM@@NRCAEOF
-if [ -d /usr/local/share/ca-certificates ]; then
+if [ "$(uname -s)" = "Darwin" ]; then
+  # прежний сертификат панели убираем — иначе в связке копятся мёртвые
+  security delete-certificate -c "NodeRoost internal CA" \\
+    /Library/Keychains/System.keychain 2>/dev/null || true
+  security add-trusted-cert -d -r trustRoot \\
+    -k /Library/Keychains/System.keychain /tmp/noderoost-ca.crt \\
+    && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
+elif [ -d /usr/local/share/ca-certificates ]; then
   install -m644 /tmp/noderoost-ca.crt /usr/local/share/ca-certificates/noderoost-ca.crt
   update-ca-certificates >/dev/null 2>&1 && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 elif [ -d /etc/pki/ca-trust/source/anchors ]; then
@@ -506,3 +513,55 @@ def build_script(
         exit_setup=_EXIT_SETUP_LINUX if (exit_node and os_name == "linux") else "",
         caroot=ca_block(os_name, ca_pem),
     )
+
+# --- Установка сертификата CA одной командой (для машин, которые уже в сети) ---
+# Ноды панель обслуживает сама, а вот ноутбук или телефон подключали руками — и
+# раньше им доставалась инструкция «зайдите в связку ключей, найдите, поставьте».
+# Это ровно та работа, которую панель должна брать на себя.
+_CA_INSTALL_SH = """#!/bin/sh
+# NodeRoost — поставить сертификат центра сертификации панели в доверенные.
+# Запускать под root:  curl -fsSL <адрес> | sudo sh
+set -e
+if [ "$(id -u)" != "0" ]; then
+  echo "NodeRoost: нужен root — повторите через sudo." >&2
+  exit 1
+fi
+@@CABLOCK@@
+echo "NodeRoost: отпечаток поставленного сертификата —"
+echo "  @@FP@@"
+echo "Сверьте его с тем, что показывает панель (раздел DNS)."
+"""
+
+_CA_INSTALL_PS1 = """# NodeRoost — поставить сертификат центра сертификации панели в доверенные.
+# Запускать в PowerShell ОТ АДМИНИСТРАТОРА:  irm <адрес> | iex
+& {
+$ErrorActionPreference = 'Stop'
+$admin = ([Security.Principal.WindowsPrincipal] `
+  [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) {
+  Write-Host "NodeRoost: нужен PowerShell ОТ АДМИНИСТРАТОРА." -ForegroundColor Red
+  Write-Host "  Пуск -> «Windows PowerShell» -> правой кнопкой -> «Запуск от имени администратора»."
+  return
+}
+@@CABLOCK@@
+Write-Host "NodeRoost: отпечаток поставленного сертификата -"
+Write-Host "  @@FP@@"
+Write-Host "Сверьте его с тем, что показывает панель (раздел DNS)."
+}
+"""
+
+
+def ca_install_script(os_name: str, ca_pem: str, fingerprint: str) -> str:
+    """Скрипт, который ставит сертификат CA панели на машину.
+
+    Ставится тот же блок, что и при подключении ноды: прежние сертификаты панели
+    снимаются, новый кладётся в системное хранилище. Отпечаток печатается в конце
+    — сверить с панелью, иначе установка корня «на глаз» ничем не лучше отсутствия
+    проверки вовсе.
+    """
+    block = ca_block("windows" if os_name == "windows" else os_name, ca_pem)
+    if not block:
+        return ""
+    tpl = _CA_INSTALL_PS1 if os_name == "windows" else _CA_INSTALL_SH
+    return tpl.replace("@@CABLOCK@@", block.strip("\n")).replace("@@FP@@", fingerprint)

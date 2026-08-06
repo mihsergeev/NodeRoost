@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.13.0] — 2026-08-06
+
+### Added
+
+- **The CA certificate installs with one command instead of a set of directions.**
+  The card used to explain where to go on Windows, what to look for on macOS and
+  which command refreshes the store on Linux — that is, the work a panel exists to
+  remove. Now there are two lines:
+
+      irm https://<hs-domain>/ca/install.ps1 | iex          (admin PowerShell)
+      curl -fsSL https://<hs-domain>/ca/install.sh | sudo sh
+
+  The script removes the panel's previous certificate (a reissue does not revoke
+  the old one, and dead ones would pile up), installs the current one — Windows,
+  Linux and macOS, detecting the system itself — and prints the fingerprint so
+  there is something to compare against. The file itself is there too:
+  `https://<hs-domain>/ca/noderoost-ca.crt`.
+  Only Android and iOS are left to directions: they cannot be scripted.
+  The links are public on purpose: the CA certificate already sits on every node,
+  it carries no internal names (it merely forbids the public domains), and it is
+  installed by someone with administrator rights — a reachable link grants nobody
+  anything.
+
 ## [0.12.1] — 2026-08-06
 
 ### Changed

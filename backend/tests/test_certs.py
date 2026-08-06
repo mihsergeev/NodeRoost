@@ -210,3 +210,30 @@ async def test_rotation_reorders_the_certificates(client):
     assert r.json()["blocked"] > 500  # публичные домены корню запрещены
     async with app.state.session_factory() as s:
         assert await s.get(Certificate, "nas.mesh") is None  # закажется заново
+
+
+async def test_certificate_is_installed_by_a_command_not_by_instructions(client):
+    """«Зайдите в связку ключей, найдите, поставьте» — это работа, которую панель
+    обязана взять на себя. Скрипты публичны намеренно: сертификат CA и так стоит
+    на каждой ноде, внутренних имён в нём нет, а ставит его человек с правами
+    администратора — доступность ссылки никому ничего не даёт.
+    """
+    from app import ca
+
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await ca.ensure_root(s)
+        fp = ca.root_info(await ca.root_cert(s))["fingerprint"]
+
+    sh = await client.get("/ca/install.sh")
+    assert sh.status_code == 200 and "BEGIN CERTIFICATE" in sh.text
+    assert "update-ca-certificates" in sh.text and "add-trusted-cert" in sh.text  # linux + macOS
+    assert fp in sh.text  # отпечаток печатается — есть с чем сверить
+
+    ps = await client.get("/ca/install.ps1")
+    assert ps.status_code == 200 and "LocalMachine" in ps.text
+    assert "IsInRole(" in ps.text  # без прав администратора смысла нет
+    assert "Remove-Item" in ps.text  # прежний сертификат панели снимается
+
+    crt = await client.get("/ca/noderoost-ca.crt")
+    assert crt.status_code == 200 and crt.text.startswith("-----BEGIN CERTIFICATE-----")
