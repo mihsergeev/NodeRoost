@@ -165,6 +165,48 @@ else
 fi
 set -e
 
+# --- корень своей CA в системном хранилище ноды ---
+# Чтобы имена внутри сети открывались без ругани на сертификат СРАЗУ, а не после
+# похода по машинам с файлом. Ставим ровно один корень — тот, отпечаток которого
+# панель назвала в состоянии; скачанное сверяем с ним. Пусто в состоянии = корня
+# быть не должно, и если он лежит, мы его убираем: выключенная в панели галочка
+# обязана убирать доверие, а не только переставать его обновлять.
+# Блок вне сравнения состояния (строка ca= в него не входит): он и так делает
+# что-то, только когда отпечаток разошёлся с тем, что лежит на ноде.
+WANT_CA=\$(grep '^ca=' "\$TMP" | cut -d= -f2-)
+case "\$WANT_CA" in *[!0-9a-f]*) WANT_CA="";; esac
+CA_DST=""; CA_UPD=""
+if [ -d /usr/local/share/ca-certificates ]; then
+  CA_DST=/usr/local/share/ca-certificates/noderoost-ca.crt; CA_UPD=update-ca-certificates
+elif [ -d /etc/pki/ca-trust/source/anchors ]; then
+  CA_DST=/etc/pki/ca-trust/source/anchors/noderoost-ca.crt; CA_UPD="update-ca-trust extract"
+fi
+if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
+  set +e
+  HAVE=""
+  [ -f "\$CA_DST" ] && HAVE=\$(openssl x509 -in "\$CA_DST" -noout -fingerprint -sha256 2>/dev/null \\
+    | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
+  if [ -z "\$WANT_CA" ]; then
+    [ -f "\$CA_DST" ] && { rm -f "\$CA_DST"; \$CA_UPD >/dev/null 2>&1; \\
+      echo "NodeRoost: корень панели убран из доверенных" >&2; }
+  elif [ "\$WANT_CA" != "\$HAVE" ]; then
+    if curl -fsS --max-time 30 -o "\$TMP.ca" "$STATE_URL/ca" 2>/dev/null; then
+      GOT=\$(openssl x509 -in "\$TMP.ca" -noout -fingerprint -sha256 2>/dev/null \\
+        | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
+      if [ -n "\$GOT" ] && [ "\$GOT" = "\$WANT_CA" ]; then
+        cat "\$TMP.ca" > "\$CA_DST"; chmod 644 "\$CA_DST"
+        \$CA_UPD >/dev/null 2>&1 \\
+          && echo "NodeRoost: корень панели добавлен в доверенные (\$CA_DST)" >&2 \\
+          || echo "NodeRoost: не удалось обновить хранилище корней (\$CA_UPD)" >&2
+      else
+        echo "NodeRoost: корень не поставлен — отпечаток скачанного не совпал" >&2
+      fi
+      rm -f "\$TMP.ca"
+    fi
+  fi
+  set -e
+fi
+
 # --- сертификаты имён внутри сети ---
 # Ключ генерится ЗДЕСЬ и здесь остаётся: панель видит только CSR и подписанный
 # сертификат. Файлы кладём в /etc/noderoost/certs; после смены дёргаем хук
@@ -231,7 +273,7 @@ if [ -n "\$CERTS" ]; then
   set -e
 fi
 # Состояние без строк cert=: только оно сравнивается, сохраняется и хешируется.
-grep -v -e '^cert=' -e '^script=' -e '^update=' "\$TMP" > "\$TMP.core" || true
+grep -v -e '^cert=' -e '^script=' -e '^update=' -e '^ca=' "\$TMP" > "\$TMP.core" || true
 
 # tailscale set дёргаем ТОЛЬКО при изменении состояния, а состояние сохраняем лишь
 # после успеха: сбойный set (напр. exit-нода ещё не видна в netmap) не «замораживает»
@@ -326,8 +368,16 @@ while ip rule del fwmark $MARK/$MARK table main priority 5200 2>/dev/null; do :;
 WAN=$(ip -4 route show table main default 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="dev")print $(i+1)}' | head -1)
 while iptables -t mangle -D PREROUTING -i "$WAN" -m conntrack --ctstate NEW -j CONNMARK --set-mark $MARK/$MARK 2>/dev/null; do :; done
 while iptables -t mangle -D OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j CONNMARK --restore-mark --nfmask $MARK --ctmask $MARK 2>/dev/null; do :; done
+# Корень панели из доверенных убираем: агента снимают, чтобы машина перестала
+# подчиняться панели, — оставленный корень означал бы, что она по-прежнему
+# доверяет всему, что панель подпишет.
+for d in /usr/local/share/ca-certificates /etc/pki/ca-trust/source/anchors; do
+  [ -f "$d/noderoost-ca.crt" ] && rm -f "$d/noderoost-ca.crt"
+done
+update-ca-certificates >/dev/null 2>&1 || update-ca-trust extract >/dev/null 2>&1
 rm -rf /lib65/noderoost-agent
-echo "NodeRoost: агент снят. Маршруты остаются такими, какими их применили последний раз."
+echo "NodeRoost: агент снят, корень панели убран из доверенных."
+echo "Сертификаты сервисов в /etc/noderoost/certs оставлены — они ещё работают, пока не истекут."
 """
 
 
@@ -394,7 +444,7 @@ def build_remove() -> str:
 
 
 def extra_lines(
-    wanted: list[tuple[str, str, bool]], update_release: int = 0
+    wanted: list[tuple[str, str, bool]], update_release: int = 0, ca_fp: str = ""
 ) -> str:
     """Довесок к состоянию: версия скрипта агента, заказ обновления и сертификаты.
 
@@ -405,10 +455,16 @@ def extra_lines(
     кнопкой в панели. Само по себе расхождение версий ноду не трогает: панель
     показывает, что агент устарел, а решение остаётся за человеком — и даже после
     его нажатия нода поставит только то, что подписано офлайн-ключом.
+
+    `ca=<отпечаток>` — какой корень панели должен лежать у ноды в доверенных.
+    Отпечаток, а не сам сертификат: состояние читается каждую минуту, и гонять в
+    нём килобайт PEM незачем — по расхождению отпечатка нода сходит за файлом сама.
     """
     lines = f"script={SCRIPT_VERSION}\n"
     if update_release:
         lines += f"update={update_release}\n"
+    if ca_fp:
+        lines += f"ca={ca_fp}\n"
     return lines + cert_lines(wanted)
 
 

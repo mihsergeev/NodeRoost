@@ -383,6 +383,20 @@ export type CaInfo = {
   subject: string
   not_after: string
   fingerprint: string
+  // зоны, которые корню позволено подписывать (пусто = любые)
+  suffixes: string[]
+  // ставить ли корень на ноды самим (агент + скрипт подключения)
+  auto: boolean
+}
+
+export function setCa(body: {
+  auto: boolean
+  rotate_suffixes?: string[]
+}): Promise<CaInfo> {
+  return api<CaInfo>('/api/ca', {
+    method: 'PUT',
+    body: JSON.stringify({ rotate_suffixes: [], ...body }),
+  })
 }
 
 export type DnsRecords = {

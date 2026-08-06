@@ -604,6 +604,17 @@ const EN: Record<string, string> = {
     'Names issued by your own CA open without warnings only where this certificate is installed. Put it once on every device you use: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” set to “Always Trust”, Linux — /usr/local/share/ca-certificates then update-ca-certificates, Android and iOS — install the profile and switch on full trust in settings.',
   'Сверьте отпечаток после установки: так видно, что на устройстве именно этот корень, а не похожий.':
     'Check the fingerprint afterwards: that is how you know the device got this root and not one that merely looks like it.',
+  'ставить корень на ноды автоматически': 'install the root on nodes automatically',
+  'Ноды с агентом кладут его в системное хранилище сами, а машины, подключаемые скриптом, получают его сразу при подключении — внутренние имена открываются без ругани с первой минуты. Снимете галочку — ноды уберут корень у себя. На ноутбуки и телефоны, подключённые вручную, корень всё равно придётся поставить: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Android и iOS — установить профиль и включить полное доверие.':
+    'Nodes running the agent put it into the system trust store themselves, and machines joined with the script get it while they join — internal names open without warnings from the first minute. Clear the tick and the nodes remove the root again. Laptops and phones joined by hand still need it installed: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” → “Always Trust”, Android and iOS — install the profile and switch on full trust.',
+  'Разрешённые зоны': 'Permitted zones',
+  'любые имена (ограничений нет)': 'any name (no constraints)',
+  'Перевыпустить корень': 'Reissue the root',
+  'Корень подписывает только имена в перечисленных зонах — этим ограничена и власть самой панели: на чужой домен она сертификат не выпишет. Зоны через запятую (mesh, lan, int.example.com). Перевыпуск обесценит всё, что подписано старым корнем: сертификаты имён панель закажет заново сама, а на устройствах старый корень надо будет заменить руками.':
+    'The root signs names in the listed zones and nothing else — which is also the limit of the panel’s own power: it cannot issue a certificate for someone else’s domain. Zones separated by commas (mesh, lan, int.example.com). Reissuing voids everything the old root signed: the panel reorders the names’ certificates itself, but on your devices the old root has to be replaced by hand.',
+  'Перевыпустить корень? Старый перестанет действовать.':
+    'Reissue the root? The old one stops working.',
+  'Перевыпустить': 'Reissue',
   'Сертификат Let’s Encrypt для этого имени': 'A Let’s Encrypt certificate for this name',
   'Сертификат возможен только для имени, ведущего на ноду':
     'A certificate is only possible for a name that points at a node',

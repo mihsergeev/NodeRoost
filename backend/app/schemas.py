@@ -709,6 +709,34 @@ class CaInfo(BaseModel):
     subject: str = ""
     not_after: str = ""
     fingerprint: str = ""  # по нему сверяют, что на устройство поставили ТОТ корень
+    # Зоны, которые корню позволено подписывать (X.509 Name Constraints). Пусто —
+    # ограничений нет, то есть корень подпишет любое имя, включая чужое публичное.
+    suffixes: list[str] = []
+    # Ставить ли корень на ноды самим (агент + скрипт подключения)
+    auto: bool = True
+
+
+class CaSettingsIn(RequestModel):
+    """Автоустановка корня и — при перевыпуске — список разрешённых зон."""
+
+    auto: bool = True
+    # Непустой список = ПЕРЕВЫПУСТИТЬ корень с этими зонами. Пустой = не трогать
+    # корень вовсе: перевыпуск обесценивает всё, что им подписано, и делать это
+    # побочным эффектом сохранения галочки нельзя.
+    rotate_suffixes: list[str] = Field(default_factory=list, max_length=32)
+
+    @field_validator("rotate_suffixes")
+    @classmethod
+    def _valid(cls, v: list[str]) -> list[str]:
+        out = []
+        for s in v:
+            s = s.strip().rstrip(".").lower()
+            if not s:
+                continue
+            if not _DOMAIN_RE.match(s) and not re.match(r"^[a-z0-9-]{1,63}$", s):
+                raise ValueError(f"Некорректная зона: {s}")
+            out.append(s)
+        return out
 
 
 class DnsRecordsOut(BaseModel):
