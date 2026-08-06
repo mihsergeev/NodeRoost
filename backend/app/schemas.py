@@ -457,6 +457,9 @@ class AgentOut(BaseModel):
     applied_current: bool = False  # применённое совпадает с текущим заданием
     setup_oneline: str = ""
     remove_oneline: str = ""
+    # агент на ноде свежий (версия его скрипта = той, что отдаёт панель). False —
+    # он от прошлого релиза и новых возможностей не умеет; лечится переустановкой
+    script_current: bool = True
 
 
 class ResolveHostIn(RequestModel):

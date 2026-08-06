@@ -213,6 +213,9 @@ export type AgentCfg = {
   last_poll: string | null
   setup_oneline: string
   remove_oneline: string
+  // агент свежий (его скрипт той же версии, что отдаёт панель); false — он от
+  // прошлого релиза и новых возможностей просто не понимает
+  script_current: boolean
 }
 export function getAgent(nodeId: string): Promise<AgentCfg> {
   return api<AgentCfg>(`/api/agent/${nodeId}`)

@@ -5,6 +5,27 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.5.1] — 2026-08-06
+
+### Added
+
+- **The agent updates itself, and the panel says when it has not.** The agent is a
+  script that lives on the node, so a machine set up in July knew exactly what July
+  knew — a name given a certificate in the panel simply sat there, because that
+  node's agent had never heard of certificates. Nothing said so: it looked like
+  "ticked it, nothing happened". The state now carries the version of the script the
+  panel would install, an agent whose own version differs reinstalls itself (once an
+  hour at most, so a version that refuses to match cannot turn into a loop), and the
+  version travels back with the applied-state report — so the panel can say plainly
+  that a node runs an agent from an earlier release, and offer the one command that
+  fixes it.
+
+### Fixed
+
+- **A certificate outlived the name it belonged to.** Names are dropped along with a
+  deleted node, not only by editing the list, and the certificate row stayed behind —
+  showing the administrator something nothing refers to any more.
+
 ## [0.5.0] — 2026-08-04
 
 ### Added
