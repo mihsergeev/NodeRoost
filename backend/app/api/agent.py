@@ -207,7 +207,9 @@ async def agent_remove(token: str, session: SessionDep) -> Response:
 
 
 @public_router.post("/agent/{token}/applied")
-async def agent_applied(token: str, h: str, session: SessionDep, s: str = "") -> Response:
+async def agent_applied(
+    token: str, h: str, session: SessionDep, s: str = "", r: int = 0
+) -> Response:
     """Агент подтверждает, что ПРИМЕНИЛ состояние (h — sha256 применённого файла).
 
     Отдельно от запроса состояния: сам по себе запрос ничего не доказывает — ноде
@@ -220,7 +222,9 @@ async def agent_applied(token: str, h: str, session: SessionDep, s: str = "") ->
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     node_id, _ = found
-    await settings_store.mark_agent_applied(session, token, (h or "")[:64], (s or "")[:16])
+    await settings_store.mark_agent_applied(
+        session, token, (h or "")[:64], (s or "")[:16], max(0, min(r, 10**6))
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
