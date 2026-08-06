@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     headscale_extra_records_path: str = "/data/headscale/config/extra-records.json"
     # тот же файл глазами headscale — это значение уходит в config.yaml
     headscale_extra_records_path_in_hs: str = "/etc/headscale/extra-records.json"
+    # Сертификаты для имён внутри сети (ACME/Let's Encrypt). Тестовый каталог
+    # (acme-staging-v02) отдаёт недоверенные сертификаты, зато без жёстких
+    # лимитов — им проверяют настройку, прежде чем жечь боевые попытки.
+    acme_directory: str = "https://acme-v02.api.letsencrypt.org/directory"
+    # Почта для писем Let's Encrypt о скором истечении. Пусто — не сообщать.
+    acme_email: str = ""
+    # За сколько дней до конца просить у ноды новый CSR
+    cert_renew_days: int = 30
     # БД headscale — читаем ТОЛЬКО на чтение и только ради host_info (ОС/версия
     # клиента), которого нет в REST API. Это не публичный контракт headscale,
     # поэтому всё best-effort: недоступна/сменилась схема → блок просто не покажем.

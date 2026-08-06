@@ -10,7 +10,7 @@ import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app import audit, dnsrecords, settings_store, tsmirror
+from app import audit, certs, dnsrecords, settings_store, tsmirror
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import get_client
@@ -272,8 +272,8 @@ async def _hs_nodes() -> list[dict]:
         return []
 
 
-def _records_out(
-    stored: list[dict], nodes: list[dict], cfg: dict, config_path: str
+async def _records_out(
+    session, stored: list[dict], nodes: list[dict], cfg: dict, config_path: str
 ) -> DnsRecordsOut:
     settings = get_settings()
     by_id = {str(n.get("id", "")): n for n in nodes}
@@ -289,6 +289,7 @@ def _records_out(
         note = ""
         if node_id and node is None:
             note = "нода не найдена" if nodes else "headscale недоступен"
+        cert = await certs.get(session, str(rec.get("name") or "")) if rec.get("cert") else None
         out.append(
             DnsRecordOut(
                 name=str(rec.get("name") or ""),
@@ -298,6 +299,12 @@ def _records_out(
                 else "",
                 ip=str(rec.get("ip") or ""),
                 enabled=bool(rec.get("enabled", True)),
+                cert=bool(rec.get("cert", False)),
+                cert_status=(cert.status if cert else ("issuing" if rec.get("cert") else "")),
+                cert_until=(
+                    cert.not_after.date().isoformat() if cert and cert.not_after else ""
+                ),
+                cert_error=(cert.error if cert else ""),
                 addresses=addrs,
                 note=note,
             )
@@ -316,7 +323,8 @@ async def list_dns_records(_: CurrentUser, session: SessionDep) -> DnsRecordsOut
     """Имена, которые панель раздаёт внутри меша (снаружи DNS не меняется)."""
     settings = get_settings()
     stored = await settings_store.get_dns_records(session)
-    return _records_out(
+    return await _records_out(
+        session,
         stored,
         await _hs_nodes(),
         _read_hs_config(settings.headscale_config_path),
@@ -366,7 +374,13 @@ async def update_dns_records(
             )
 
     stored = [
-        {"name": r.name, "node_id": r.node_id, "ip": r.ip, "enabled": r.enabled}
+        {
+            "name": r.name,
+            "node_id": r.node_id,
+            "ip": r.ip,
+            "enabled": r.enabled,
+            "cert": r.cert,
+        }
         for r in body.records
     ]
     # Файл — ПЕРВЫМ, конфиг — вторым: headscale не поднимется, если путь в конфиге
@@ -404,7 +418,10 @@ async def update_dns_records(
         ", ".join(r.name if r.enabled else f"{r.name} (выкл)" for r in body.records)
         or "пусто",
     )
-    return _records_out(stored, nodes, cfg, settings.headscale_config_path)
+    # сертификаты имён, которых больше нет (или у которых сняли галочку), панели
+    # незачем держать: они всё равно не обновятся, а в списке будут врать
+    await certs.forget(session, {r.name for r in body.records if r.cert})
+    return await _records_out(session, stored, nodes, cfg, settings.headscale_config_path)
 
 
 @router.put("/hs-info/network", response_model=HsInfoOut)
