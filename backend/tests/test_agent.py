@@ -44,7 +44,7 @@ def test_apply_script_reports_applied_state_hash():
     assert "sha256sum" in setup
     assert "/applied?h=" in setup
     # подтверждение идёт ПОСЛЕ переноса состояния (то есть после успешного apply)
-    assert setup.index('mv "\$TMP"') < setup.index("/applied?h=")
+    assert setup.index(r'mv "\$TMP.core"') < setup.index("/applied?h=")
 
 
 def test_state_hash_matches_what_the_agent_hashes():
@@ -106,3 +106,36 @@ async def test_agent_change_is_written_to_the_audit_log(client, monkeypatch):
     entry = next((e for e in log if e["action"] == "agent_set"), None)
     assert entry is not None, log
     assert entry["target"] == "7" and "10.9.0.0/24" in entry["detail"]
+
+
+def test_certificates_do_not_enter_the_state_hash():
+    """Строка cert= меняется на каждый выпуск (нет сертификата → есть → продлён).
+    Попади она в состояние — панель показывала бы «агент отстал» ровно тогда,
+    когда он как раз отработал."""
+    assert "cert=" not in agent.state_body(["10.0.0.0/24"], False)
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "grep -v '^cert='" in setup
+    # состояние обрезается ДО сравнения, иначе выпуск выглядел бы как правка
+    assert setup.index("grep -v '^cert='") < setup.index(r'cmp -s "\$TMP.core"')
+
+
+def test_cert_line_format():
+    nl = chr(10)
+    assert agent.cert_lines([("nas.example.com", "abc123", True)]) == (
+        "cert=nas.example.com|abc123|1" + nl
+    )
+    # сертификата ещё нет — отпечаток пустой, CSR не нужен (ждём паузы после отказа)
+    assert agent.cert_lines([("x.example.com", "", False)]) == "cert=x.example.com||0" + nl
+    assert agent.cert_lines([]) == ""
+
+
+def test_key_stays_on_the_node():
+    """Панель не должна получать приватный ключ: агент шлёт CSR, а ключ у него."""
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "openssl req -new -key" in setup and "/csr?name=" in setup
+    # ключ никуда не отправляется — единственное, что уходит наверх, это CSR
+    assert r'--data-binary @"\$TMP.csr"' in setup
+    assert ".key" in setup and "curl" in setup
+    for line in setup.splitlines():
+        if "curl" in line and "--data-binary" in line:
+            assert ".csr" in line and ".key" not in line

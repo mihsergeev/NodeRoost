@@ -7,9 +7,11 @@
 
 import secrets
 
-from fastapi import APIRouter, HTTPException, Response, status
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app import agent, audit, routing, settings_store
+from app import agent, audit, certs, routing, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, PublicRateLimit, SessionDep
 from app.schemas import AgentIn, AgentOut
@@ -166,4 +168,69 @@ async def agent_state(token: str, session: SessionDep) -> Response:
         bool(cfg.get("exit", False)),
         str(cfg.get("use_exit") or ""),
     )
+    body += agent.cert_lines(
+        await certs.wanted_for_node(session, get_settings(), node_id)
+    )
     return Response(content=body, media_type="text/plain")
+
+
+async def _node_may_ask(session, token: str, name: str) -> str:
+    """Нода вправе просить сертификат только на имя, которое панель ей и назначила.
+
+    Без этой проверки владелец любой ноды выпускал бы сертификаты на чужие имена
+    сети — токен агента давал бы куда больше, чем свои маршруты.
+    """
+    found = await settings_store.get_agent_by_token(session, token)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
+    node_id, _ = found
+    wanted = {n for n, _, _ in await certs.wanted_for_node(session, get_settings(), node_id)}
+    if name not in wanted:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "это имя не назначено данной ноде"
+        )
+    return node_id
+
+
+@public_router.post("/agent/{token}/csr")
+async def agent_csr(token: str, name: str, request: Request, session: SessionDep) -> Response:
+    """Нода прислала CSR — панель проводит ACME-заказ и отвечает сертификатом.
+
+    Ключ остаётся на ноде: сюда приезжает только запрос на подпись.
+    """
+    node_id = await _node_may_ask(session, token, name)
+    pem = (await request.body()).decode("utf-8", "replace")
+    try:
+        csr_der = x509.load_pem_x509_csr(pem.encode()).public_bytes(Encoding.DER)
+    except Exception as e:  # noqa: BLE001 — сюда приходит текст с чужой машины
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"не похоже на CSR: {e}") from e
+    try:
+        row = await certs.issue(session, get_settings(), name, node_id, csr_der)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    if row.status != "ok":
+        # Агент не должен долбиться в ответ на отказ: причина и пауза — в панели
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, row.error or "сертификат не выдан"
+        )
+    return Response(content=row.cert_pem, media_type="application/x-pem-file")
+
+
+@public_router.get("/agent/{token}/cert")
+async def agent_cert(token: str, name: str, session: SessionDep) -> Response:
+    """Забрать уже выданный сертификат (например, если файл на ноде потерялся)."""
+    await _node_may_ask(session, token, name)
+    row = await certs.get(session, name)
+    if row is None or not row.cert_pem:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "сертификата ещё нет")
+    return Response(content=row.cert_pem, media_type="application/x-pem-file")
+
+
+@public_router.get("/.well-known/acme-challenge/{token}")
+async def acme_challenge(token: str, session: SessionDep) -> Response:
+    """Ответ на проверку Let's Encrypt. Публично и без авторизации — по замыслу:
+    сюда приходит не человек, а проверяющий, и токен здесь единственный секрет."""
+    answer = await certs.answer_for(session, token)
+    if not answer:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
+    return Response(content=answer, media_type="text/plain")
