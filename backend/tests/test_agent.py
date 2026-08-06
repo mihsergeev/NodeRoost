@@ -129,6 +129,12 @@ def test_agent_updates_itself_when_the_panel_script_changed():
     assert f'SCRIPT_V="{agent.SCRIPT_VERSION}"' in setup
     assert "/setup\" | sh" in setup  # переустановка при расхождении версий
     assert ".selfupdate" in setup and "3600" in setup  # не чаще раза в час
+    # …и только с явного разрешения панели: выполнение присланного ею кода —
+    # решение администратора. Иначе взломанная панель раздала бы под root что
+    # угодно сразу всем нодам, а до этого такой возможности у неё не было.
+    assert "ALLOW_UPD" in setup
+    assert "selfupdate=1" not in agent.extra_lines([])
+    assert "selfupdate=1" in agent.extra_lines([], self_update=True)
     # версию агент сообщает вместе с отчётом о применении — по ней панель видит старого
     assert "&s=\\$SCRIPT_V" in setup
     assert agent.extra_lines([]).startswith(f"script={agent.SCRIPT_VERSION}")
