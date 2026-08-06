@@ -364,6 +364,23 @@ input:focus {
   font-size: 0.95rem;
 }
 
+.ca-missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid var(--warn, #d19a2f);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.8rem 0 0;
+}
+
+.ca-missing p {
+  margin: 0;
+  flex: 1 1 20rem;
+}
+
 .ca-head-actions {
   display: flex;
   gap: 0.4rem;
