@@ -127,8 +127,15 @@ _EXIT_SETUP_LINUX = (
 )
 
 # --- Windows (PowerShell от администратора, MSI нужной версии) ---
+# Весь скрипт — ОДИН блок `& { ... }` намеренно. Его вставляют в консоль целиком,
+# а PowerShell выполняет вставленное построчно: без блока падение установщика не
+# останавливало остальное, и человек получал каскад вторичных ошибок («имя
+# tailscale.exe не распознано», «подключение не подтвердилось»), из которых
+# настоящая причина не видна вовсе. Блок выполняется как одно целое, и первый же
+# throw обрывает всё.
 _WINDOWS_TEMPLATE = r"""# NodeRoost — подключение этой машины к тайлнету.
 # Запускать в PowerShell ОТ АДМИНИСТРАТОРА.
+& {
 $ErrorActionPreference = 'Stop'
 # Одноразовый ключ не должен попасть в историю PSReadLine (ConsoleHost_history.txt)
 try { Set-PSReadLineOption -HistorySaveStyle SaveNothing } catch {}
@@ -136,6 +143,18 @@ $ver   = '@@VER@@'
 $login = '@@LOGIN@@'
 $key   = '@@KEY@@'
 $name  = '@@NAME@@'
+
+# Права проверяем ПЕРВЫМ делом: без них msiexec /quiet молча не ставит ничего, и
+# дальше всё разваливается по причине, которую уже не видно.
+$admin = ([Security.Principal.WindowsPrincipal] `
+  [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) {
+  Write-Host "NodeRoost: нужен PowerShell ОТ АДМИНИСТРАТОРА." -ForegroundColor Red
+  Write-Host "  Пуск → «Windows PowerShell» → правой кнопкой → «Запуск от имени администратора»,"
+  Write-Host "  затем вставьте скрипт заново."
+  return
+}
 
 $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
   'AMD64' { 'amd64' }
@@ -148,8 +167,42 @@ Write-Host "NodeRoost: скачиваю Tailscale $ver ($arch)…"
 # сначала наш мирор, при неудаче — официальный pkgs.tailscale.com
 try { Invoke-WebRequest "@@PKGBASE@@/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
 catch { Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
-Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/quiet', '/norestart' -Wait
-$ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+# Проверяем, что скачался установщик, а не страница с ошибкой: у MSI своя
+# сигнатура (составной документ OLE), и она стоит одну строку кода.
+$head = [System.IO.File]::ReadAllBytes($msi)[0..7]
+if ((Get-Item $msi).Length -lt 1MB -or
+    (($head | ForEach-Object { $_.ToString('x2') }) -join '') -ne 'd0cf11e0a1b11ae1') {
+  throw "NodeRoost: скачанный файл не похож на установщик Tailscale ($msi). Проверьте доступ к @@PKGBASE@@ и к pkgs.tailscale.com."
+}
+
+# Установка: обязательно с проверкой кода возврата и с подробным логом. Без этого
+# провал установки выяснялся только тем, что дальше «не найден tailscale.exe».
+$log = Join-Path $env:TEMP 'noderoost-tailscale-install.log'
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
+  '/i', "`"$msi`"", '/quiet', '/norestart', '/l*v', "`"$log`""
+if ($p.ExitCode -eq 3010) {
+  Write-Host "NodeRoost: установщик просит перезагрузку — продолжаю, но перезагрузите машину позже."
+} elseif ($p.ExitCode -ne 0) {
+  $why = switch ($p.ExitCode) {
+    1603 { 'внутренняя ошибка установки (часто — антивирус или остатки прошлой версии)' }
+    1618 { 'параллельно идёт другая установка Windows — дождитесь её и повторите' }
+    1625 { 'установка запрещена политикой системы' }
+    1619 { 'установщик не читается (битая загрузка)' }
+    default { 'см. лог' }
+  }
+  throw "NodeRoost: установка Tailscale не удалась (msiexec $($p.ExitCode): $why). Подробности: $log"
+}
+
+# Путь к клиенту ищем, а не угадываем: на 32-разрядном PowerShell $env:ProgramFiles
+# указывает в Program Files (x86), а Tailscale ставится в 64-разрядный каталог.
+$ts = @(
+  (Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'),
+  (Join-Path ${env:ProgramFiles(x86)} 'Tailscale\tailscale.exe'),
+  'C:\Program Files\Tailscale\tailscale.exe'
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $ts) {
+  throw "NodeRoost: Tailscale установился, но tailscale.exe не найден. Загляните в $log."
+}
 @@CAROOT@@
 # --reset: см. пояснение в linux-шаблоне — без него `tailscale up` не меняет
 # настройки на машине, где уже был задан любой неявный флаг.
@@ -161,7 +214,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "NodeRoost: машина была подключена к другому control-серверу — переключаю."
     & $ts up --reset --force-reauth --login-server=$login --authkey=$key --hostname=$name @@EXTRA@@
   } else {
-    Write-Error "$err"
+    throw "$err"
   }
 }
 # Докладываем то, ЧТО ЕСТЬ (см. пояснение в linux-шаблоне): на машине, уже
@@ -180,12 +233,13 @@ for ($i = 0; $i -lt 10; $i++) {
   Start-Sleep -Seconds 1
 }
 if (-not $real) {
-  Write-Error "NodeRoost: подключение не подтвердилось — проверьте 'tailscale status'."
+  throw "NodeRoost: подключение не подтвердилось — проверьте '$ts status'."
 } elseif ($real -ne $name) {
   Write-Host "NodeRoost: машина уже была в этой сети как `"$real`" ($addr) — использована её запись."
   Write-Host "В панели она останется под своим именем, новая нода `"$name`" не появится."
 } else {
   Write-Host "NodeRoost: нода `"$real`" подключена ($addr)."
+}
 }
 """
 
@@ -318,6 +372,12 @@ $caPem = @'
 @@CAPEM@@'@
 $caFile = Join-Path $env:TEMP 'noderoost-ca.crt'
 Set-Content -Path $caFile -Value $caPem -Encoding ascii
+# Прежние корни панели убираем: выпущенный заново корень не отменяет старый, и
+# в хранилище копились бы мёртвые «NodeRoost internal CA», которым машина всё
+# ещё доверяет.
+Get-ChildItem Cert:\\LocalMachine\\Root |
+  Where-Object { $_.Subject -like '*NodeRoost internal CA*' } |
+  Remove-Item -Force -ErrorAction SilentlyContinue
 try {
   Import-Certificate -FilePath $caFile -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
   Write-Host "NodeRoost: корень панели добавлен в доверенные."
@@ -334,6 +394,9 @@ _CA_MACOS = """
 # без ругани на сертификат. Понадобится пароль: связка ключей системная.
 cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
 @@CAPEM@@NRCAEOF
+# прежний корень панели убираем — иначе в связке копятся мёртвые
+sudo security delete-certificate -c "NodeRoost internal CA" \\
+  /Library/Keychains/System.keychain 2>/dev/null || true
 sudo security add-trusted-cert -d -r trustRoot \\
   -k /Library/Keychains/System.keychain /tmp/noderoost-ca.crt \\
   && echo "NodeRoost: корень панели добавлен в доверенные."
