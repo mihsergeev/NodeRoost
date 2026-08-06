@@ -154,3 +154,48 @@ async def test_key_expiry_rounds_up(session, monkeypatch):
 async def test_key_expiry_silent_beyond_threshold(session, monkeypatch):
     # 14 суток и ещё 5 часов — порог в 14 дней ещё не перейдён
     assert await _expiry_alerts(session, monkeypatch, hours_left=14 * 24 + 5) == []
+
+
+async def test_collect_once_runs_to_the_end(session_factory, monkeypatch):
+    """Цикл сбора обязан доходить до конца.
+
+    Он делает всё подряд — метрики, алерты, имена, подчистку ключей, самоисцеление
+    ACL, — и падение посередине тихо отменяет ВСЁ, что стоит ниже: снаружи это
+    выглядит как «часть панели просто не работает». Именно так и случилось: в
+    коллекторе вызывался `certs.forget`, а импорта не было, и каждый цикл умирал
+    на нём, унося с собой одобрение заказанных маршрутов, подчистку ключей и
+    пересборку политики. Тест держит весь проход, а не отдельные его куски.
+    """
+    from app import settings_store
+    from app.models import Certificate
+
+    class _Client:
+        async def get_nodes(self):
+            return [{"id": "7", "name": "srv", "givenName": "srv", "online": True}]
+
+        async def list_preauthkeys(self):
+            return []
+
+    monkeypatch.setattr(collector, "get_client", lambda _s: _Client())
+    monkeypatch.setattr(collector.dnsrecords, "sync", lambda *a, **k: _false())
+    monkeypatch.setattr(collector.policy_apply, "reconcile_policy", _none)
+
+    async with session_factory() as s:
+        await settings_store.set_dns_records(s, [{"name": "nas.mesh", "node_id": "7", "cert": True}])
+        s.add(Certificate(name="ушедшее.mesh", node_id="7", status="ok", cert_pem="pem"))
+        await s.commit()
+
+    total = await collector.collect_once(session_factory, Settings(headscale_api_key="k"))
+    assert total == 1
+    async with session_factory() as s:
+        # сертификат имени, которого больше нет в панели, убран — то есть проход
+        # дошёл до этого места и пошёл дальше
+        assert await s.get(Certificate, "ушедшее.mesh") is None
+
+
+async def _false():
+    return False
+
+
+async def _none(*a, **k):
+    return False
