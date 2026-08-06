@@ -33,9 +33,6 @@ services:
       NODEROOST_DOMAIN: ${NODEROOST_DOMAIN}
       NODEROOST_HS_DOMAIN: ${NODEROOST_HS_DOMAIN}
       NODEROOST_ALLOW_IPS: ${NODEROOST_ALLOW_IPS:-127.0.0.1}
-      # маска имён внутри сети (напр. *.int.example.com) — по 80-му порту на них
-      # приходит проверка Let's Encrypt; пусто = сертификаты не выпускаются
-      NODEROOST_CERT_DOMAIN: ${NODEROOST_CERT_DOMAIN:-}
     networks:
       - internal
     depends_on:

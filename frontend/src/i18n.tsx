@@ -594,36 +594,34 @@ const EN: Record<string, string> = {
   '…или командой на ноде': '…or by command on the node',
   'Заказано — нода проверит подпись и обновится в течение минуты':
     'Asked — the node will check the signature and update within a minute',
-  'Кто выпускает сертификат для этого имени': 'Who issues the certificate for this name',
-  'без сертификата': 'no certificate',
-  'своя CA': 'own CA',
   'Корневой сертификат': 'Root certificate',
   'Действует до': 'Valid until',
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
-  'Имена со своей CA открываются без предупреждений только там, где этот сертификат установлен. Поставьте его один раз на каждое устройство, с которого ходите: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» с уровнем «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие в настройках.':
-    'Names issued by your own CA open without warnings only where this certificate is installed. Put it once on every device you use: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” set to “Always Trust”, Linux — /usr/local/share/ca-certificates then update-ca-certificates, Android and iOS — install the profile and switch on full trust in settings.',
-  'Сверьте отпечаток после установки: так видно, что на устройстве именно этот корень, а не похожий.':
-    'Check the fingerprint afterwards: that is how you know the device got this root and not one that merely looks like it.',
+  'Настроить': 'Configure',
+  'Свернуть': 'Collapse',
+  'Домены': 'Domains',
+  'любые (ограничений нет)': 'any (no constraints)',
+  'Домены (через запятую)': 'Domains (comma-separated)',
+  'Срок, лет': 'Valid for, years',
+  'Корень подписывает имена только в этих доменах — этим ограничена и власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново: сертификаты имён панель закажет сама, а на ноутбуках и телефонах корень надо будет поставить заново.':
+    'The root signs names in these domains only — which is also the limit of the panel’s power: it cannot issue a certificate for someone else’s domain. Saving issues a new root: the panel reorders the names’ certificates itself, but on laptops and phones the root has to be installed again.',
+  'Выпустить корень заново? Старый перестанет действовать.':
+    'Issue a new root? The old one stops working.',
+  'Выпустить заново': 'Issue a new root',
+  'Как поставить на устройство': 'How to install it on a device',
+  'Ноды панель обслуживает сама. Вручную — только то, что подключали не скриптом: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие. После установки сверьте отпечаток.':
+    'Nodes are handled by the panel itself. By hand you only do the machines you joined without the script: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” → “Always Trust”, Linux — /usr/local/share/ca-certificates then update-ca-certificates, Android and iOS — install the profile and switch on full trust. Check the fingerprint afterwards.',
+  'сертификат': 'certificate',
+  'Выпустить сертификат для этого имени': 'Issue a certificate for this name',
+  'Сертификат подписывает панель своим корнем, а ключ генерится на самой ноде и никуда с неё не уезжает. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':
+    'The panel signs the certificate with its own root; the key is generated on the node and never leaves it. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
   'ставить корень на ноды автоматически': 'install the root on nodes automatically',
-  'Ноды с агентом кладут его в системное хранилище сами, а машины, подключаемые скриптом, получают его сразу при подключении — внутренние имена открываются без ругани с первой минуты. Снимете галочку — ноды уберут корень у себя. На ноутбуки и телефоны, подключённые вручную, корень всё равно придётся поставить: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Android и iOS — установить профиль и включить полное доверие.':
-    'Nodes running the agent put it into the system trust store themselves, and machines joined with the script get it while they join — internal names open without warnings from the first minute. Clear the tick and the nodes remove the root again. Laptops and phones joined by hand still need it installed: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” → “Always Trust”, Android and iOS — install the profile and switch on full trust.',
-  'Разрешённые зоны': 'Permitted zones',
-  'любые имена (ограничений нет)': 'any name (no constraints)',
-  'Перевыпустить корень': 'Reissue the root',
-  'Корень подписывает только имена в перечисленных зонах — этим ограничена и власть самой панели: на чужой домен она сертификат не выпишет. Зоны через запятую (mesh, lan, int.example.com). Перевыпуск обесценит всё, что подписано старым корнем: сертификаты имён панель закажет заново сама, а на устройствах старый корень надо будет заменить руками.':
-    'The root signs names in the listed zones and nothing else — which is also the limit of the panel’s own power: it cannot issue a certificate for someone else’s domain. Zones separated by commas (mesh, lan, int.example.com). Reissuing voids everything the old root signed: the panel reorders the names’ certificates itself, but on your devices the old root has to be replaced by hand.',
-  'Перевыпустить корень? Старый перестанет действовать.':
-    'Reissue the root? The old one stops working.',
-  'Перевыпустить': 'Reissue',
-  'Сертификат Let’s Encrypt для этого имени': 'A Let’s Encrypt certificate for this name',
   'Сертификат возможен только для имени, ведущего на ноду':
     'A certificate is only possible for a name that points at a node',
   'сертификат до {date}': 'certificate until {date}',
   'сертификат не выдан: {err}': 'certificate not issued: {err}',
   'сертификат заказан — нода заберёт его в течение минуты':
     'certificate ordered — the node will pick it up within a minute',
-  'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Let’s Encrypt даёт публично доверенный сертификат, но требует, чтобы имя существовало в публичном DNS (одна wildcard-запись на адрес панели плюс NODEROOST_CERT_DOMAIN в её .env), и публикует имя в CT-логах. Своя CA не требует ни домена, ни интернета — имя может быть любым, зато её корень нужно один раз поставить на устройства. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':
-    'The panel orders the certificate; the key is generated on the node itself and never leaves it. Let’s Encrypt gives a publicly trusted certificate but requires the name to exist in public DNS (one wildcard record pointing at the panel plus NODEROOST_CERT_DOMAIN in its .env) and publishes the name in CT logs. Your own CA needs neither a domain nor the internet — the name can be anything — but its root has to be installed on your devices once. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
   'СТАРЫЙ КЛЮЧ': 
     'The panel orders the certificate; the key is generated on the node itself and never leaves it. For this to work you need one DNS record, once and for all: your internal-name mask (say *.int.example.com) as an A record pointing at the panel, plus NODEROOST_CERT_DOMAIN in its .env. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
   'нода не найдена': 'node not found',

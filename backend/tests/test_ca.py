@@ -86,25 +86,9 @@ def test_fingerprint_is_shown_for_checking():
     assert ca.root_info("") == {}
 
 
-async def test_issuer_comes_from_the_record(session):
-    await settings_store.set_dns_records(
-        session,
-        [
-            {"name": "nas.mesh", "node_id": "7", "cert": True, "issuer": "ca"},
-            {"name": "site.example.com", "node_id": "7", "cert": True},
-        ],
-    )
-    assert await certs.issuer_of(session, "nas.mesh") == "ca"
-    # запись без поля — это Let's Encrypt: так было до появления своей CA
-    assert await certs.issuer_of(session, "site.example.com") == "le"
-    assert await certs.issuer_of(session, "нет-такого") == "le"
-
-
-async def test_own_ca_issues_without_internet(session):
+async def test_issuing_needs_no_internet(session):
     """Ни DNS, ни 80-го порта, ни интернета: имя может быть каким угодно."""
-    row = await certs.issue(
-        session, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca"
-    )
+    row = await certs.issue(session, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
     assert row.status == "ok", row.error
     assert row.not_after is not None
     assert "BEGIN CERTIFICATE" in row.cert_pem

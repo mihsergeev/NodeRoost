@@ -24,7 +24,6 @@ type RecRow = {
   ip: string
   enabled: boolean
   cert: boolean
-  issuer: 'le' | 'ca'
 }
 
 function rowsOf(r: DnsRecords): RecRow[] {
@@ -34,7 +33,6 @@ function rowsOf(r: DnsRecords): RecRow[] {
     ip: x.ip,
     enabled: x.enabled,
     cert: x.cert,
-    issuer: x.issuer,
   }))
 }
 
@@ -55,6 +53,7 @@ export function DnsPage({ onUnauthorized }: Props) {
   // обесценивает всё, что подписано, и заставляет обойти устройства заново
   const [rotOpen, setRotOpen] = useState(false)
   const [zones, setZones] = useState('')
+  const [years, setYears] = useState(10)
   const [caBusy, setCaBusy] = useState(false)
 
   // резолверы и MagicDNS — вторая половина раздела: настраивается один раз и
@@ -153,7 +152,6 @@ export function DnsPage({ onUnauthorized }: Props) {
             ip: r.ip.trim(),
             enabled: r.enabled,
             cert: r.cert,
-            issuer: r.issuer,
           }))
           .filter((r) => r.name),
       )
@@ -328,28 +326,23 @@ export function DnsPage({ onUnauthorized }: Props) {
                 )}
                 {/* Сертификат — только у имени, ведущего на ноду: ключ генерится
                     на ней, и положить его больше некуда. */}
-                <select
+                <label
                   className="dns-rec-cert"
-                  disabled={!r.node_id}
                   title={
                     r.node_id
-                      ? t('Кто выпускает сертификат для этого имени')
+                      ? t('Выпустить сертификат для этого имени')
                       : t('Сертификат возможен только для имени, ведущего на ноду')
                   }
-                  value={r.cert ? r.issuer : 'off'}
-                  onChange={(e) =>
-                    update(
-                      i,
-                      e.target.value === 'off'
-                        ? { cert: false }
-                        : { cert: true, issuer: e.target.value as 'le' | 'ca' },
-                    )
-                  }
                 >
-                  <option value="off">{t('без сертификата')}</option>
-                  <option value="le">{t("Let's Encrypt")}</option>
-                  <option value="ca">{t('своя CA')}</option>
-                </select>
+                  <input
+                    type="checkbox"
+                    className="field-checkbox"
+                    disabled={!r.node_id}
+                    checked={r.cert}
+                    onChange={(e) => update(i, { cert: e.target.checked })}
+                  />
+                  {t('сертификат')}
+                </label>
                 <button
                   className="dns-rec-drop"
                   title={t('Убрать')}
@@ -365,27 +358,34 @@ export function DnsPage({ onUnauthorized }: Props) {
           </div>
         )}
 
-        {/* Корень своей CA: показываем, как только он есть — с этого момента
-            он раскладывается по нодам, и администратор обязан видеть, что
-            именно раздаётся и каким именам этот корень вправе выдавать бумаги. */}
+        {/* Корень своей CA: одна строка про суть, подробности — под
+            «Настроить». Раньше здесь висели три абзаца, из которых не было
+            видно ни доменов, ни того, где их менять. */}
         {recs?.ca.exists && (
           <div className="dns-ca">
             <div className="clients-head">
               <h4>{t('Корневой сертификат')}</h4>
-              <button
-                className="ghost small"
-                onClick={() =>
-                  downloadCa().catch((e) =>
-                    setCaErr(e instanceof Error ? e.message : t('Ошибка')),
-                  )
-                }
-              >
-                {t('Скачать')}
-              </button>
+              <div className="ca-head-actions">
+                <button
+                  className="ghost small"
+                  onClick={() =>
+                    downloadCa().catch((e) =>
+                      setCaErr(e instanceof Error ? e.message : t('Ошибка')),
+                    )
+                  }
+                >
+                  {t('Скачать')}
+                </button>
+                <button className="ghost small" onClick={() => setRotOpen(!rotOpen)}>
+                  {rotOpen ? t('Свернуть') : t('Настроить')}
+                </button>
+              </div>
             </div>
-            <label className="check">
+
+            <label className="ca-check">
               <input
                 type="checkbox"
+                className="field-checkbox"
                 checked={recs.ca.auto}
                 disabled={caBusy}
                 onChange={async (e) => {
@@ -401,20 +401,16 @@ export function DnsPage({ onUnauthorized }: Props) {
                     setCaBusy(false)
                   }
                 }}
-              />{' '}
-              {t('ставить корень на ноды автоматически')}
+              />
+              <span>{t('ставить корень на ноды автоматически')}</span>
             </label>
-            <p className="muted small">
-              {t(
-                'Ноды с агентом кладут его в системное хранилище сами, а машины, подключаемые скриптом, получают его сразу при подключении — внутренние имена открываются без ругани с первой минуты. Снимете галочку — ноды уберут корень у себя. На ноутбуки и телефоны, подключённые вручную, корень всё равно придётся поставить: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Android и iOS — установить профиль и включить полное доверие.',
-              )}
-            </p>
+
             <div className="info-row">
-              <span className="muted small">{t('Разрешённые зоны')}</span>
+              <span className="muted small">{t('Домены')}</span>
               <span className="mono small">
                 {recs.ca.suffixes.length
-                  ? recs.ca.suffixes.join(', ')
-                  : t('любые имена (ограничений нет)')}
+                  ? recs.ca.suffixes.map((z) => '*.' + z).join(', ')
+                  : t('любые (ограничений нет)')}
               </span>
             </div>
             <div className="info-row">
@@ -423,37 +419,49 @@ export function DnsPage({ onUnauthorized }: Props) {
             </div>
             <div className="info-row">
               <span className="muted small">{t('Отпечаток SHA-256')}</span>
-              <span className="mono small">{recs.ca.fingerprint}</span>
+              <span className="mono small ca-fp">{recs.ca.fingerprint}</span>
             </div>
-            <p className="muted small">
-              {t('Сверьте отпечаток после установки: так видно, что на устройстве именно этот корень, а не похожий.')}
-            </p>
-            {!rotOpen ? (
-              <button className="ghost small" onClick={() => setRotOpen(true)}>
-                {t('Перевыпустить корень')}
-              </button>
-            ) : (
+
+            {rotOpen && (
               <div className="ca-rotate">
+                <div className="ca-rotate-fields">
+                  <label>
+                    {t('Домены (через запятую)')}
+                    <input
+                      value={zones}
+                      onChange={(e) => setZones(e.target.value)}
+                      placeholder="mesh, lan, home.example.com"
+                      disabled={caBusy}
+                    />
+                  </label>
+                  <label className="ca-years">
+                    {t('Срок, лет')}
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={years}
+                      onChange={(e) => setYears(Number(e.target.value))}
+                      disabled={caBusy}
+                    />
+                  </label>
+                </div>
                 <p className="muted small">
                   {t(
-                    'Корень подписывает только имена в перечисленных зонах — этим ограничена и власть самой панели: на чужой домен она сертификат не выпишет. Зоны через запятую (mesh, lan, int.example.com). Перевыпуск обесценит всё, что подписано старым корнем: сертификаты имён панель закажет заново сама, а на устройствах старый корень надо будет заменить руками.',
+                    'Корень подписывает имена только в этих доменах — этим ограничена и власть панели: на чужой домен сертификат она не выпишет. Сохранение выпускает корень заново: сертификаты имён панель закажет сама, а на ноутбуках и телефонах корень надо будет поставить заново.',
                   )}
                 </p>
-                <input
-                  value={zones}
-                  onChange={(e) => setZones(e.target.value)}
-                  placeholder="mesh, lan"
-                  disabled={caBusy}
-                />
-                <div className="modal-actions">
-                  <button className="ghost small" onClick={() => setRotOpen(false)}>
-                    {t('Отмена')}
-                  </button>
+                <div className="dns-actions">
                   <button
                     className="danger small"
                     disabled={caBusy || !zones.trim()}
                     onClick={async () => {
-                      if (!window.confirm(t('Перевыпустить корень? Старый перестанет действовать.'))) return
+                      if (
+                        !window.confirm(
+                          t('Выпустить корень заново? Старый перестанет действовать.'),
+                        )
+                      )
+                        return
                       setCaBusy(true)
                       setCaErr(null)
                       try {
@@ -461,8 +469,9 @@ export function DnsPage({ onUnauthorized }: Props) {
                           auto: recs.ca.auto,
                           rotate_suffixes: zones
                             .split(',')
-                            .map((z) => z.trim())
+                            .map((z) => z.trim().replace(/^\*\./, ''))
                             .filter(Boolean),
+                          rotate_years: years,
                         })
                         setRecs({ ...recs, ca: info })
                         setZones(info.suffixes.join(', '))
@@ -474,11 +483,22 @@ export function DnsPage({ onUnauthorized }: Props) {
                       }
                     }}
                   >
-                    {t('Перевыпустить')}
+                    {caBusy ? t('Сохранение…') : t('Выпустить заново')}
                   </button>
                 </div>
               </div>
             )}
+
+            <details className="ca-help">
+              <summary className="muted small">
+                {t('Как поставить на устройство')}
+              </summary>
+              <p className="muted small">
+                {t(
+                  'Ноды панель обслуживает сама. Вручную — только то, что подключали не скриптом: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие. После установки сверьте отпечаток.',
+                )}
+              </p>
+            </details>
             {caErr && <p className="form-error">{caErr}</p>}
           </div>
         )}
@@ -486,7 +506,7 @@ export function DnsPage({ onUnauthorized }: Props) {
         {rows.some((r) => r.cert) && (
           <p className="muted small settings-note">
             {t(
-              'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Let’s Encrypt даёт публично доверенный сертификат, но требует, чтобы имя существовало в публичном DNS (одна wildcard-запись на адрес панели плюс NODEROOST_CERT_DOMAIN в её .env), и публикует имя в CT-логах. Своя CA не требует ни домена, ни интернета — имя может быть любым, зато её корень нужно один раз поставить на устройства. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.',
+              'Сертификат подписывает панель своим корнем, а ключ генерится на самой ноде и никуда с неё не уезжает. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.',
             )}
           </p>
         )}
@@ -508,7 +528,6 @@ export function DnsPage({ onUnauthorized }: Props) {
                   ip: '',
                   enabled: true,
                   cert: false,
-                  issuer: 'le' as const,
                 },
               ])
             }
