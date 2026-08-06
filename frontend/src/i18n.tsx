@@ -598,26 +598,29 @@ const EN: Record<string, string> = {
   '…или командой на ноде': '…or by command on the node',
   'Заказано — нода проверит подпись и обновится в течение минуты':
     'Asked — the node will check the signature and update within a minute',
-  'Корневой сертификат': 'Root certificate',
+  'Центр сертификации (CA)': 'Certificate authority (CA)',
+  'Скачать сертификат': 'Download the certificate',
+  'Подписывает сертификаты для имён внутри сети. Его сертификат должен стоять на устройствах — иначе браузер ругается на каждое имя.':
+    'It signs the certificates for names inside the network. Its own certificate has to be installed on your devices, or the browser complains about every name.',
   'Действует до': 'Valid until',
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
   'любые внутренние имена, кроме {n} публичных доменов':
     'any internal name except {n} public domains',
-  'только {zones} (корень старого образца)': 'only {zones} (root of the older kind)',
+  'только {zones} (CA старого образца)': 'only {zones} (CA of the older kind)',
   'что угодно (ограничений нет)': 'anything (no constraints)',
-  'Похоже, {want} — имя в настоящем интернет-домене. Корень такие не подписывает: иначе он мог бы подделать чужой сайт для ваших же машин. Возьмите внутреннее имя, например loki.mirabah.':
+  'Похоже, {want} — имя в настоящем интернет-домене. CA такие не подписывает: иначе он мог бы подделать чужой сайт для ваших же машин. Возьмите внутреннее имя, например loki.mirabah.':
     '{want} looks like a name in a real internet domain. The root does not sign those: it could otherwise impersonate someone else’s site to your own machines. Use an internal name instead, say loki.mirabah.',
-  'Этому корню разрешены только домены {have} — для {want} сертификат выдан не будет. Выпустите корень заново: новый подписывает любые внутренние имена, и добавлять домены больше не придётся.':
+  'Этому CA разрешены только домены {have} — для {want} сертификат выдан не будет. Выпустите его заново: новый подписывает любые внутренние имена, и добавлять домены больше не придётся.':
     'This root is limited to {have}, so nothing will be issued for {want}. Issue a new root: the new kind signs any internal name, and domains never have to be added again.',
-  'Домены придумываете вы: bironex, mirabah, mesh — что угодно, чего нет в интернете. Корень подписывает такие имена сам, поэтому новый проект работает сразу и ничего перевыпускать не нужно. Выпустить корень заново стоит разве что ради другого срока: старый после этого перестанет действовать, ноды подхватят новый за минуту, а на ноутбуках и телефонах его придётся поставить ещё раз.':
+  'Домены придумываете вы: bironex, mirabah, mesh — что угодно, чего нет в интернете. CA подписывает такие имена сам, поэтому новый проект работает сразу и перевыпускать ничего не нужно. Выпускать заново стоит разве что ради другого срока: прежний сертификат перестанет действовать, ноды подхватят новый за минуту, а на ноутбуках и телефонах его придётся поставить ещё раз.':
     'The domains are yours to invent: bironex, mirabah, mesh — anything that does not exist on the internet. The root signs such names on its own, so a new project works immediately and nothing needs reissuing. Issuing a new root is only worth it for a different lifetime: the old one stops working, nodes pick the new one up within a minute, and on laptops and phones it has to be installed again.',
   'Свернуть': 'Collapse',
   'Срок, лет': 'Valid for, years',
-  'Выпустить корень заново? Старый перестанет действовать.':
+  'Выпустить CA заново? Прежний сертификат перестанет действовать.':
     'Issue a new root? The old one stops working.',
-  'Выпустить заново': 'Issue a new root',
+  'Выпустить заново': 'Issue a new one',
   'Как поставить на устройство': 'How to install it on a device',
   'Ноды панель обслуживает сама. Вручную — только то, что подключали не скриптом: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» → «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие. После установки сверьте отпечаток.':
     'Nodes are handled by the panel itself. By hand you only do the machines you joined without the script: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” → “Always Trust”, Linux — /usr/local/share/ca-certificates then update-ca-certificates, Android and iOS — install the profile and switch on full trust. Check the fingerprint afterwards.',
@@ -625,7 +628,7 @@ const EN: Record<string, string> = {
   'Выпустить сертификат для этого имени': 'Issue a certificate for this name',
   'Сертификат подписывает панель своим корнем, а ключ генерится на самой ноде и никуда с неё не уезжает. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':
     'The panel signs the certificate with its own root; the key is generated on the node and never leaves it. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
-  'ставить корень на ноды автоматически': 'install the root on nodes automatically',
+  'ставить сертификат на ноды автоматически': 'install the certificate on nodes automatically',
   'Сертификат возможен только для имени, ведущего на ноду':
     'A certificate is only possible for a name that points at a node',
   'сертификат до {date}': 'certificate until {date}',

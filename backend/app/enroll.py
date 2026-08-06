@@ -355,12 +355,12 @@ cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
 @@CAPEM@@NRCAEOF
 if [ -d /usr/local/share/ca-certificates ]; then
   install -m644 /tmp/noderoost-ca.crt /usr/local/share/ca-certificates/noderoost-ca.crt
-  update-ca-certificates >/dev/null 2>&1 && echo "NodeRoost: корень панели добавлен в доверенные."
+  update-ca-certificates >/dev/null 2>&1 && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 elif [ -d /etc/pki/ca-trust/source/anchors ]; then
   install -m644 /tmp/noderoost-ca.crt /etc/pki/ca-trust/source/anchors/noderoost-ca.crt
-  update-ca-trust extract >/dev/null 2>&1 && echo "NodeRoost: корень панели добавлен в доверенные."
+  update-ca-trust extract >/dev/null 2>&1 && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 else
-  echo "NodeRoost: не нашёл хранилище корней — поставьте /tmp/noderoost-ca.crt сами." >&2
+  echo "NodeRoost: не нашёл хранилище доверенных — поставьте /tmp/noderoost-ca.crt сами." >&2
 fi
 rm -f /tmp/noderoost-ca.crt
 """
@@ -380,10 +380,10 @@ Get-ChildItem Cert:\\LocalMachine\\Root |
   Remove-Item -Force -ErrorAction SilentlyContinue
 try {
   Import-Certificate -FilePath $caFile -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
-  Write-Host "NodeRoost: корень панели добавлен в доверенные."
+  Write-Host "NodeRoost: сертификат CA панели добавлен в доверенные."
 } catch {
   & certutil -addstore -f Root $caFile | Out-Null
-  Write-Host "NodeRoost: корень панели добавлен в доверенные (certutil)."
+  Write-Host "NodeRoost: сертификат CA панели добавлен в доверенные (certutil)."
 }
 Remove-Item $caFile -ErrorAction SilentlyContinue
 """
@@ -399,14 +399,14 @@ sudo security delete-certificate -c "NodeRoost internal CA" \\
   /Library/Keychains/System.keychain 2>/dev/null || true
 sudo security add-trusted-cert -d -r trustRoot \\
   -k /Library/Keychains/System.keychain /tmp/noderoost-ca.crt \\
-  && echo "NodeRoost: корень панели добавлен в доверенные."
+  && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 rm -f /tmp/noderoost-ca.crt
 """
 
 _CA_ANDROID = """
-6. Отдельно поставьте корневой сертификат панели, иначе внутренние имена будут
-   открываться с предупреждением: скачайте его в панели (раздел DNS → «скачать
-   корень»), перекиньте на телефон и поставьте через Настройки → Безопасность →
+6. Отдельно поставьте сертификат CA панели, иначе внутренние имена будут
+   открываться с предупреждением: скачайте его в панели (раздел DNS → «Скачать
+   сертификат»), перекиньте на телефон и поставьте через Настройки → Безопасность →
    Шифрование → Установить сертификат → Сертификат ЦС. Сверьте отпечаток с тем,
    что показывает панель. Учтите: приложения (не браузер) пользовательским
    корням по умолчанию не доверяют — это ограничение Android, не панели.
