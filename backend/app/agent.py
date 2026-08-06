@@ -88,10 +88,63 @@ else
 fi
 set -e
 
+# --- сертификаты имён внутри сети ---
+# Ключ генерится ЗДЕСЬ и здесь остаётся: панель видит только CSR и подписанный
+# сертификат. Файлы кладём в /etc/noderoost/certs; после смены дёргаем хук
+# cert-hook.sh, если он есть, — что именно перезапускать, решает админ ноды, а не
+# панель: присылать чужой машине команды на выполнение мы не хотим.
+# Блок идёт ДО проверки изменений: строки cert= в состояние не входят (иначе
+# панель считала бы ноду отставшей на каждый выпуск), поэтому гейтить по нему нельзя.
+CERTS=\$(grep '^cert=' "\$TMP" || true)
+if [ -n "\$CERTS" ]; then
+  set +e
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "NodeRoost: для сертификатов нужен openssl — поставьте его на этой ноде" >&2
+  else
+    mkdir -p /etc/noderoost/certs && chmod 700 /etc/noderoost/certs
+    CHANGED=0
+    printf '%s\n' "\$CERTS" > "\$TMP.certs"
+    # именно перенаправлением, а не «echo | while»: в dash пайп — это подшелл,
+    # и выставленный внутри CHANGED наружу не вернулся бы
+    while IFS= read -r LINE; do
+      SPEC=\${LINE#cert=}
+      NAME=\${SPEC%%|*}; REST=\${SPEC#*|}; FP=\${REST%%|*}; NEED=\${REST##*|}
+      [ -n "\$NAME" ] || continue
+      KEY=/etc/noderoost/certs/\$NAME.key
+      CRT=/etc/noderoost/certs/\$NAME.crt
+      LOCAL=""
+      [ -f "\$CRT" ] && LOCAL=\$(openssl x509 -in "\$CRT" -noout -fingerprint -sha256 2>/dev/null \
+        | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z' | cut -c1-12)
+      if [ "\$NEED" = "1" ] || [ ! -f "\$KEY" ] || [ ! -f "\$CRT" ]; then
+        [ -f "\$KEY" ] || { openssl ecparam -genkey -name prime256v1 -out "\$KEY" 2>/dev/null && chmod 600 "\$KEY"; }
+        openssl req -new -key "\$KEY" -subj "/CN=\$NAME" -addext "subjectAltName=DNS:\$NAME" -out "\$TMP.csr" 2>/dev/null
+        CODE=\$(curl -sS --max-time 120 -X POST --data-binary @"\$TMP.csr" -o "\$TMP.crt" \
+          -w '%{http_code}' "$STATE_URL/csr?name=\$NAME" 2>/dev/null || echo 000)
+        if [ "\$CODE" = 200 ]; then
+          mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"; CHANGED=1
+        else
+          echo "NodeRoost: сертификат для \$NAME не выдан (HTTP \$CODE) — причина в панели, раздел DNS" >&2
+        fi
+        rm -f "\$TMP.csr" "\$TMP.crt"
+      elif [ -n "\$FP" ] && [ "\$FP" != "\$LOCAL" ]; then
+        CODE=\$(curl -sS --max-time 30 -o "\$TMP.crt" -w '%{http_code}' \
+          "$STATE_URL/cert?name=\$NAME" 2>/dev/null || echo 000)
+        [ "\$CODE" = 200 ] && { mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"; CHANGED=1; }
+        rm -f "\$TMP.crt"
+      fi
+    done < "\$TMP.certs"
+    rm -f "\$TMP.certs"
+    [ "\$CHANGED" = 1 ] && [ -x "$DIR/cert-hook.sh" ] && "$DIR/cert-hook.sh"
+  fi
+  set -e
+fi
+# Состояние без строк cert=: только оно сравнивается, сохраняется и хешируется.
+grep -v '^cert=' "\$TMP" > "\$TMP.core" || true
+
 # tailscale set дёргаем ТОЛЬКО при изменении состояния, а состояние сохраняем лишь
 # после успеха: сбойный set (напр. exit-нода ещё не видна в netmap) не «замораживает»
 # повтор. connmark выше применяется каждый запуск независимо от этого.
-if cmp -s "\$TMP" "$DIR/state"; then rm -f "\$TMP"; exit 0; fi
+if cmp -s "\$TMP.core" "$DIR/state"; then rm -f "\$TMP" "\$TMP.core"; exit 0; fi
 
 # Форвардинг нужен любому узлу, раздающему маршруты (subnet-роутер) — без ip_forward
 # пакеты молча дропаются. Закрепляем в sysctl.d, чтобы пережило ребут.
@@ -110,7 +163,8 @@ if [ -n "\$USE_EXIT" ]; then
 else
   tailscale set --exit-node=
 fi
-mv "\$TMP" "$DIR/state"   # успех — фиксируем состояние (при сбое сюда не дойдём → повтор)
+mv "\$TMP.core" "$DIR/state"   # успех — фиксируем состояние (при сбое сюда не дойдём → повтор)
+rm -f "\$TMP"
 # Подтверждаем ПРИМЕНЕНИЕ, а не факт запроса: панель иначе не отличает работающего
 # агента от ноды, которая просто дёргает свой URL и ничего не делает. Шлём хеш
 # применённого состояния — по нему видно и то, что нода отстала от задания.
@@ -191,6 +245,18 @@ def build_setup(state_url: str) -> str:
 
 def build_remove() -> str:
     return _REMOVE
+
+
+def cert_lines(wanted: list[tuple[str, str, bool]]) -> str:
+    """Сертификаты для агента: `cert=<имя>|<отпечаток>|<нужен CSR>`.
+
+    Намеренно НЕ входит в хешируемое состояние: выпуск идёт секунды, и пока он
+    идёт, строка меняется дважды. Попади она в хеш — панель показывала бы «агент
+    отстал» на каждый выпуск, хотя маршруты давно применены.
+    """
+    return "".join(
+        f"cert={name}|{fp}|{'1' if need else '0'}\n" for name, fp, need in wanted
+    )
 
 
 def state_body(routes: list[str], want_exit: bool, use_exit: str = "") -> str:
