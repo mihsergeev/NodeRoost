@@ -594,6 +594,16 @@ const EN: Record<string, string> = {
   '…или командой на ноде': '…or by command on the node',
   'Заказано — нода проверит подпись и обновится в течение минуты':
     'Asked — the node will check the signature and update within a minute',
+  'Кто выпускает сертификат для этого имени': 'Who issues the certificate for this name',
+  'без сертификата': 'no certificate',
+  'своя CA': 'own CA',
+  'Корневой сертификат': 'Root certificate',
+  'Действует до': 'Valid until',
+  'Отпечаток SHA-256': 'SHA-256 fingerprint',
+  'Имена со своей CA открываются без предупреждений только там, где этот сертификат установлен. Поставьте его один раз на каждое устройство, с которого ходите: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» с уровнем «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие в настройках.':
+    'Names issued by your own CA open without warnings only where this certificate is installed. Put it once on every device you use: Windows — “Trusted Root Certification Authorities” (Local Machine), macOS — Keychain → “System” set to “Always Trust”, Linux — /usr/local/share/ca-certificates then update-ca-certificates, Android and iOS — install the profile and switch on full trust in settings.',
+  'Сверьте отпечаток после установки: так видно, что на устройстве именно этот корень, а не похожий.':
+    'Check the fingerprint afterwards: that is how you know the device got this root and not one that merely looks like it.',
   'Сертификат Let’s Encrypt для этого имени': 'A Let’s Encrypt certificate for this name',
   'Сертификат возможен только для имени, ведущего на ноду':
     'A certificate is only possible for a name that points at a node',
@@ -601,7 +611,9 @@ const EN: Record<string, string> = {
   'сертификат не выдан: {err}': 'certificate not issued: {err}',
   'сертификат заказан — нода заберёт его в течение минуты':
     'certificate ordered — the node will pick it up within a minute',
-  'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Чтобы это работало, нужна одна DNS-запись — раз и навсегда: маска ваших внутренних имён (например *.int.example.com) A-записью на адрес панели, плюс NODEROOST_CERT_DOMAIN в её .env. Продление идёт само за месяц до конца; готовые файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':
+  'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Let’s Encrypt даёт публично доверенный сертификат, но требует, чтобы имя существовало в публичном DNS (одна wildcard-запись на адрес панели плюс NODEROOST_CERT_DOMAIN в её .env), и публикует имя в CT-логах. Своя CA не требует ни домена, ни интернета — имя может быть любым, зато её корень нужно один раз поставить на устройства. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.':
+    'The panel orders the certificate; the key is generated on the node itself and never leaves it. Let’s Encrypt gives a publicly trusted certificate but requires the name to exist in public DNS (one wildcard record pointing at the panel plus NODEROOST_CERT_DOMAIN in its .env) and publishes the name in CT logs. Your own CA needs neither a domain nor the internet — the name can be anything — but its root has to be installed on your devices once. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
+  'СТАРЫЙ КЛЮЧ': 
     'The panel orders the certificate; the key is generated on the node itself and never leaves it. For this to work you need one DNS record, once and for all: your internal-name mask (say *.int.example.com) as an A record pointing at the panel, plus NODEROOST_CERT_DOMAIN in its .env. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
   'нода не найдена': 'node not found',
   'Добавить имя': 'Add a name',

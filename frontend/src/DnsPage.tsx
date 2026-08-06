@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
+  downloadCa,
   getDnsRecords,
   getHsInfo,
   listNodes,
@@ -22,6 +23,7 @@ type RecRow = {
   ip: string
   enabled: boolean
   cert: boolean
+  issuer: 'le' | 'ca'
 }
 
 function rowsOf(r: DnsRecords): RecRow[] {
@@ -31,6 +33,7 @@ function rowsOf(r: DnsRecords): RecRow[] {
     ip: x.ip,
     enabled: x.enabled,
     cert: x.cert,
+    issuer: x.issuer,
   }))
 }
 
@@ -46,6 +49,7 @@ export function DnsPage({ onUnauthorized }: Props) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [caErr, setCaErr] = useState<string | null>(null)
 
   // резолверы и MagicDNS — вторая половина раздела: настраивается один раз и
   // почти никогда не меняется, поэтому карточка закрыта на «Изменить»
@@ -142,6 +146,7 @@ export function DnsPage({ onUnauthorized }: Props) {
             ip: r.ip.trim(),
             enabled: r.enabled,
             cert: r.cert,
+            issuer: r.issuer,
           }))
           .filter((r) => r.name),
       )
@@ -316,23 +321,28 @@ export function DnsPage({ onUnauthorized }: Props) {
                 )}
                 {/* Сертификат — только у имени, ведущего на ноду: ключ генерится
                     на ней, и положить его больше некуда. */}
-                <label
-                  className={r.node_id ? 'dns-rec-cert' : 'dns-rec-cert off'}
+                <select
+                  className="dns-rec-cert"
+                  disabled={!r.node_id}
                   title={
                     r.node_id
-                      ? t('Сертификат Let’s Encrypt для этого имени')
+                      ? t('Кто выпускает сертификат для этого имени')
                       : t('Сертификат возможен только для имени, ведущего на ноду')
                   }
+                  value={r.cert ? r.issuer : 'off'}
+                  onChange={(e) =>
+                    update(
+                      i,
+                      e.target.value === 'off'
+                        ? { cert: false }
+                        : { cert: true, issuer: e.target.value as 'le' | 'ca' },
+                    )
+                  }
                 >
-                  <input
-                    type="checkbox"
-                    className="field-checkbox"
-                    checked={r.cert}
-                    disabled={!r.node_id}
-                    onChange={(e) => update(i, { cert: e.target.checked })}
-                  />
-                  <span aria-hidden>🔒</span>
-                </label>
+                  <option value="off">{t('без сертификата')}</option>
+                  <option value="le">{t("Let's Encrypt")}</option>
+                  <option value="ca">{t('своя CA')}</option>
+                </select>
                 <button
                   className="dns-rec-drop"
                   title={t('Убрать')}
@@ -348,10 +358,47 @@ export function DnsPage({ onUnauthorized }: Props) {
           </div>
         )}
 
+        {/* Корень своей CA. Показываем, только когда он кому-то нужен: пока
+            все имена на Let's Encrypt, ставить на устройства нечего. */}
+        {recs?.ca.exists && rows.some((r) => r.cert && r.issuer === 'ca') && (
+          <div className="dns-ca">
+            <div className="clients-head">
+              <h4>{t('Корневой сертификат')}</h4>
+              <button
+                className="ghost small"
+                onClick={() =>
+                  downloadCa().catch((e) =>
+                    setCaErr(e instanceof Error ? e.message : t('Ошибка')),
+                  )
+                }
+              >
+                {t('Скачать')}
+              </button>
+            </div>
+            <p className="muted small">
+              {t(
+                'Имена со своей CA открываются без предупреждений только там, где этот сертификат установлен. Поставьте его один раз на каждое устройство, с которого ходите: Windows — «Доверенные корневые центры сертификации» (Локальный компьютер), macOS — Связка ключей → «Система» с уровнем «Всегда доверять», Linux — /usr/local/share/ca-certificates + update-ca-certificates, Android и iOS — установить профиль и включить полное доверие в настройках.',
+              )}
+            </p>
+            <div className="info-row">
+              <span className="muted small">{t('Действует до')}</span>
+              <span>{recs.ca.not_after}</span>
+            </div>
+            <div className="info-row">
+              <span className="muted small">{t('Отпечаток SHA-256')}</span>
+              <span className="mono small">{recs.ca.fingerprint}</span>
+            </div>
+            <p className="muted small">
+              {t('Сверьте отпечаток после установки: так видно, что на устройстве именно этот корень, а не похожий.')}
+            </p>
+            {caErr && <p className="form-error">{caErr}</p>}
+          </div>
+        )}
+
         {rows.some((r) => r.cert) && (
           <p className="muted small settings-note">
             {t(
-              'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Чтобы это работало, нужна одна DNS-запись — раз и навсегда: маска ваших внутренних имён (например *.int.example.com) A-записью на адрес панели, плюс NODEROOST_CERT_DOMAIN в её .env. Продление идёт само за месяц до конца; готовые файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.',
+              'Сертификат выпускает панель, а ключ генерится на самой ноде и никуда с неё не уезжает. Let’s Encrypt даёт публично доверенный сертификат, но требует, чтобы имя существовало в публичном DNS (одна wildcard-запись на адрес панели плюс NODEROOST_CERT_DOMAIN в её .env), и публикует имя в CT-логах. Своя CA не требует ни домена, ни интернета — имя может быть любым, зато её корень нужно один раз поставить на устройства. Продление идёт само за месяц до конца; файлы лежат на ноде в /etc/noderoost/certs, и после смены агент запускает /lib65/noderoost-agent/cert-hook.sh, если вы его туда положили.',
             )}
           </p>
         )}
@@ -367,7 +414,14 @@ export function DnsPage({ onUnauthorized }: Props) {
               // ручной адрес нужен для того, что стоит ЗА нодой
               setRows([
                 ...rows,
-                { name: '', node_id: nodes[0]?.id ?? '', ip: '', enabled: true, cert: false },
+                {
+                  name: '',
+                  node_id: nodes[0]?.id ?? '',
+                  ip: '',
+                  enabled: true,
+                  cert: false,
+                  issuer: 'le' as const,
+                },
               ])
             }
           >

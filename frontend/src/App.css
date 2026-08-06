@@ -265,8 +265,8 @@ input:focus {
 .dns-rec-row {
   display: grid;
   grid-template-columns:
-    1.4rem minmax(9rem, 1.3fr) 0.9rem
-    minmax(8rem, 1fr) minmax(7rem, 0.9fr) 2.6rem 1.6rem;
+    1.4rem minmax(9rem, 1.2fr) 0.9rem
+    minmax(8rem, 1fr) minmax(6rem, 0.8fr) minmax(7rem, auto) 1.6rem;
   align-items: center;
   gap: 0.5rem;
 }
@@ -349,6 +349,19 @@ input:focus {
   border-radius: 8px;
   padding: 0.8rem 0.9rem;
   margin: 0.9rem 0 0.2rem;
+}
+
+/* корневой сертификат своей CA — отдельным блоком под списком имён */
+.dns-ca {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  margin: 0.8rem 0 0.2rem;
+}
+
+.dns-ca h4 {
+  margin: 0;
+  font-size: 0.95rem;
 }
 
 /* поля резолверов/MagicDNS в две колонки: по одному на строку было длинно */

@@ -32,6 +32,15 @@ the wrong hands can withhold updates or offer an old signed one — the anti-rol
 check refuses that — but cannot forge a new one. The same reasoning is why the
 post-certificate reload hook is a file the node's own administrator writes.
 
+**The panel's own CA is as trusted as the panel.** Names issued by it are trusted by
+every device where its root is installed, and that root's private key sits in the
+panel's database — so a panel in the wrong hands can mint a certificate for any
+internal name and, combined with the DNS records it hands out, impersonate an internal
+service to your own machines. That is the price of not needing a public domain; where
+it is too high, use Let's Encrypt instead, whose every issuance lands in public
+certificate-transparency logs. The certificates' own private keys are not affected
+either way: those are generated on the nodes and never sent to the panel.
+
 **Whoever can edit `.env` owns the panel.** `NODEROOST_ADMIN_PASSWORD_RESET=1` puts
 the admin password back to the one in `.env` and switches the second factor off at
 the next start — that is the recovery path for a locked-out administrator, and the
