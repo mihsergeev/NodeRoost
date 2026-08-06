@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
 
-from app import audit, enroll, settings_store
+from app import audit, ca, enroll, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.api.nodes import _map_node
@@ -44,8 +44,12 @@ async def enroll_node(
     key_id = str(key.get("id", ""))
 
     version = await settings_store.get_tailscale_version(session, settings)
+    # Корень своей CA едет прямо в скрипте: имя внутри сети должно открываться
+    # без ругани с первой минуты, а не после отдельного похода с файлом.
+    ca_pem = await ca.root_cert(session) if await ca.auto_install(session) else ""
     script = enroll.build_script(
-        body.os, settings, key_str, body.name, version=version, exit_node=body.exit_node
+        body.os, settings, key_str, body.name, version=version,
+        exit_node=body.exit_node, ca_pem=ca_pem,
     )
     await audit.record(session, user.username, "node_enroll", body.name)
     return EnrollOut(

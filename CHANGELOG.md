@@ -5,6 +5,30 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.8.0] — 2026-08-06
+
+### Added
+
+- **The panel hands out its CA root itself, and that root is constrained to your
+  zones** (agent release 5). A certificate for an internal name solved half the
+  problem: the name opened over https, and every browser and every `curl` complained
+  until the root was installed by hand — on every machine, including the ones joined
+  five minutes ago. Now a server receives the root inside its enrollment script, and a
+  node running the agent puts it into the system trust store and keeps the right one
+  there: the state carries the fingerprint, the node fetches the file by it and checks
+  what it got. Clearing "install the root on nodes automatically" removes it again, and
+  so does removing the agent — trust switched off has to disappear, not merely stop
+  being refreshed.
+  Handing every machine a root that can sign anything would have been worse than the
+  disease: whoever took the panel could mint a certificate for any public domain and
+  our own machines would believe it. So the root carries X.509 name constraints — it
+  may sign only the listed zones (`mesh`, `lan`, `int.example.com`) and never an IP
+  address. The first zone comes from the first name; the list changes with "Reissue the
+  root", which is also what you press for a name in a new zone. Reissuing is named for
+  what it is: the panel reorders the names' certificates itself, but on laptops and
+  phones the old root has to be replaced by hand.
+  Roots created earlier carry no constraints — they are worth reissuing.
+
 ## [0.7.1] — 2026-08-06
 
 ### Security

@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from app import certs, settings_store
 from app.config import Settings
 from app.models import Certificate
+from tests.conftest import ADMIN_PASSWORD
 
 
 def _csr(*names: str) -> bytes:
@@ -176,3 +177,66 @@ def test_a_csr_with_a_broken_signature_is_refused():
     broken[-1] ^= 0xFF  # портим подпись
     with pytest.raises(ValueError):
         certs.csr_names(bytes(broken))
+
+
+async def test_node_gets_the_root_and_its_fingerprint(client):
+    """Нода узнаёт из состояния, какой корень должен у неё лежать, и берёт его
+    по той же ручке — со своим токеном, потому что состав внутренних зон
+    посторонним знать незачем."""
+    from app import ca
+
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await settings_store.set_agent_all(s, {"7": {"token": "tok7"}})
+        pem = await ca.ensure_root(s, for_name="nas.mesh")
+        fp = ca.fingerprint(pem)
+
+    state = await client.get("/agent/tok7")
+    assert f"ca={fp}" in state.text
+    root = await client.get("/agent/tok7/ca")
+    assert root.status_code == 200 and "BEGIN CERTIFICATE" in root.text
+    assert (await client.get("/agent/чужой-токен/ca")).status_code == 404
+
+
+async def test_trust_is_withdrawn_when_the_tick_is_cleared(client):
+    """Выключенная автоустановка обязана УБИРАТЬ корень с нод, а не просто
+    переставать его обновлять: иначе «выключил» ничего не значит."""
+    from app import ca
+
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await settings_store.set_agent_all(s, {"7": {"token": "tok7"}})
+        await ca.ensure_root(s, for_name="nas.mesh")
+        await ca.set_auto_install(s, False)
+
+    state = await client.get("/agent/tok7")
+    assert "ca=" not in state.text  # пусто в состоянии = агент снимает корень
+
+
+async def test_rotation_reorders_the_certificates(client):
+    """Перевыпуск корня обесценивает подписанное им. Панель обязана забыть эти
+    сертификаты, иначе нода осталась бы с бумагами от корня, которому больше
+    никто не верит, и без единого повода их обновить."""
+    from app import ca
+
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await settings_store.set_dns_records(
+            s, [{"name": "nas.mesh", "node_id": "7", "cert": True, "issuer": "ca"}]
+        )
+        await ca.ensure_root(s, for_name="nas.mesh")
+        await certs.issue(s, Settings(), "nas.mesh", "7", _csr("nas.mesh"), issuer="ca")
+        assert (await s.get(Certificate, "nas.mesh")).status == "ok"
+
+    login = await client.post(
+        "/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD}
+    )
+    r = await client.put(
+        "/api/ca",
+        json={"auto": True, "rotate_suffixes": ["mesh", "lan"]},
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["suffixes"] == ["mesh", "lan"]
+    async with app.state.session_factory() as s:
+        assert await s.get(Certificate, "nas.mesh") is None  # закажется заново
