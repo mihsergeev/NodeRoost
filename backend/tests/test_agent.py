@@ -191,3 +191,23 @@ def test_key_stays_on_the_node():
     for line in setup.splitlines():
         if "curl" in line and "--data-binary" in line:
             assert ".csr" in line and ".key" not in line
+
+
+def test_update_request_is_not_part_of_the_state():
+    """Заказ обновления — не задание ноде.
+
+    Он попадал в сравниваемое состояние: агент считал его изменением, отчитывался
+    о применении, и панель по этому отчёту снимала заказ раньше, чем тот успевал
+    сработать. Обновление просто не происходило — молча.
+    """
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "-e '^update='" in setup
+    # и отчёт несёт НОМЕР РЕЛИЗА — только по нему панель понимает, что заказ выполнен
+    assert r"&r=\$AGENT_RELEASE" in setup
+
+
+def test_failed_update_is_not_retried_every_minute():
+    """Не сошлась подпись — причина сама не исчезнет; ходить за манифестом каждую
+    минуту незачем."""
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert ".update-try" in setup and "3600" in setup
