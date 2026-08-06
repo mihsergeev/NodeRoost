@@ -86,6 +86,11 @@ async def collect_once(
                 log.info("имена внутри сети обновлены (изменился состав нод)")
         except OSError:
             log.exception("не удалось обновить файл имён внутри сети")
+        # имя могло уйти вместе с удалённой нодой, а не только правкой списка —
+        # тогда его сертификат больше ни к чему не относится
+        records = await settings_store.get_dns_records(session)
+        if await certs.forget(session, {r["name"] for r in records if r.get("cert")}):
+            log.info("сертификаты исчезнувших имён убраны")
     # маршруты, заказанные в панели, одобряем без участия человека
     try:
         await _auto_approve_requested(session_factory, settings, raw)
