@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.6.0] — 2026-08-06
+
+### Added
+
+- **Agent releases are signed, and a node installs nothing else.** Updating the
+  agent means running a script as root on somebody's machine, so the question is not
+  whether it is convenient but who is allowed to author it. The answer now is: not
+  the panel. A release is signed on the maintainer's machine with a key that never
+  touches the panel's host; the panel only hands out the manifest, the signature and
+  the script. The node verifies the signature against the public key baked into it
+  when a human first ran the install, checks the sha256 of what it received, and
+  refuses any release not newer than its own — so a panel in the wrong hands can
+  withhold an update or offer an old signed one, but cannot write one.
+  The update itself is asked for by a person: the node's card says the agent is from
+  an earlier release and offers a button. Shipping a new panel no longer runs
+  anything anywhere on its own, and the `NODEROOST_AGENT_SELF_UPDATE` switch from the
+  previous release is gone — there is nothing left for it to guard.
+  `agent-signing/` carries the tooling: `keygen.py` for the key pair, `protect_key.py`
+  to close it with a passphrase, `release.py` to sign the current script. It signs
+  the very text the panel serves, taken from the panel's own code rather than a
+  second copy, because two copies of one script drift apart and then the signed one
+  is not the one that runs.
+
 ## [0.5.2] — 2026-08-06
 
 ### Security
