@@ -153,8 +153,6 @@ const EN: Record<string, string> = {
   'Порт':
     'Port',
   'Использовать только эти серверы': 'Use these servers only',
-  'Без галочки ноды продолжают пользоваться своим DNS, а эти серверы добавляются к нему. С галочкой весь DNS ноды идёт только сюда — сервер перестанет видеть внутренние имена, которые знал его прежний резолвер.':
-    'Left unticked, nodes keep their own DNS and these servers are added to it. Ticked, all of a node’s DNS goes here only — the server stops seeing the internal names its previous resolver knew.',
   'удалённая нода': 'deleted node',
   'Эта машина уже была в сети под именем': 'This machine was already on the network as',
   'её запись переиспользована и переименована. Прежние настройки доступа и маршруты сохранены.':
@@ -606,6 +604,23 @@ const EN: Record<string, string> = {
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
+  'DNS из меша': 'Mesh DNS',
+  'машина будет резолвить имена сети, но при настройке «использовать только эти серверы» весь её DNS уйдёт в меш - свой резолвер она перестанет спрашивать':
+    'the machine will resolve network names, but with "use only these servers" its entire DNS goes to the mesh and it stops asking its own resolver',
+  'машина оставит свой DNS (корпоративный, облачный, локальный) и не будет резолвить имена сети - для сервера это обычно то, что нужно':
+    'the machine keeps its own DNS (corporate, cloud, local) and will not resolve network names - usually what a server wants',
+  'переподключение сбрасывает настройки клиента, поэтому выбор задаётся заново':
+    'reconnecting resets the client settings, so the choice is made again here',
+  'Эта нода, скорее всего, отдаёт весь свой DNS в меш':
+    'This node is probably handing its entire DNS to the mesh',
+  'В разделе DNS включено «использовать только эти серверы», а значит нода с DNS из меша спрашивает их обо всех именах, а не только о меш-именах. Сервер со своим резолвером (корпоративный, облачный, локальный) тихо перестаёт видеть внутренние имена, а там, где эти резолверы недоступны снаружи, теряет резолв целиком. Сам сервер при этом работает, поэтому заметно становится не сразу.':
+    'The DNS section has "use only these servers" on, so a node with mesh DNS asks them about every name, not just mesh names. A server with its own resolver (corporate, cloud, local) quietly stops seeing internal names, and where those resolvers are unreachable from outside it loses resolution altogether. The server itself keeps running, so this takes a while to notice.',
+  'Выполните на ноде под root:': 'Run on the node as root:',
+  'Уже сделано - не напоминать': 'Already done - stop reminding',
+  'Имена сети и MagicDNS на этой ноде после команды резолвиться не будут - связь по мешу от неё не зависит.':
+    'Network names and MagicDNS will no longer resolve on this node - mesh connectivity does not depend on them.',
+  'Без галочки ноды продолжают пользоваться своим DNS, а эти серверы добавляются к нему. С галочкой весь DNS ноды идёт только сюда: не только имена сети, а вообще все. Сервер со своим резолвером - корпоративным со split-horizon, облачным, локальным - тихо перестанет видеть внутренние имена, а если эти серверы из его сети недоступны, потеряет резолв целиком. Поэтому серверы панель подключает без DNS из меша, а у тех, что подключены раньше, показывает предупреждение в карточке.':
+    'Without the tick, nodes keep using their own DNS and these servers are added to it. With the tick the whole DNS of a node goes here: not only network names, but everything. A server with its own resolver - corporate split-horizon, cloud, local - quietly stops seeing internal names, and if these servers are unreachable from its network it loses resolution altogether. So the panel joins servers without mesh DNS, and flags the ones joined earlier in their node card.',
   'Ноды панель обслуживает сама. Машину, которую подключали руками, проще всего научить доверять одной командой — она снимет прежний сертификат панели и поставит текущий:':
     'Nodes are handled by the panel itself. A machine you joined by hand is easiest to teach with a single command — it removes the panel’s previous certificate and installs the current one:',
   'Linux и macOS': 'Linux and macOS',
