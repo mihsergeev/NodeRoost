@@ -81,6 +81,11 @@ project follows [semantic versioning](https://semver.org/).
   button in the warning itself; on a node with the agent the warning says so - it
   will be applied for you.
 
+### Other
+
+- Updated transitive frontend build dependencies (nanoid, postcss) after fresh
+  advisories started failing `npm audit` in CI. No major upgrades were needed.
+
 ## [0.14.1] - 2026-09-29
 
 ### Fixed
@@ -116,6 +121,14 @@ project follows [semantic versioning](https://semver.org/).
   The explanation of the setting itself was rewritten too: it used to talk about
   "internal names the previous resolver knew", which did not say that the whole
   DNS is taken over.
+
+### Other
+
+- The Windows instructions now say to run the enrollment script as a command
+  instead of saving it to a file: PowerShell 5.1 reads a `.ps1` without a BOM as
+  ANSI and breaks on the first non-ASCII line. The `irm ... | iex` path was
+  verified on a live machine - the script arrives as charset=utf-8 and parses
+  cleanly.
 
 ## [0.13.0] — 2026-08-06
 
@@ -312,6 +325,13 @@ project follows [semantic versioning](https://semver.org/).
   what it is: the panel reorders the names' certificates itself, but on laptops and
   phones the old root has to be replaced by hand.
   Roots created earlier carry no constraints — they are worth reissuing.
+
+### Other
+
+- Clarified in `.env.example` that the built-in CA needs no domain:
+  `NODEROOST_CERT_DOMAIN` was described as the switch for certificates in
+  general, which predates the built-in CA - that one needs neither a domain nor
+  public DNS, and an empty setting does not stand in its way.
 
 ## [0.7.1] — 2026-08-06
 
