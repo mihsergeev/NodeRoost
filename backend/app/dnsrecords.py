@@ -137,29 +137,38 @@ async def sync(session: AsyncSession, settings: Settings, nodes: list[dict]) -> 
 MESH_RESOLVER = "100.100.100.100"
 
 
-def zone_of(name: str) -> str:
-    """Зона имени: nas.mesh -> mesh, loki.lab -> lab, a.b.example.com -> b.example.com."""
-    name = (name or "").strip().strip(".").lower()
-    return name.split(".", 1)[1] if "." in name else name
+def routes_for_split(records: list[dict], base_domain: str = "") -> list[str]:
+    """Что ноды должны спрашивать у меша, а не у своего резолвера.
 
+    Правило одно, но с двумя исходами:
 
-def zones_for_split(records: list[dict], base_domain: str = "") -> list[str]:
-    """Зоны, которые ноды должны спрашивать у меша, а не у своего резолвера.
-
-    Нужно ровно для того, чтобы имена внутри сети работали, НЕ отбирая у ноды
-    весь DNS. Глобальные резолверы забирают всё (`~.` на tailscale0), и сервер со
-    своим резолвером теряет внутренние имена компании; маршрут на зону забирает
-    только её.
+    * Имя в ВЫДУМАННОМ домене (`nas.mesh`, `loki.lab`) - маршрутизируем домен
+      целиком. В интернете его нет, отнимать у ноды нечего, зато следующее имя в
+      том же домене не потребует править конфиг и перезапускать headscale.
+    * Имя в НАСТОЯЩЕМ домене (`panel.example.com`) - маршрутизируем только само
+      имя. Домен там живёт своей жизнью, и маршрут на него забрал бы у ноды весь
+      его резолв: соседние публичные имена перестали бы открываться. Это не
+      теория - так и случилось на живой сети, когда маршрут ставился на домен.
 
     Базовый домен сюда не попадает: MagicDNS-имена клиент резолвит и так.
+    Выключенные имена тоже - они нодам не раздаются.
     """
+    from app import ca  # локально: ca тянет список TLD с диска
+
+    public = set(ca.public_tlds())
     base = (base_domain or "").strip().strip(".").lower()
     out: set[str] = set()
     for rec in records or []:
         if not rec.get("enabled", True):
             continue
-        zone = zone_of(str(rec.get("name") or ""))
-        if not zone or zone == base or (base and zone.endswith("." + base)):
+        name = str(rec.get("name") or "").strip().strip(".").lower()
+        if not name or name == base or (base and name.endswith("." + base)):
             continue
-        out.add(zone)
+        out.add(name if ca.tld_of(name) in public else zone_of(name))
     return sorted(out)
+
+
+def zone_of(name: str) -> str:
+    """Домен имени: nas.mesh -> mesh, loki.lab -> lab."""
+    name = (name or "").strip().strip(".").lower()
+    return name.split(".", 1)[1] if "." in name else name
