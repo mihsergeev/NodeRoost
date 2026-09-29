@@ -191,14 +191,16 @@ async def test_first_save_wires_the_config_once(client, hs_env):
     assert "# важный комментарий" in cfg.read_text(encoding="utf-8")
     assert dnsrecords.read_file(str(records))[0]["value"] == "100.100.0.1"
 
-    # вторая правка идёт БЕЗ перезапуска: headscale перечитывает файл сам
+    # Правка САМИХ ИМЁН идёт без перезапуска: headscale перечитывает файл сам.
+    # Перезапуск нужен только под новый маршрут, поэтому здесь меняется адрес уже
+    # маршрутизированного имени, а не заводится новое.
     flag = cfg.parent.parent / ".restart-request"
     flag.unlink()
-    r = await _put(client, token, [{"name": "nas.example.com", "ip": "192.168.1.10"}])
+    r = await _put(client, token, [{"name": "acontrol.example.com", "ip": "192.168.1.10"}])
     assert r.status_code == 200, r.text
     assert not flag.exists()
     assert dnsrecords.read_file(str(records)) == [
-        {"name": "nas.example.com", "type": "A", "value": "192.168.1.10"}
+        {"name": "acontrol.example.com", "type": "A", "value": "192.168.1.10"}
     ]
 
 
@@ -333,28 +335,28 @@ async def test_clearing_the_list_leaves_the_file_and_config_alone(client, hs_env
     assert data["dns"]["extra_records_path"] == "/etc/headscale/extra-records.json"
 
 
-def test_zones_for_split_takes_only_what_the_mesh_must_answer():
-    """Зона считается от имени, а базовый домен сюда не попадает: MagicDNS-имена
-    клиент резолвит и без маршрута."""
+def test_split_routes_fit_the_kind_of_domain():
+    """Выдуманный домен можно забрать целиком - в интернете его нет. А настоящий
+    домен живёт своей жизнью, и маршрут на него отнял бы у ноды весь его резолв:
+    соседние публичные имена перестали бы открываться (проверено на живой сети)."""
     recs = [
         {"name": "nas.mesh", "enabled": True},
-        {"name": "loki.lab", "enabled": True},
-        {"name": "portainer-dev.acme", "enabled": True},
-        {"name": "srv.noderoost.internal", "enabled": True},   # базовый домен
-        {"name": "off.lan", "enabled": False},                  # выключено
+        {"name": "db.mesh", "enabled": True},
+        {"name": "panel.example.com", "enabled": True},
+        {"name": "srv.noderoost.internal", "enabled": True},  # базовый домен
+        {"name": "off.lan", "enabled": False},                 # выключено
     ]
-    assert dnsrecords.zones_for_split(recs, "noderoost.internal") == [
-        "acme",
-        "mesh",
-        "lab",
+    assert dnsrecords.routes_for_split(recs, "noderoost.internal") == [
+        "mesh",                # выдуманный домен - целиком
+        "panel.example.com",   # настоящий - только само имя
     ]
-    assert dnsrecords.zones_for_split([], "noderoost.internal") == []
+    assert dnsrecords.routes_for_split([], "noderoost.internal") == []
 
 
-async def test_new_zone_is_routed_to_the_mesh(client, hs_env):
-    """Имя в новой зоне без маршрута не резолвится нигде, кроме нод, у которых меш
-    забрал весь DNS, - а забирать он его не должен. Поэтому появление зоны правит
-    config.yaml и просит перезапуск."""
+async def test_new_name_is_routed_to_the_mesh(client, hs_env):
+    """Имя без маршрута резолвится только там, где меш забрал весь DNS, - а он его
+    забирать не должен. Поэтому новый маршрут правит config.yaml и просит
+    перезапуск; второе имя в том же выдуманном домене - уже нет."""
     cfg, _ = hs_env
     token = await _login(client)
     flag = cfg.parent.parent / ".restart-request"
@@ -367,7 +369,6 @@ async def test_new_zone_is_routed_to_the_mesh(client, hs_env):
     assert data["dns"]["nameservers"]["split"] == {"mesh": ["100.100.100.100"]}
     assert flag.exists()  # без перезапуска headscale маршрут не подхватит
 
-    # та же зона второй раз - конфиг не трогаем и ноды не дёргаем
     flag.unlink()
     r = await _put(
         client,
@@ -375,11 +376,11 @@ async def test_new_zone_is_routed_to_the_mesh(client, hs_env):
         [{"name": "nas.mesh", "node_id": "7"}, {"name": "db.mesh", "node_id": "7"}],
     )
     assert r.status_code == 200
-    assert not flag.exists()
+    assert not flag.exists()  # домен уже маршрутизирован целиком
 
 
-async def test_zone_that_went_away_does_not_cost_a_restart(client, hs_env):
-    """Маршрут в опустевшую зону безвреден (NXDOMAIN от меша), а перезапуск
+async def test_name_that_went_away_does_not_cost_a_restart(client, hs_env):
+    """Маршрут на исчезнувшее имя безвреден (меш ответит NXDOMAIN), а перезапуск
     останавливает регистрацию нод. Чистится он при следующей правке настроек DNS."""
     cfg, _ = hs_env
     token = await _login(client)
