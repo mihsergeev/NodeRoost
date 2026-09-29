@@ -463,13 +463,17 @@ class AgentOut(BaseModel):
     routes: list[str] = []
     exit_node: bool = False
     token: str = ""
-    installed: bool = False  # агент недавно забирал состояние
+    # Агент есть = он ПРИМЕНИЛ состояние и недавно выходил на связь. Одного
+    # запроса по токену мало: его может сделать кто угодно, включая curl.
+    installed: bool = False
     last_poll: str | None = None
     # подтверждение ПРИМЕНЕНИЯ (сам запрос состояния ничего не доказывает: ноде
     # достаточно дёргать свой URL, чтобы выглядеть живой, ничего не применяя)
     last_applied: str | None = None
     applied_hash: str = ""
     applied_current: bool = False  # применённое совпадает с текущим заданием
+    # по токену ходят, но ничего не применяют: старый агент или чужой доступ
+    polling_only: bool = False
     setup_oneline: str = ""
     remove_oneline: str = ""
     # агент на ноде свежий (версия его скрипта = той, что отдаёт панель). False —

@@ -5,6 +5,20 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.16.2] - 2026-09-29
+
+### Fixed
+
+- **The panel treated anyone who fetched the state by token as an agent.** A
+  request to that URL proves nothing - `curl` can make it - and on a live network
+  the panel spent an hour showing an installed agent on a node that had none: a
+  diagnostic request by the node's token looked like agent activity while "release"
+  and "applied" sat empty next to it.
+  An agent now counts as installed only once it has APPLIED the state and been in
+  touch recently. And the "fetches but never applies" case is named outright: the
+  panel says this is usually an agent from an older release and offers the
+  reinstall command.
+
 ## [0.16.1] - 2026-09-29
 
 ### Fixed

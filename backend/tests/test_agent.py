@@ -280,3 +280,43 @@ async def test_state_carries_the_dns_choice_of_this_node(client):
     assert "mesh_dns=false" in known.text
     unknown = await client.get("/agent/tok8")
     assert "mesh_dns=\n" in unknown.text
+
+
+async def test_agent_counts_as_installed_only_after_it_applied(client):
+    """Запрос по токену ничего не доказывает: его может сделать кто угодно - хоть
+    curl из диагностики. Так и вышло на живой сети: панель час показывала агента на
+    ноде, где его не было вовсе. Агент считается установленным, когда он ПРИМЕНИЛ
+    состояние.
+    """
+    from datetime import datetime, timezone
+
+    from app import settings_store
+    from tests.conftest import ADMIN_PASSWORD
+
+    app = client._transport.app
+    now = datetime.now(timezone.utc).isoformat()
+    async with app.state.session_factory() as s:
+        await settings_store.set_agent_all(
+            s,
+            {
+                "1": {"token": "t1"},                                    # тишина
+                "2": {"token": "t2", "last_poll": now},                  # только опрос
+                "3": {"token": "t3", "last_poll": now, "last_applied": now},
+            },
+        )
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    tok = r.json()["access_token"]
+    h = {"Authorization": f"Bearer {tok}"}
+
+    quiet = (await client.get("/api/agent/1", headers=h)).json()
+    assert quiet["installed"] is False and quiet["polling_only"] is False
+
+    # по токену ходят, но ничего не применяют - это не агент, и панель обязана
+    # сказать об этом, а не рисовать установленного
+    polling = (await client.get("/api/agent/2", headers=h)).json()
+    assert polling["installed"] is False
+    assert polling["polling_only"] is True
+
+    real = (await client.get("/api/agent/3", headers=h)).json()
+    assert real["installed"] is True and real["polling_only"] is False
