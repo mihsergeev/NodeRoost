@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # Версия панели. Двигается вместе с pyproject.toml, frontend/package.json
     # и NODEROOST_VERSION в .env.example (последний задаёт теги образов) —
     # иначе панель показывает не ту версию, что установлена.
-    version: str = "0.16.2"
+    version: str = "0.16.3"
     debug: bool = False
 
     db_url: str = "sqlite+aiosqlite:///./data/panel.db"
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # пиновая версия официального клиента Tailscale в скриптах подключения,
     # срок жизни одноразового ключа подключения (минуты).
     default_user: str = "default"
-    tailscale_version: str = "1.98.8"
+    tailscale_version: str = "1.102.4"
     enroll_key_ttl_minutes: int = 60
 
     # Внешний IP панели — для информации/скриптов
