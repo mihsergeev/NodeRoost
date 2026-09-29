@@ -53,7 +53,7 @@ def test_state_hash_matches_what_the_agent_hashes():
 
     body = agent.state_body(["10.0.0.0/24"], False, "100.100.0.4")
     assert hashlib.sha256(body.encode()).hexdigest()  # тот же вход, что и у sha256sum
-    assert body.endswith("\n") and body.count("\n") == 3
+    assert body.endswith("\n") and body.count("\n") == 4
 
 
 def test_agent_explains_a_deleted_node():
@@ -243,3 +243,40 @@ def test_removing_the_agent_removes_the_trust():
     remove = agent.build_remove()
     assert "noderoost-ca.crt" in remove
     assert "update-ca-certificates" in remove
+
+
+def test_mesh_dns_is_part_of_the_state():
+    """Выбор DNS держит панель, а не человек на ноде: выставленное руками
+    стирается первым же переподключением (скрипт зовёт `tailscale up --reset`).
+    Поэтому значение едет в состоянии и входит в хеш - иначе агент не считал бы
+    его изменением и ничего бы не применил."""
+    s = agent.state_body([], False, "", "false")
+    assert "mesh_dns=false" in s
+    # панель не знает - строка пустая, и агент настройку не трогает вовсе
+    assert "mesh_dns=\n" in agent.state_body([], False)
+
+
+def test_agent_applies_mesh_dns_only_when_told():
+    setup = agent.build_setup("https://hs.example/agent/tok")
+    assert "MESH_DNS=" in setup
+    assert 'tailscale set --accept-dns="\\$MESH_DNS"' in setup
+    # чужое значение из состояния на ноду не попадёт
+    assert "case \"\\$MESH_DNS\" in true|false" in setup
+    # без значения команда не выполняется
+    assert 'if [ -n "\\$MESH_DNS" ]; then' in setup
+
+
+async def test_state_carries_the_dns_choice_of_this_node(client):
+    """Панель отдаёт агенту то, что сказал администратор, и молчит, если он не
+    говорил ничего."""
+    from app import settings_store
+
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await settings_store.set_agent_all(s, {"7": {"token": "tok7"}, "8": {"token": "tok8"}})
+        await settings_store.set_node_meta(s, "7", mesh_dns=False)
+
+    known = await client.get("/agent/tok7")
+    assert "mesh_dns=false" in known.text
+    unknown = await client.get("/agent/tok8")
+    assert "mesh_dns=\n" in unknown.text

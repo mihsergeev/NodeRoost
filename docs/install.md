@@ -200,6 +200,12 @@ call `tailscale up --reset`, which returns the client to its defaults, so
 anything set by hand is wiped on reconnect. The panel remembers the choice and
 puts it back into the script.
 
+**On a node with the agent there is nothing to do by hand.** The choice travels in
+the node state next to the routes, and the agent brings the client in line by
+itself within a minute. Change it with the "Use mesh DNS" tick in the node card.
+If the panel knows nothing about a node (joined before the setting existed), it
+leaves it alone and so does the agent - the value in the state is empty.
+
 Nodes joined before this setting existed are not polled: headscale does not hand
 out client settings. Instead the panel flags them in the server's card while
 DNS servers are set, and offers the command. Once a server is fixed,
