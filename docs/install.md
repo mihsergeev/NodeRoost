@@ -171,6 +171,40 @@ on the machine itself.
 
 ---
 
+### DNS: the mesh does not take it from servers
+
+The join dialog has a **"Mesh DNS"** tick. For Linux it is off by default, for
+personal machines it is on, and here is why.
+
+With "use only these servers" enabled in the DNS section, a node with mesh DNS
+hands over **all** of its DNS, not just the network names: on Linux that is `~.`
+on the tailscale0 interface, on Windows an NRPT rule for every name. A server
+with its own resolver (corporate split-horizon, cloud, local) then quietly stops
+seeing internal names and starts getting the public addresses of the same
+services. If the panel's resolvers are unreachable from its network at all, it
+loses resolution completely. The server keeps running, so this gets noticed late
+and by accident.
+
+With the tick cleared the script passes `--accept-dns=false` to the client. The
+cost: `*.<base domain>` (MagicDNS) and the "names inside the network" from the
+DNS section no longer resolve on that machine; reaching the mesh by address is
+unaffected. If you do need the names, tick the box when joining or run on the
+node:
+
+```
+tailscale set --accept-dns=true
+```
+
+Back again with `--accept-dns=false`. Note that the join and reconnect scripts
+call `tailscale up --reset`, which returns the client to its defaults, so
+anything set by hand is wiped on reconnect. The panel remembers the choice and
+puts it back into the script.
+
+Nodes joined before this setting existed are not polled: headscale does not hand
+out client settings. Instead the panel flags them in the server's card while
+"use only these servers" is on, and offers the command. Once a server is fixed,
+press "already done" there.
+
 ## Next
 
 - **Change the password** and turn on the second factor: ⚙ → Change password, ⚙ → Two-factor.

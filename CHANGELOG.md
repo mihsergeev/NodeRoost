@@ -5,6 +5,30 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.14.0] - 2026-09-29
+
+### Fixed
+
+- **A joined server quietly lost sight of its own DNS.** With "use only these
+  servers" enabled, the Tailscale client takes over all of a node's DNS, not just
+  the network names: on Linux that is `~.` on tailscale0, on Windows an NRPT rule
+  for every name. A server with its own resolver (corporate split-horizon, cloud,
+  local) started getting the public addresses of internal services after joining,
+  and where the panel's resolvers were unreachable from its network it lost
+  resolution entirely. The server itself stays up - only what travels by internal
+  names breaks, such as mail, LDAP and internal APIs - so this goes unnoticed for
+  a long time.
+  Joining now offers a "Mesh DNS" choice: off by default on Linux (the script
+  passes `--accept-dns=false`), on for personal machines. The choice is remembered
+  and applied again on reconnect - without that it would be lost every time, since
+  the script calls `tailscale up --reset` and returns the client to its defaults.
+  For nodes joined earlier the panel cannot see any of this: headscale does not
+  hand out client settings. So it flags the server's card while "use only these
+  servers" is on, shows the command, and remembers an "already done" answer.
+  The explanation of the setting itself was rewritten too: it used to talk about
+  "internal names the previous resolver knew", which did not say that the whole
+  DNS is taken over.
+
 ## [0.13.0] — 2026-08-06
 
 ### Added

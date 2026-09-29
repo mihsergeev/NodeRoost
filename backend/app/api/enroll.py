@@ -91,10 +91,17 @@ async def enroll_node(
     # Корень своей CA едет прямо в скрипте: имя внутри сети должно открываться
     # без ругани с первой минуты, а не после отдельного похода с файлом.
     ca_pem = await ca.root_cert(session) if await ca.auto_install(session) else ""
+    mesh_dns = (
+        enroll.default_mesh_dns(body.os) if body.mesh_dns is None else body.mesh_dns
+    )
     script = enroll.build_script(
         body.os, settings, key_str, body.name, version=version,
-        exit_node=body.exit_node, ca_pem=ca_pem,
+        exit_node=body.exit_node, ca_pem=ca_pem, mesh_dns=mesh_dns,
     )
+    # Ноды ещё нет (она появится, когда скрипт отработает), поэтому решение
+    # откладываем по ИМЕНИ — оттуда его заберёт коллектор, когда нода придёт.
+    # Без этого панель не знала бы, что у ноды с DNS, и предупреждала бы зря.
+    await settings_store.stash_node_meta(session, body.name, {"mesh_dns": mesh_dns})
     url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
     await audit.record(session, user.username, "node_enroll", body.name)
     return EnrollOut(

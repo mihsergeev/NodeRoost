@@ -3,6 +3,7 @@ import {
   ApiError,
   getAgent,
   enrollNode,
+  defaultMeshDns,
   enrollStatus,
   OS_TABS,
   setNodeMeta,
@@ -25,6 +26,9 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [name, setName] = useState('')
   const [os, setOs] = useState<NodeOs>('linux')
   const [exitNode, setExitNode] = useState(false)
+  // null = как принято для этой ОС; администратор может решить иначе
+  const [meshDns, setMeshDns] = useState<boolean | null>(null)
+  const meshDnsOn = meshDns ?? defaultMeshDns(os)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EnrollResult | null>(null)
@@ -84,7 +88,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
     setBusy(true)
     setError(null)
     try {
-      setResult(await enrollNode(name, os, exitNode))
+      setResult(await enrollNode(name, os, exitNode, meshDnsOn))
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized()
@@ -172,6 +176,19 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
                 </span>
               </label>
             )}
+            <label className="route-row exit-opt">
+              <input
+                type="checkbox"
+                checked={meshDnsOn}
+                onChange={(e) => setMeshDns(e.target.checked)}
+              />
+              <span className="route-cidr">{t('DNS из меша')}</span>
+              <span className="muted small">
+                {meshDnsOn
+                  ? t('машина будет резолвить имена сети, но при настройке «использовать только эти серверы» весь её DNS уйдёт в меш - свой резолвер она перестанет спрашивать')
+                  : t('машина оставит свой DNS (корпоративный, облачный, локальный) и не будет резолвить имена сети - для сервера это обычно то, что нужно')}
+              </span>
+            </label>
             {error && <p className="form-error">{error}</p>}
             <div className="modal-actions">
               <button className="ghost" onClick={onClose}>

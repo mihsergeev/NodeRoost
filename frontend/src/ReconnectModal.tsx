@@ -3,6 +3,7 @@ import {
   ApiError,
   enrollStatus,
   OS_TABS,
+  defaultMeshDns,
   reconnectNode,
   setNodeMeta,
   setNodeTags,
@@ -24,6 +25,11 @@ export function ReconnectModal({ node, onClose, onDone, onUnauthorized }: Props)
   const { t } = useI18n()
   const dismiss = useModalDismiss(onClose)
   const [os, setOs] = useState<NodeOs>('linux')
+  // По умолчанию - как у этой ноды записано в панели. Переподключение зовёт
+  // `tailscale up --reset`, то есть стирает настройки клиента: не передать флаг
+  // заново значит молча вернуть ноде перехват DNS.
+  const [meshDns, setMeshDns] = useState<boolean | null>(null)
+  const meshDnsOn = meshDns ?? node.mesh_dns ?? defaultMeshDns(os)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EnrollResult | null>(null)
@@ -80,7 +86,7 @@ export function ReconnectModal({ node, onClose, onDone, onUnauthorized }: Props)
     setBusy(true)
     setError(null)
     try {
-      setResult(await reconnectNode(node.id, os))
+      setResult(await reconnectNode(node.id, os, meshDnsOn))
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized()
@@ -132,6 +138,17 @@ export function ReconnectModal({ node, onClose, onDone, onUnauthorized }: Props)
                 ))}
               </div>
             </div>
+            <label className="route-row exit-opt">
+              <input
+                type="checkbox"
+                checked={meshDnsOn}
+                onChange={(e) => setMeshDns(e.target.checked)}
+              />
+              <span className="route-cidr">{t('DNS из меша')}</span>
+              <span className="muted small">
+                {t('переподключение сбрасывает настройки клиента, поэтому выбор задаётся заново')}
+              </span>
+            </label>
             {error && <p className="form-error">{error}</p>}
             <div className="modal-actions">
               <button className="ghost" onClick={onClose}>

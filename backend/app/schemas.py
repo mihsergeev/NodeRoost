@@ -116,6 +116,9 @@ class NodeOut(BaseModel):
     force_exit: str = ""  # id шлюза: весь трафик этой ноды принудительно через него
     group: str = ""  # группировка списков: организация…
     subgroup: str = ""  # …и проект внутри неё
+    # Берёт ли нода DNS из меша (записано при подключении или вручную).
+    # None = панель не знает: нода подключена до появления настройки.
+    mesh_dns: bool | None = None
 
 
 # Имя ноды = ОДНА DNS-метка: именно так его проверяет headscale, и именно из
@@ -190,6 +193,9 @@ class NodeMetaIn(RequestModel):
     exit_via: list[str] | None = Field(default=None, max_length=64)
     # id шлюза, через который принудительно гнать весь трафик этой ноды (exit-node)
     force_exit: str | None = Field(default=None, max_length=32, pattern=r"^\d*$")
+    # Берёт ли нода DNS из меша. Панель этого у клиента не спрашивает (headscale
+    # настроек клиента не отдаёт), поэтому здесь — то, что сказал администратор.
+    mesh_dns: bool | None = None
     # группировка в списках: группа → подгруппа (напр. организация → проект).
     # Свободный текст, пусто = «без группы».
     group: str = Field(default="", max_length=63)
@@ -260,6 +266,9 @@ class EnrollIn(RequestModel):
     os: Literal["linux", "windows", "macos", "android"] = "linux"
     # exit-нода: скрипт анонсирует exit + на Linux закрепляет ip_forward.
     exit_node: bool = False
+    # Брать ли ноде DNS из меша. None = по умолчанию для этой ОС (серверу нет,
+    # личной машине да). Выключенный меш-DNS означает `--accept-dns=false`.
+    mesh_dns: bool | None = None
 
 
 class EnrollOut(BaseModel):
@@ -277,6 +286,8 @@ class EnrollOut(BaseModel):
 
 class ReconnectIn(RequestModel):
     os: Literal["linux", "windows", "macos", "android"] = "linux"
+    # None = как у этой ноды было записано в панели (или умолчание для ОС).
+    mesh_dns: bool | None = None
 
 
 # --- версия клиента Tailscale ---
