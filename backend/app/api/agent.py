@@ -57,15 +57,21 @@ def _out(cfg: dict, wanted_hash: str = "") -> AgentOut:
 
     token = cfg.get("token", "")
     url = _state_url(token)
-    installed = False
     raw = cfg.get("last_poll")
+    alive = False
     if raw:
         try:
-            installed = datetime.now(timezone.utc) - datetime.fromisoformat(raw) < timedelta(
+            alive = datetime.now(timezone.utc) - datetime.fromisoformat(raw) < timedelta(
                 seconds=_ALIVE_S
             )
         except (ValueError, TypeError):
-            installed = False
+            alive = False
+    # «Агент есть» = он ПРИМЕНИЛ состояние, а не просто сходил за ним. Запрос по
+    # токену может сделать кто угодно - хоть curl из диагностики, - и раньше
+    # панель принимала это за работающего агента: показывала его на ноде, где его
+    # не было вовсе, пока рядом стояли пустые «релиз» и «применил».
+    applied_ever = bool(cfg.get("last_applied"))
+    installed = alive and applied_ever
     return AgentOut(
         routes=cfg.get("routes", []),
         exit_node=bool(cfg.get("exit", False)),
@@ -79,6 +85,10 @@ def _out(cfg: dict, wanted_hash: str = "") -> AgentOut:
         applied_current=bool(
             wanted_hash and str(cfg.get("applied_hash") or "") == wanted_hash
         ),
+        # По токену ходят, но состояние не применяется. Либо агент очень старый
+        # (до отчётов о применении), либо на ноде его нет, а токен утёк, - и то и
+        # другое лечится переустановкой, поэтому молчать об этом нельзя.
+        polling_only=alive and not applied_ever,
         setup_oneline=f"curl -fsSL {url}/setup | sh" if url else "",
         remove_oneline=f"curl -fsSL {url}/remove | sh" if url else "",
         # Агент, поставленный до появления новой возможности, о ней не знает и

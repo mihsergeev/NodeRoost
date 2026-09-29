@@ -214,6 +214,8 @@ export type AgentCfg = {
   token: string
   installed: boolean
   last_poll: string | null
+  // по токену ходят, но состояние не применяют: старый агент или чужой доступ
+  polling_only: boolean
   setup_oneline: string
   remove_oneline: string
   // агент свежий (его скрипт той же версии, что отдаёт панель); false — он от
