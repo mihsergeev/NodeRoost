@@ -52,6 +52,7 @@ async def set_node_meta(
     exit_gateway: bool | None = None,
     exit_via: list[str] | None = None,
     force_exit: str | None = None,
+    mesh_dns: bool | None = None,
 ) -> None:
     """Заметка панели о ноде: описание, тип, флаг «админ» и группировка
     (группа → подгруппа, напр. организация → проект). Пустые поля убираются;
@@ -94,6 +95,11 @@ async def set_node_meta(
     # молчат только уведомления. Полезно на плановых работах, когда сервер гасят
     # намеренно и алерт про это — чистый шум.
     put("muted", True, bool(muted)) if muted is not None else None
+    # Берёт ли нода DNS из меша. Значимы ОБА значения, поэтому храним как есть, а
+    # не через put (он стирает ключ на False): «выключено» здесь — это ответ, а
+    # отсутствие ключа — «панель не знает», и по нему она предупреждает админа.
+    if mesh_dns is not None:
+        entry["mesh_dns"] = bool(mesh_dns)
     if group is not None:
         put("group", group.strip(), bool(group.strip()))
     if subgroup is not None:
@@ -130,8 +136,10 @@ async def stash_node_meta(
 async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     """Вернуть отложенные заметки нодам, которые уже переподключились.
 
-    Забираем только если у ноды с этим именем заметки ещё нет — чтобы не затереть
-    то, что администратор успел выставить руками.
+    Что администратор успел выставить руками, не трогаем: из отложенного берём
+    только те поля, которых у ноды ещё нет. Раньше запись пропускалась целиком, и
+    отложенное при подключении (например «не брать DNS из меша») терялось, стоило
+    панели первой записать тип ноды.
     """
     raw = await _get_raw(session, PENDING_META_KEY)
     pending = json.loads(raw) if raw else {}
@@ -142,14 +150,15 @@ async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     for n in nodes or []:
         name = str(n.get("givenName") or n.get("name") or "")
         nid = str(n.get("id", ""))
-        if name not in pending or not nid or meta.get(nid):
+        if name not in pending or not nid:
             continue
         entry = pending.pop(name)
         # старый формат (только заметка) — переживает обновление панели
         note = entry.get("meta", entry) if isinstance(entry, dict) else {}
         old_id = str(entry.get("old_id", "")) if isinstance(entry, dict) else ""
         if note:
-            meta[nid] = note
+            cur = meta.get(nid) if isinstance(meta.get(nid), dict) else {}
+            meta[nid] = {**note, **cur}  # выставленное руками сильнее отложенного
         if old_id and old_id != nid:
             await _repoint_node_id(session, old_id, nid)
         moved += 1

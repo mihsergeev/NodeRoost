@@ -210,3 +210,89 @@ async def test_join_link_serves_the_script_until_the_key_expires(client):
     assert r.headers["content-type"].startswith("text/plain")
     assert (await client.get("/join/tok2")).status_code == 404  # протух вместе с ключом
     assert (await client.get("/join/нет-такого")).status_code == 404
+
+
+def test_server_joins_without_mesh_dns():
+    """Серверу меш-DNS по умолчанию не нужен, и это не косметика.
+
+    При `override_local_dns` клиент с accept-dns забирает у ноды ВЕСЬ DNS, а не
+    только зону меша: на Linux это `~.` на tailscale0. Сервер со своим резолвером
+    (корпоративный split-horizon, DNS облака) тихо перестаёт видеть внутренние
+    имена — сам он при этом жив, поэтому замечают такое не по симптому, а много
+    позже и случайно.
+    """
+    from app import enroll as e
+
+    lin = e.build_script("linux", _S, "KEY", "srv-1")
+    assert "--accept-dns=false" in lin
+    # личной машине имена меша как раз и нужны — ради них их заводят
+    for os_name in ("windows", "macos"):
+        assert "--accept-dns=false" not in e.build_script(os_name, _S, "KEY", "n1")
+    # но выбор всегда за администратором, в обе стороны
+    assert "--accept-dns=false" not in e.build_script("linux", _S, "KEY", "n1", mesh_dns=True)
+    assert "--accept-dns=false" in e.build_script("windows", _S, "KEY", "n1", mesh_dns=False)
+
+
+async def test_reconnect_keeps_the_dns_choice(client, monkeypatch):
+    """Скрипт зовёт `tailscale up --reset`, то есть возвращает клиента к
+    умолчаниям. Значит выставленный на ноде `--accept-dns=false` переподключение
+    сотрёт, и сервер снова молча отдаст весь DNS мешу — если панель не передаст
+    флаг заново."""
+    from app import settings_store
+    from app.api import nodes as api_nodes
+
+    class _HS:
+        async def get_node(self, node_id):
+            return {"id": node_id, "givenName": "srv-1"}
+
+        async def get_nodes(self):
+            return [{"id": "7", "givenName": "srv-1"}]
+
+        async def ensure_user(self, name):
+            return {"id": "1", "name": name}
+
+        async def create_preauthkey(self, *a, **k):
+            return {"id": "5", "key": "hskey-auth-test"}
+
+        async def delete_node(self, node_id):
+            return {}
+
+    monkeypatch.setattr(api_nodes, "get_client", lambda _s: _HS())
+    monkeypatch.setattr(api_nodes, "require_hs", lambda _s: None)
+
+    async def _no_policy(*a, **k):
+        return None
+
+    monkeypatch.setattr(api_nodes, "apply_policy", _no_policy)
+
+    app = client._transport.app
+    async with app.state.session_factory() as s:
+        await settings_store.set_node_meta(s, "7", kind="server", mesh_dns=False)
+
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    tok = r.json()["access_token"]
+    resp = await client.post("/api/nodes/7/reconnect", json={"os": "linux"},
+                             headers={"Authorization": f"Bearer {tok}"})
+    assert resp.status_code == 200
+    assert "--accept-dns=false" in resp.json()["script"]
+
+    # решение переезжает на новую запись ноды: она вернётся с другим id
+    async with app.state.session_factory() as s:
+        moved = await settings_store.claim_pending_meta(s, [{"id": "42", "givenName": "srv-1"}])
+        assert moved == 1
+        meta = await settings_store.get_node_meta(s)
+    assert meta["42"]["mesh_dns"] is False
+
+
+async def test_pending_note_survives_a_meta_written_first(session):
+    """Решение про DNS откладывается по имени (ноды ещё нет), а тип панель может
+    записать раньше — сливаем, иначе решение потерялось бы."""
+    from app import settings_store
+
+    await settings_store.stash_node_meta(session, "srv-2", {"mesh_dns": False})
+    await settings_store.set_node_meta(session, "9", kind="server")
+    await settings_store.claim_pending_meta(session, [{"id": "9", "givenName": "srv-2"}])
+    meta = await settings_store.get_node_meta(session)
+    assert meta["9"]["mesh_dns"] is False
+    assert meta["9"]["kind"] == "server"  # выставленное руками не затёрто

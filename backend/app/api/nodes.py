@@ -93,6 +93,7 @@ def _map_node(n: dict, meta: dict | None = None, hinfo: dict | None = None) -> N
         kind=kind,
         admin=bool(entry.get("admin", False)),
         muted=bool(entry.get("muted", False)),
+        mesh_dns=entry.get("mesh_dns"),
         exit_gateway=bool(entry.get("exit_gateway", False)),
         exit_via=[str(i) for i in (entry.get("exit_via") or [])],
         force_exit=str(entry.get("force_exit") or ""),
@@ -261,7 +262,7 @@ async def set_meta(
     await settings_store.set_node_meta(
         session, node_id, body.description, body.kind, body.admin,
         body.group, body.subgroup, body.muted, body.exit_gateway, eff_via,
-        body.force_exit,
+        body.force_exit, body.mesh_dns,
     )
     # Сняли «шлюз выхода» — снимаем и выбор этого шлюза у устройств: иначе связь
     # висит в карточке как рабочая, а принудительный выход гонит трафик на ноду,
@@ -443,9 +444,12 @@ async def reconnect_node(
     # откладываем их по имени, иначе нода вернётся без типа, админ-флага
     # и описания (см. settings_store.claim_pending_meta).
     meta_now = await settings_store.get_node_meta(session)
+    stashed = dict(meta_now.get(str(node_id)) or {})
+    if body.mesh_dns is not None:
+        stashed["mesh_dns"] = bool(body.mesh_dns)
     await settings_store.stash_node_meta(
         session, str(node.get("givenName") or node.get("name") or ""),
-        meta_now.get(str(node_id)) or {}, old_id=str(node_id),
+        stashed, old_id=str(node_id),
     )
     await hs_call(client.delete_node(node_id))
     # мета была привязана к старому id — чистим (панель перенесёт тип/описание/
@@ -453,9 +457,21 @@ async def reconnect_node(
     await settings_store.clear_node_meta(session, node_id)
     version = await settings_store.get_tailscale_version(session, settings)
     ca_pem = await ca.root_cert(session) if await ca.auto_install(session) else ""
+    # Скрипт зовёт `tailscale up --reset`, то есть возвращает клиента к
+    # умолчаниям. Значит выставленный на ноде `--accept-dns=false` переподключение
+    # сотрёт, и сервер снова тихо отдаст весь DNS мешу — если не передать флаг
+    # заново. Берём то, что панель знает об этой ноде, иначе умолчание для ОС.
+    mesh_dns = body.mesh_dns
+    if mesh_dns is None:
+        stored_dns = (meta_now.get(str(node_id)) or {}).get("mesh_dns")
+        mesh_dns = (
+            bool(stored_dns)
+            if stored_dns is not None
+            else enroll.default_mesh_dns(body.os)
+        )
     script = enroll.build_script(
         body.os, settings, key.get("key", ""), name, version=version,
-        force_reauth=True, ca_pem=ca_pem,
+        force_reauth=True, ca_pem=ca_pem, mesh_dns=mesh_dns,
     )
     from app.api.enroll import _join_link
 

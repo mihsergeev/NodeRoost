@@ -3,10 +3,13 @@ import {
   ApiError,
   deleteNode,
   expireNode,
+  getHsInfo,
   getPolicyRules,
   putPolicyRules,
+  setNodeMeta,
   type AclRule,
   type AclSelector,
+  type HsInfo,
   type Node,
 } from './api'
 import { groupGrants, portLabel, selLabel, toggleRule } from './aclui'
@@ -52,6 +55,14 @@ export function NodeDetail({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [hs, setHs] = useState<HsInfo | null>(null)
+
+  // Панель не видит настройки клиента: headscale их не отдаёт. Поэтому
+  // предупреждаем по тому, что знаем сами - сеть раздаёт свои резолверы поверх
+  // всего, нода помечена сервером, и обратного админ не говорил.
+  const dnsHijacked =
+    !!hs?.dns.override_local_dns && node.kind === 'server' && node.mesh_dns !== false
+  const dnsFix = 'tailscale set --accept-dns=false'
 
   // «имя (IP)» — удобно вставлять в тикеты/конфиги; берём IPv4 ноды
   const v4 = node.ip_addresses.find((ip) => !ip.includes(':'))
@@ -79,6 +90,14 @@ export function NodeDetail({
   useEffect(() => {
     loadRules()
   }, [loadRules])
+
+  useEffect(() => {
+    getHsInfo()
+      .then(setHs)
+      .catch(() => {
+        /* без этих данных просто не показываем предупреждение про DNS */
+      })
+  }, [])
 
   // «Кто может подключаться сюда» (входящие, dst=нода) и «Куда ходит эта нода» (исходящие, src=нода).
   const inRows = useMemo(
@@ -358,6 +377,41 @@ export function NodeDetail({
           )}
         </div>
       </div>
+
+      {dnsHijacked && (
+        <div className="card dns-warn">
+          <h3>{t('Эта нода, скорее всего, отдаёт весь свой DNS в меш')}</h3>
+          <p className="muted small">
+            {t(
+              'В разделе DNS включено «использовать только эти серверы», а значит нода с DNS из меша спрашивает их обо всех именах, а не только о меш-именах. Сервер со своим резолвером (корпоративный, облачный, локальный) тихо перестаёт видеть внутренние имена, а там, где эти резолверы недоступны снаружи, теряет резолв целиком. Сам сервер при этом работает, поэтому заметно становится не сразу.',
+            )}
+          </p>
+          <p className="muted small">{t('Выполните на ноде под root:')}</p>
+          <pre className="enroll-script cmd-oneline">{dnsFix}</pre>
+          <div className="enroll-actions">
+            <button onClick={() => copyValue(dnsFix, 'dnsfix')}>
+              {copied === 'dnsfix' ? t('Скопировано ✓') : t('Скопировать команду')}
+            </button>
+            <button
+              className="ghost"
+              onClick={async () => {
+                try {
+                  await setNodeMeta(node.id, { mesh_dns: false })
+                  onChanged()
+                } catch (err) {
+                  if (err instanceof ApiError && err.status === 401) onUnauthorized()
+                  else setError(err instanceof Error ? err.message : t('Ошибка'))
+                }
+              }}
+            >
+              {t('Уже сделано - не напоминать')}
+            </button>
+          </div>
+          <p className="muted small">
+            {t('Имена сети и MagicDNS на этой ноде после команды резолвиться не будут - связь по мешу от неё не зависит.')}
+          </p>
+        </div>
+      )}
 
       {/* ДОСТУП — редактируется прямо здесь */}
       <div className="card">
