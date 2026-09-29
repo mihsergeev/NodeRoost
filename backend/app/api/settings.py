@@ -163,6 +163,7 @@ def _write_dns_config(
     base_domain: str,
     nameservers: list[str],
     override_local: bool = False,
+    split: list[str] | None = None,
 ) -> None:
     def mut(data: dict) -> None:
         dns = data.get("dns")
@@ -176,6 +177,14 @@ def _write_dns_config(
             ns = {}
             dns["nameservers"] = ns
         ns["global"] = list(nameservers)
+        if split is not None:
+            # Маршруты зон: имена внутри сети спрашиваются у меша, всё остальное
+            # остаётся своему резолверу ноды. Пустой набор убираем целиком -
+            # headscale не любит пустую секцию, да и врать в конфиге незачем.
+            if split:
+                ns["split"] = {z: [dnsrecords.MESH_RESOLVER] for z in split}
+            else:
+                ns.pop("split", None)
         # headscale НЕ СТАРТУЕТ с пустым списком серверов при override_local_dns:
         # «dns.nameservers.global must be set when dns.override_local_dns is true».
         # Поэтому без списка флаг обязан быть выключен: очистка списка в панели
@@ -189,6 +198,36 @@ def _write_dns_config(
         dns["override_local_dns"] = bool(nameservers) and bool(override_local)
 
     _edit_hs_config(config_path, mut)
+
+
+def _write_split_zones(config_path: str, zones: list[str]) -> None:
+    """Прописать маршруты зон имён внутри сети (dns.nameservers.split).
+
+    Отдельно от остальных настроек DNS: набор зон меняется вместе со списком
+    имён, а не когда администратор правит резолверы.
+    """
+
+    def mut(data: dict) -> None:
+        dns = data.get("dns")
+        if not isinstance(dns, dict):
+            dns = {}
+            data["dns"] = dns
+        ns = dns.get("nameservers")
+        if not isinstance(ns, dict):
+            ns = {}
+            dns["nameservers"] = ns
+        if zones:
+            ns["split"] = {z: [dnsrecords.MESH_RESOLVER] for z in zones}
+        else:
+            ns.pop("split", None)
+
+    _edit_hs_config(config_path, mut)
+
+
+def _split_zones_in(cfg: dict) -> list[str]:
+    ns = ((cfg.get("dns") or {}).get("nameservers") or {})
+    split = ns.get("split")
+    return sorted(split.keys()) if isinstance(split, dict) else []
 
 
 def _write_network_config(config_path: str, v4: str, allocation: str) -> None:
@@ -228,6 +267,9 @@ async def update_dns(
             bd,
             body.nameservers,
             body.override_local_dns,
+            dnsrecords.zones_for_split(
+                await settings_store.get_dns_records(session), bd
+            ),
         )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(
@@ -478,6 +520,31 @@ async def update_dns_records(
                 f"Не удалось записать config.yaml: {e}",
             ) from e
         cfg = _read_hs_config(settings.headscale_config_path)
+    # Маршруты зон: без них имя внутри сети резолвится только там, где меш забрал
+    # весь DNS, - а он его забирать не должен. С маршрутом нода спрашивает у меша
+    # ровно свои зоны и сохраняет собственный резолвер.
+    #
+    # Дописываем только НОВЫЕ зоны: правка конфига стоит перезапуска headscale, на
+    # время которого встаёт регистрация нод. Появление зоны без него не работает
+    # вовсе, а вот исчезнувшая зона никому не мешает - маршрут в пустую зону
+    # просто возвращает NXDOMAIN. Подчищается она при следующей правке настроек
+    # DNS, где перезапуск и так неизбежен.
+    have_zones = _split_zones_in(cfg)
+    want_zones = dnsrecords.zones_for_split(
+        stored, str((cfg.get("dns") or {}).get("base_domain") or "")
+    )
+    if set(want_zones) - set(have_zones):
+        try:
+            _write_split_zones(
+                settings.headscale_config_path, sorted(set(have_zones) | set(want_zones))
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Не удалось записать маршруты зон в config.yaml: {e}",
+            ) from e
+        cfg = _read_hs_config(settings.headscale_config_path)
+
     await settings_store.set_dns_records(session, stored)
     await audit.record(
         session,

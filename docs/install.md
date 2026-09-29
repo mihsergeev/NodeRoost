@@ -171,6 +171,20 @@ on the machine itself.
 
 ---
 
+### How names inside the network reach the nodes
+
+The panel writes the zone route into headscale itself: for the name `nas.mesh` the
+config gets `dns.nameservers.split: {mesh: [100.100.100.100]}`. A node then asks the
+mesh about exactly its own zones and its own resolver about everything else. A new
+zone needs headscale restarted (~10-15 s), so the panel edits the config only when
+the zone is genuinely new; a zone that went empty keeps its route - it is harmless
+and gets cleaned up at the next DNS settings change.
+
+**The "DNS servers" field is best left empty.** It is only needed if you want to
+force your own resolver onto the nodes: the Tailscale client takes those servers as
+the primary ones for EVERY name, and then a server with its own resolver stops
+seeing the company's internal names - see the next section.
+
 ### DNS: the mesh does not take it from servers
 
 The join dialog has a **"Mesh DNS"** tick. For Linux it is off by default, for
