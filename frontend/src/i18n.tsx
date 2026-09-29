@@ -605,6 +605,17 @@ const EN: Record<string, string> = {
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
   'DNS из меша': 'Mesh DNS',
+  'Брать DNS из меша': 'Use mesh DNS',
+  'На этой ноде стоит агент - он применит выбор сам, в течение минуты.':
+    'This node runs the agent - it applies the choice itself, within a minute.',
+  'Агента на ноде нет, поэтому выполните под root (или поставьте агента - тогда панель будет делать это сама):':
+    'There is no agent on this node, so run it as root (or install the agent and the panel will do it for you):',
+  'Выключить DNS из меша': 'Turn mesh DNS off',
+  'Выключено - не напоминать': 'Turned off - stop reminding',
+  'Нода резолвит имена сети. Если в разделе DNS заданы свои резолверы, туда уйдёт весь её DNS - сервер со своим резолвером перестанет видеть внутренние имена.':
+    'The node resolves network names. With resolvers set in the DNS section, all of its DNS goes there - a server with its own resolver stops seeing internal names.',
+  'Нода оставляет свой DNS и не резолвит имена сети. На ноде с агентом это применяется само, на остальных - командой tailscale set --accept-dns=false.':
+    'The node keeps its own DNS and does not resolve network names. A node with the agent applies this by itself; elsewhere use tailscale set --accept-dns=false.',
   'машина будет резолвить имена сети, но при настройке «использовать только эти серверы» весь её DNS уйдёт в меш - свой резолвер она перестанет спрашивать':
     'the machine will resolve network names, but with "use only these servers" its entire DNS goes to the mesh and it stops asking its own resolver',
   'машина оставит свой DNS (корпоративный, облачный, локальный) и не будет резолвить имена сети - для сервера это обычно то, что нужно':
