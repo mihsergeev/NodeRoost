@@ -139,6 +139,11 @@ WANT_EXIT=\$(grep '^exit=' "\$TMP" | cut -d= -f2-)
 # (его тайнет-IP). Это exit-node, а НЕ subnet-маршруты, поэтому на другие ноды не
 # течёт. Пусто = не форсим. --exit-node-allow-lan-access, чтобы не потерять LAN.
 USE_EXIT=\$(grep '^use_exit=' "\$TMP" | cut -d= -f2-)
+# Брать ли DNS из меша. Пусто = панель не знает, и тогда не трогаем: нода могла
+# быть подключена до появления выбора, а переключать ей резолвер молча — ровно та
+# беда, от которой этот параметр и заведён. Значение только из двух слов.
+MESH_DNS=\$(grep '^mesh_dns=' "\$TMP" | cut -d= -f2-)
+case "\$MESH_DNS" in true|false) ;; *) MESH_DNS="";; esac
 
 # --- сохранение публичного inbound при принудительном выходе (connmark) ---
 # При --exit-node дефолтный маршрут уходит в туннель, и ОТВЕТЫ на входящие
@@ -296,6 +301,13 @@ if [ -n "\$USE_EXIT" ]; then
   tailscale set --exit-node="\$USE_EXIT" --exit-node-allow-lan-access
 else
   tailscale set --exit-node=
+fi
+# DNS меша. Сервер со своим резолвером, забравший весь DNS в меш, перестаёт
+# видеть внутренние имена и делает это молча, поэтому настройку держит панель, а
+# не человек на ноде: выставленное руками стирается первым же переподключением
+# (скрипт зовёт `tailscale up --reset`).
+if [ -n "\$MESH_DNS" ]; then
+  tailscale set --accept-dns="\$MESH_DNS"
 fi
 mv "\$TMP.core" "$DIR/state"   # успех — фиксируем состояние (при сбое сюда не дойдём → повтор)
 rm -f "\$TMP"
@@ -480,14 +492,22 @@ def cert_lines(wanted: list[tuple[str, str, bool]]) -> str:
     )
 
 
-def state_body(routes: list[str], want_exit: bool, use_exit: str = "") -> str:
+def state_body(
+    routes: list[str], want_exit: bool, use_exit: str = "", mesh_dns: str = ""
+) -> str:
     """Желаемое состояние для агента. Порядок маршрутов стабилен — иначе агент
     считал бы перестановку изменением и дёргал tailscale set впустую.
 
     use_exit — тайнет-IP шлюза, через который форсировать ВЕСЬ трафик ноды
-    (принудительный выход). Пусто = не форсим."""
+    (принудительный выход). Пусто = не форсим.
+
+    mesh_dns — «true»/«false»: берёт ли нода DNS из меша. ПУСТО значит «панель не
+    знает», и тогда агент настройку не трогает вовсе: нода могла быть подключена
+    до появления этого выбора, и молча переключать ей резолвер — то же самое, от
+    чего мы тут защищаемся."""
     return (
         f"routes={','.join(sorted(routes))}\n"
         f"exit={'true' if want_exit else 'false'}\n"
         f"use_exit={use_exit}\n"
+        f"mesh_dns={mesh_dns}\n"
     )

@@ -5,6 +5,24 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.15.0] - 2026-09-29
+
+### Added
+
+- **The DNS choice is applied by the agent, not by a person on the node** (agent
+  release 7). The "use mesh DNS" choice now travels in the node state next to the
+  routes and the exit mode, and once a minute the agent brings the client in line:
+  `tailscale set --accept-dns=...`. It used to be a command the administrator ran
+  by hand on every server, and the first reconnect wiped it - the script calls
+  `tailscale up --reset`. Now the setting lives where the rest of the node state
+  lives and restores itself.
+  The panel stays silent when it knows nothing about a node: an empty value is
+  skipped by the agent and the client is left alone. Flipping someone else's
+  settings quietly is exactly the trouble this was built against.
+  The choice is made with a tick in the node card ("Use mesh DNS") and with the
+  button in the warning itself; on a node with the agent the warning says so - it
+  will be applied for you.
+
 ## [0.14.1] - 2026-09-29
 
 ### Fixed
