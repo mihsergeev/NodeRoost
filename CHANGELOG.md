@@ -5,6 +5,22 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.16.1] - 2026-09-29
+
+### Fixed
+
+- **A zone route took over other names in the same domain.** The routing shipped
+  an hour earlier pointed at the name's DOMAIN: a record for `panel.example.com`
+  sent all of `example.com` into the mesh, and neighbouring public names stopped
+  resolving - on a live network `kervax.<domain>` fell off while `acontrol.<domain>`
+  led inside. The same kind of mistake that was fixed in 0.14: taking more than was
+  asked for.
+  The route now depends on the domain. An invented one (`mesh`, `acme`) goes to
+  the mesh whole - it does not exist on the internet, there is nothing to take away,
+  and the next name in it needs no headscale restart. A real domain is routed name
+  by name: `panel.example.com` leads inside, and everything else in that domain is
+  still asked of the node's own resolver.
+
 ## [0.16.0] - 2026-09-29
 
 ### Added
