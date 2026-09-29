@@ -132,3 +132,34 @@ async def sync(session: AsyncSession, settings: Settings, nodes: list[dict]) -> 
     if not stored and not os.path.exists(path):
         return False  # фичей не пользовались — не сорим файлом в каталоге конфига
     return write_file(path, entries_for(stored, nodes))
+
+# Резолвер меша: его раздаёт сам клиент Tailscale на каждой ноде.
+MESH_RESOLVER = "100.100.100.100"
+
+
+def zone_of(name: str) -> str:
+    """Зона имени: nas.mesh -> mesh, loki.mirabah -> mirabah, a.b.example.com -> b.example.com."""
+    name = (name or "").strip().strip(".").lower()
+    return name.split(".", 1)[1] if "." in name else name
+
+
+def zones_for_split(records: list[dict], base_domain: str = "") -> list[str]:
+    """Зоны, которые ноды должны спрашивать у меша, а не у своего резолвера.
+
+    Нужно ровно для того, чтобы имена внутри сети работали, НЕ отбирая у ноды
+    весь DNS. Глобальные резолверы забирают всё (`~.` на tailscale0), и сервер со
+    своим резолвером теряет внутренние имена компании; маршрут на зону забирает
+    только её.
+
+    Базовый домен сюда не попадает: MagicDNS-имена клиент резолвит и так.
+    """
+    base = (base_domain or "").strip().strip(".").lower()
+    out: set[str] = set()
+    for rec in records or []:
+        if not rec.get("enabled", True):
+            continue
+        zone = zone_of(str(rec.get("name") or ""))
+        if not zone or zone == base or (base and zone.endswith("." + base)):
+            continue
+        out.add(zone)
+    return sorted(out)

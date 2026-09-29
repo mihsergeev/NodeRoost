@@ -5,6 +5,26 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.16.0] - 2026-09-29
+
+### Added
+
+- **Names inside the network work without taking a node's whole DNS.** Until now
+  they resolved only where the mesh had taken DNS over completely - that is, at the
+  price of a server with its own resolver no longer seeing the company's internal
+  names. The panel now writes the zone route into headscale: for the name
+  `nas.mesh` the config gets `dns.nameservers.split: {mesh: [100.100.100.100]}`, so
+  a node asks the mesh about exactly its own zones and its own resolver about
+  everything else.
+  Checked on a live node: `nas.mesh` resolves to the node's address, `github.com`
+  goes through the provider's resolver, there is no `~.` on tailscale0 and no NRPT
+  rule for `.` on Windows.
+  Editing the config costs a headscale restart, so the panel only touches it when
+  the zone is genuinely new. A zone that went empty keeps its route: it is harmless
+  (the mesh answers NXDOMAIN) and is cleaned up at the next DNS settings change.
+  The "DNS servers" field is now described honestly as optional: it is only needed
+  if you want to force your own resolver onto the nodes.
+
 ## [0.15.0] - 2026-09-29
 
 ### Added

@@ -331,3 +331,66 @@ async def test_clearing_the_list_leaves_the_file_and_config_alone(client, hs_env
     assert not flag.exists()
     data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
     assert data["dns"]["extra_records_path"] == "/etc/headscale/extra-records.json"
+
+
+def test_zones_for_split_takes_only_what_the_mesh_must_answer():
+    """Зона считается от имени, а базовый домен сюда не попадает: MagicDNS-имена
+    клиент резолвит и без маршрута."""
+    recs = [
+        {"name": "nas.mesh", "enabled": True},
+        {"name": "loki.mirabah", "enabled": True},
+        {"name": "portainer-dev.bironex", "enabled": True},
+        {"name": "srv.noderoost.internal", "enabled": True},   # базовый домен
+        {"name": "off.lan", "enabled": False},                  # выключено
+    ]
+    assert dnsrecords.zones_for_split(recs, "noderoost.internal") == [
+        "bironex",
+        "mesh",
+        "mirabah",
+    ]
+    assert dnsrecords.zones_for_split([], "noderoost.internal") == []
+
+
+async def test_new_zone_is_routed_to_the_mesh(client, hs_env):
+    """Имя в новой зоне без маршрута не резолвится нигде, кроме нод, у которых меш
+    забрал весь DNS, - а забирать он его не должен. Поэтому появление зоны правит
+    config.yaml и просит перезапуск."""
+    cfg, _ = hs_env
+    token = await _login(client)
+    flag = cfg.parent.parent / ".restart-request"
+
+    r = await _put(client, token, [{"name": "nas.mesh", "node_id": "7"}])
+    assert r.status_code == 200
+    import yaml
+
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert data["dns"]["nameservers"]["split"] == {"mesh": ["100.100.100.100"]}
+    assert flag.exists()  # без перезапуска headscale маршрут не подхватит
+
+    # та же зона второй раз - конфиг не трогаем и ноды не дёргаем
+    flag.unlink()
+    r = await _put(
+        client,
+        token,
+        [{"name": "nas.mesh", "node_id": "7"}, {"name": "db.mesh", "node_id": "7"}],
+    )
+    assert r.status_code == 200
+    assert not flag.exists()
+
+
+async def test_zone_that_went_away_does_not_cost_a_restart(client, hs_env):
+    """Маршрут в опустевшую зону безвреден (NXDOMAIN от меша), а перезапуск
+    останавливает регистрацию нод. Чистится он при следующей правке настроек DNS."""
+    cfg, _ = hs_env
+    token = await _login(client)
+    await _put(client, token, [{"name": "nas.mesh", "node_id": "7"}])
+    flag = cfg.parent.parent / ".restart-request"
+    flag.unlink()
+
+    r = await _put(client, token, [])
+    assert r.status_code == 200
+    assert not flag.exists()
+    import yaml
+
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert "mesh" in data["dns"]["nameservers"]["split"]
