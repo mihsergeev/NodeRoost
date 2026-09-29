@@ -29,6 +29,18 @@ def _state_url(token: str) -> str:
     return f"{base}/agent/{token}" if token else ""
 
 
+async def _wanted_mesh_dns(session, node_id: str) -> str:
+    """«true»/«false» для агента — или пусто, если панель про эту ноду не знает.
+
+    Знает она ровно то, что сказал администратор: галкой при подключении или
+    переключателем в карточке. Спросить сам клиент нельзя — headscale его
+    настроек не отдаёт, поэтому молчание тут честнее выдумки.
+    """
+    meta = (await settings_store.get_node_meta(session)).get(str(node_id)) or {}
+    value = meta.get("mesh_dns")
+    return "" if value is None else ("true" if value else "false")
+
+
 async def _wanted_routes(session, node_id: str, cfg: dict) -> list[str]:
     """Что нода реально должна анонсировать: маршруты, заданные на ней руками,
     ПЛЮС выведенные из направлений («кто → куда через неё»).
@@ -151,6 +163,7 @@ async def _wanted_hash(session, node_id: str, cfg: dict) -> str:
         await _wanted_routes(session, node_id, cfg),
         bool(cfg.get("exit", False)),
         str(cfg.get("use_exit") or ""),
+        await _wanted_mesh_dns(session, node_id),
     )
     return hashlib.sha256(body.encode()).hexdigest()
 
@@ -240,6 +253,7 @@ async def agent_state(token: str, session: SessionDep) -> Response:
         await _wanted_routes(session, node_id, cfg),
         bool(cfg.get("exit", False)),
         str(cfg.get("use_exit") or ""),
+        await _wanted_mesh_dns(session, node_id),
     )
     settings = get_settings()
     # Заказ обновления живёт в настройках ноды: его ставит администратор кнопкой,
