@@ -173,12 +173,20 @@ on the machine itself.
 
 ### How names inside the network reach the nodes
 
-The panel writes the zone route into headscale itself: for the name `nas.mesh` the
-config gets `dns.nameservers.split: {mesh: [100.100.100.100]}`. A node then asks the
-mesh about exactly its own zones and its own resolver about everything else. A new
-zone needs headscale restarted (~10-15 s), so the panel edits the config only when
-the zone is genuinely new; a zone that went empty keeps its route - it is harmless
-and gets cleaned up at the next DNS settings change.
+The panel writes the route into headscale itself (`dns.nameservers.split`), and it
+depends on the kind of domain the name lives in:
+
+* **Invented** (`nas.mesh`, `loki.mirabah`) - the whole domain goes to the mesh
+  (`mesh: [100.100.100.100]`). It does not exist on the internet, there is nothing
+  to take away from the node, and the next name in that domain needs no config edit.
+* **Real** (`panel.example.com`) - only the name itself is routed. That domain lives
+  its own life: routing all of it would take the node's entire resolution for it,
+  and neighbouring public names would stop opening.
+
+A node then asks the mesh about exactly these names and its own resolver about
+everything else. A new route needs headscale restarted (~10-15 s), so the panel
+edits the config only when the route is genuinely new; a name that went away keeps
+its route - it is harmless and gets cleaned up at the next DNS settings change.
 
 **The "DNS servers" field is best left empty.** It is only needed if you want to
 force your own resolver onto the nodes: the Tailscale client takes those servers as
