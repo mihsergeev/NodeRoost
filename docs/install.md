@@ -176,8 +176,8 @@ on the machine itself.
 The join dialog has a **"Mesh DNS"** tick. For Linux it is off by default, for
 personal machines it is on, and here is why.
 
-With "use only these servers" enabled in the DNS section, a node with mesh DNS
-hands over **all** of its DNS, not just the network names: on Linux that is `~.`
+With DNS servers set in the DNS section, a node with mesh DNS hands over **all**
+of its DNS, not just the network names: on Linux that is `~.`
 on the tailscale0 interface, on Windows an NRPT rule for every name. A server
 with its own resolver (corporate split-horizon, cloud, local) then quietly stops
 seeing internal names and starts getting the public addresses of the same
@@ -202,7 +202,7 @@ puts it back into the script.
 
 Nodes joined before this setting existed are not polled: headscale does not hand
 out client settings. Instead the panel flags them in the server's card while
-"use only these servers" is on, and offers the command. Once a server is fixed,
+DNS servers are set, and offers the command. Once a server is fixed,
 press "already done" there.
 
 ## Next

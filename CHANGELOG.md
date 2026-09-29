@@ -5,6 +5,18 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.14.1] - 2026-09-29
+
+### Fixed
+
+- **The hijacked-DNS warning stayed silent where the hijack was real.** It keyed
+  off the "use only these servers" tick, and on a live network that tick was not
+  set - yet DNS still went to the mesh in full: the Tailscale client takes the
+  resolvers configured in the panel as its primary ones, and the tick only drops
+  the system resolver from the fallbacks as well. The panel now warns whenever
+  resolvers are set at all. The explanation of the setting in the DNS section was
+  corrected the same way: it used to imply that nothing happens without the tick.
+
 ## [0.14.0] - 2026-09-29
 
 ### Fixed
