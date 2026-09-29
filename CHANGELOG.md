@@ -5,6 +5,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.16.3] - 2026-09-29
+
+### Changed
+
+- **The default pinned Tailscale client version is 1.102.4** (was 1.98.8). This
+  value goes into the enrollment scripts of a fresh panel install; on existing ones
+  it lives in the settings and does not depend on this default.
+
 ## [0.16.2] - 2026-09-29
 
 ### Fixed
