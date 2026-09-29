@@ -471,6 +471,19 @@ def _fill(
     )
 
 
+def default_mesh_dns(os_name: str) -> bool:
+    """Брать ли ноде DNS из меша, если администратор не сказал иначе.
+
+    Серверу — нет. У него, как правило, есть свой резолвер: корпоративный со
+    split-horizon, DNS облака, локальный кэш. Меш при `override_local_dns`
+    забирает у ноды ВЕСЬ DNS, а не только свою зону, и сервер тихо перестаёт
+    видеть внутренние имена — сам он при этом жив, поэтому замечают такое не
+    сразу и не по симптому. Личной машине меш-DNS, наоборот, обычно и нужен:
+    ради него имена сети и заводят.
+    """
+    return os_name != "linux"
+
+
 def build_script(
     os_name: str,
     settings: Settings,
@@ -480,6 +493,7 @@ def build_script(
     force_reauth: bool = False,
     exit_node: bool = False,
     ca_pem: str = "",
+    mesh_dns: bool | None = None,
 ) -> str:
     """version=None → пиновая из настроек. force_reauth — для переподключения
     (переоформить регистрацию под новым ключом → новый IP из текущего диапазона).
@@ -498,6 +512,11 @@ def build_script(
     # netmap/маршруты фильтруются по ACL, поэтому нода получает ТОЛЬКО маршруты
     # тех направлений, где она источник, — лишнего не подхватит.
     flags = ["--accept-routes"]
+    # DNS меша выключаем ЯВНО, а не надеемся на прежнюю настройку ноды: скрипт
+    # зовёт `tailscale up --reset`, то есть сбрасывает клиента на умолчания, и
+    # выставленный руками `--accept-dns=false` после переподключения пропал бы.
+    if not (default_mesh_dns(os_name) if mesh_dns is None else mesh_dns):
+        flags.append("--accept-dns=false")
     if force_reauth:
         flags.append("--force-reauth")
     if exit_node:

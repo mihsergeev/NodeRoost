@@ -9,16 +9,22 @@ from app.hs_client import HeadscaleError
 NOW = datetime(2026, 7, 20, 12, 0, tzinfo=timezone.utc)
 
 
-def _key(kid, *, age_days=30, used=False, reusable=False, expires_in_days=None):
-    """Ключ в том виде, в каком его отдаёт headscale (camelCase, даты — RFC3339)."""
+def _key(kid, *, age_days=30, used=False, reusable=False, expires_in_days=None, base=NOW):
+    """Ключ в том виде, в каком его отдаёт headscale (camelCase, даты — RFC3339).
+
+    `base` — от какого момента считать возраст и срок. У _keys_to_prune «сейчас»
+    передаётся явно, поэтому ему годится фиксированная дата; _prune_preauthkeys
+    смотрит на реальные часы, и там база обязана быть реальной — иначе тест
+    зеленеет только в те дни, когда фиксированная дата ещё не прошла.
+    """
     k = {
         "id": str(kid),
         "used": used,
         "reusable": reusable,
-        "createdAt": (NOW - timedelta(days=age_days)).isoformat().replace("+00:00", "Z"),
+        "createdAt": (base - timedelta(days=age_days)).isoformat().replace("+00:00", "Z"),
     }
     if expires_in_days is not None:
-        exp = NOW + timedelta(days=expires_in_days)
+        exp = base + timedelta(days=expires_in_days)
         k["expiration"] = exp.isoformat().replace("+00:00", "Z")
     return k
 
@@ -91,7 +97,12 @@ def fake_hs(monkeypatch):
 
 
 async def test_prune_preauthkeys_deletes_and_spares(fake_hs):
-    client = fake_hs([_key(1, used=True), _key(2, expires_in_days=+30), _key(3, expires_in_days=-1)])
+    now = datetime.now(timezone.utc)
+    client = fake_hs([
+        _key(1, used=True, base=now),
+        _key(2, expires_in_days=+30, base=now),
+        _key(3, expires_in_days=-1, base=now),
+    ])
     # нода, зарегистрированная ключом 1 → ключ переживает подчистку
     nodes = [{"id": "7", "preAuthKey": {"id": "1"}}]
     removed = await collector._prune_preauthkeys(Settings(preauth_retention_days=7), nodes)
@@ -100,14 +111,15 @@ async def test_prune_preauthkeys_deletes_and_spares(fake_hs):
 
 
 async def test_prune_preauthkeys_disabled(fake_hs):
-    client = fake_hs([_key(1, used=True)])
+    client = fake_hs([_key(1, used=True, base=datetime.now(timezone.utc))])
     assert await collector._prune_preauthkeys(Settings(preauth_retention_days=0), []) == 0
     assert client.deleted == []
 
 
 async def test_prune_preauthkeys_survives_delete_error(fake_hs):
     """Упрямый ключ не должен останавливать сметание остальных."""
-    client = fake_hs([_key(1, used=True), _key(2, used=True)], fail_on=["1"])
+    now = datetime.now(timezone.utc)
+    client = fake_hs([_key(1, used=True, base=now), _key(2, used=True, base=now)], fail_on=["1"])
     removed = await collector._prune_preauthkeys(Settings(preauth_retention_days=7), [])
     assert removed == 1
     assert client.deleted == ["2"]
