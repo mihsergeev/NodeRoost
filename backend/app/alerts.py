@@ -231,10 +231,14 @@ async def reconcile_agents(
     if minutes <= 0:
         return []
     now = datetime.now(timezone.utc)
+    meta = await settings_store.get_node_meta(session)
     silent, back = [], []
     for nid, cfg in (agents or {}).items():
         last = _parse_ts(cfg.get("last_poll"))
         if last is None:  # ни разу не отзывался — агента просто не ставили
+            _agent_silent.discard(nid)
+            continue
+        if not cfg.get("last_applied"):  # по токену ходили, но состояние не применяли
             _agent_silent.discard(nid)
             continue
         if nid in (muted or set()):  # «не беспокоить» по этой ноде
@@ -249,10 +253,10 @@ async def reconcile_agents(
         if quiet_min > minutes:
             if nid not in _agent_silent:
                 _agent_silent.add(nid)
-                silent.append((names.get(nid, nid), quiet_min))
+                silent.append((nid, names.get(nid, nid), quiet_min))
         elif nid in _agent_silent:
             _agent_silent.discard(nid)
-            back.append(names.get(nid, nid))
+            back.append((nid, names.get(nid, nid)))
 
     if not silent and not back:
         return []
@@ -264,23 +268,25 @@ async def reconcile_agents(
     # такое агент: сначала ЧТО происходит, потом ЧЕМ это грозит и чем НЕ грозит, в
     # конце — что проверить. Прежний текст («агент молчит, маршруты не доезжают»)
     # понятен только тому, кто и так знает устройство панели.
-    for name, quiet_min in silent:
+    for nid, name, quiet_min in silent:
+        what = "устройство" if (meta.get(nid) or {}).get("kind") == "device" else "сервер"
         await send_alert(
             cfg_alerts,
-            f"🟠 NodeRoost: сервер «{name}» не забирает настройки из панели." + NL
+            f"🟠 NodeRoost: {what} «{name}» не забирает настройки из панели." + NL
             + f"Сам он на связи, а его агент молчит уже {quiet_min} мин "
             "(обычно приходит раз в минуту). Пока так — новые маршруты и режим "
             "шлюза выхода на нём не применятся; доступы и соединения работают." + NL
             + "Проверить на сервере: systemctl status noderoost-agent.timer",
             link,
         )
-    for name in back:
+    for nid, name in back:
+        what = "устройство" if (meta.get(nid) or {}).get("kind") == "device" else "сервер"
         await send_alert(
             cfg_alerts,
-            f"✅ NodeRoost: сервер «{name}» снова забирает настройки из панели",
+            f"✅ NodeRoost: {what} «{name}» снова забирает настройки из панели",
             link,
         )
-    return [name for name, _ in silent] + back
+    return [name for _, name, _ in silent] + [name for _, name in back]
 
 
 async def reconcile_nodes(

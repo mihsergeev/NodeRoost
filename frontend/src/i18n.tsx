@@ -105,6 +105,9 @@ const EN: Record<string, string> = {
   'Скрипт подключения готов': 'Enrollment script ready',
   'Пока создан только одноразовый ключ. Нода появится в списке, когда подключится.':
     'So far only a one-time key was issued. The node will appear in the list once it connects.',
+  'Это имя машины в сети: латинские буквы, цифры и дефис, без пробелов и точек. Человеческое название впишите потом в описание ноды.':
+    'This is the machine name inside the network: latin letters, digits and hyphens, no spaces or dots. Put the human-readable title in the node description later.',
+  'Назвать «{name}»': 'Name it "{name}"',
   'Имя ноды': 'Node name',
   'Меш закрыт: укажите публичный IP ноды — он откроется на фаерволе control-сервера. Без IP нода подключится только с уже разрешённого адреса.':
     'The mesh is closed: enter the node’s public IP — it will be opened on the control-server firewall. Without an IP the node can only connect from an already-allowed address.',
