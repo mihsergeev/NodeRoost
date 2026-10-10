@@ -388,6 +388,9 @@ const EN: Record<string, string> = {
   // --- шлюз выхода в интернет (via) ---
   'шлюз': 'gateway',
   'выход через {n}': 'exit via {n}',
+  'Анонс exit и постоянный ip_forward включит агент ноды, в течение минуты. Без агента нода шлюзом не станет:':
+    'The node agent turns on the exit advertisement and a persistent ip_forward within a minute. Without the agent the node will not become a gateway:',
+  'показать команду установки': 'show the install command',
   'Шлюз выхода в интернет': 'Internet exit gateway',
   'Сервер становится exit-нодой. Отметьте устройства, которым разрешён выход в интернет через него — это та же связь, что и в карточке устройства, просто с этой стороны. Сам себе выход шлюз не открывает.':
     'The server becomes an exit node. Tick the devices allowed to reach the internet through it — the same link you can edit from the device card, just from this side. The gateway does not open an exit to itself.',

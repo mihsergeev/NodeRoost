@@ -616,14 +616,10 @@ export type EnrollStatus = {
   reused_from?: string | null
 }
 
-export function enrollNode(
-  name: string,
-  os: NodeOs,
-  exitNode = false,
-): Promise<EnrollResult> {
+export function enrollNode(name: string, os: NodeOs): Promise<EnrollResult> {
   return api<EnrollResult>('/api/enroll', {
     method: 'POST',
-    body: JSON.stringify({ name, os, exit_node: exitNode }),
+    body: JSON.stringify({ name, os }),
   })
 }
 

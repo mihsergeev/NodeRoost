@@ -93,7 +93,7 @@ async def enroll_node(
     ca_pem = await ca.root_cert(session) if await ca.auto_install(session) else ""
     script = enroll.build_script(
         body.os, settings, key_str, body.name, version=version,
-        exit_node=body.exit_node, ca_pem=ca_pem,
+        ca_pem=ca_pem,
     )
     url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
     await audit.record(session, user.username, "node_enroll", body.name)

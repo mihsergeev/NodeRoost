@@ -5,6 +5,19 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.18.0] - 2026-10-11
+
+### Changed
+
+- **The "Exit node" checkbox is gone from the enrollment dialog.** At the minute
+  of joining it is rarely known whether a server will become a gateway, and the
+  node card already has it: the "Internet exit gateway" checkbox goes to the
+  agent, which advertises the exit and makes ip_forward persistent itself. The
+  enrollment script no longer touches either, and the card now says next to the
+  checkbox that the agent applies it, with the command to install the agent -
+  without it the node will not become a gateway. The dialog is down to a name and
+  an operating system.
+
 ## [0.17.0] - 2026-10-11
 
 ### Changed

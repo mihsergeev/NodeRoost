@@ -24,7 +24,6 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const dismiss = useModalDismiss(onClose)
   const [name, setName] = useState('')
   const [os, setOs] = useState<NodeOs>('linux')
-  const [exitNode, setExitNode] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EnrollResult | null>(null)
@@ -83,7 +82,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
     setBusy(true)
     setError(null)
     try {
-      setResult(await enrollNode(name, os, exitNode))
+      setResult(await enrollNode(name, os))
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized()
@@ -158,19 +157,6 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
                 ))}
               </div>
             </div>
-            {kind === 'server' && os === 'linux' && (
-              <label className="route-row exit-opt">
-                <input
-                  type="checkbox"
-                  checked={exitNode}
-                  onChange={(e) => setExitNode(e.target.checked)}
-                />
-                <span className="route-cidr">{t('Exit-нода')}</span>
-                <span className="muted small">
-                  {t('клиенты смогут выходить в интернет через неё; скрипт включит и закрепит ip_forward. Одобрить exit в «Маршрутах» после подключения.')}
-                </span>
-              </label>
-            )}
             {error && <p className="form-error">{error}</p>}
             <div className="modal-actions">
               <button className="ghost" onClick={onClose}>
@@ -194,7 +180,6 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
             </p>
             <p className="muted small">
               {t('Пока создан только одноразовый ключ. Нода появится в списке, когда подключится.')}
-              {exitNode && ' ' + t('Затем одобри exit-маршрут в «Маршрутах».')}
             </p>
             {os === 'windows' && (
               <p className="muted small">
