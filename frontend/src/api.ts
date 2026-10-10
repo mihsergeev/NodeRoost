@@ -21,6 +21,26 @@ export class ApiError extends Error {
   }
 }
 
+// Разбор тела ошибки. FastAPI отдаёт `detail` строкой, а валидация pydantic -
+// списком: {detail: [{loc, msg, ...}]}. Пока этот случай не разбирали, человек
+// видел «Ошибка HTTP 422» вместо написанного для него объяснения - например, что
+// имя ноды это латиница, цифры и дефис.
+function errorText(body: unknown, status: number): string {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((e) => {
+        const m = (e as { msg?: unknown })?.msg
+        // pydantic приписывает «Value error, » к тексту нашего валидатора
+        return typeof m === 'string' ? m.replace(/^(Value|Type) error,\s*/, '') : ''
+      })
+      .filter(Boolean)
+    if (msgs.length) return [...new Set(msgs)].join('; ')
+  }
+  return `Ошибка HTTP ${status}`
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -33,11 +53,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (res.status === 204) return undefined as T
 
   const body = await res.json().catch(() => null)
-  if (!res.ok) {
-    const detail =
-      typeof body?.detail === 'string' ? body.detail : `Ошибка HTTP ${res.status}`
-    throw new ApiError(detail, res.status)
-  }
+  if (!res.ok) throw new ApiError(errorText(body, res.status), res.status)
   return body as T
 }
 
