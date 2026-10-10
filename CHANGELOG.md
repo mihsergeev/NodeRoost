@@ -5,6 +5,19 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.16.4] - 2026-10-11
+
+### Changed
+
+- **The hint next to the "Mesh DNS" checkbox now explains the checkbox itself
+  rather than the state already chosen.** The text used to flip with the
+  checkbox and read as a description of the option: with the box clear it said
+  the machine would keep its own DNS, so there was no way to tell what turning
+  it on would do. The hint is now a single sentence about what the option does,
+  and its second half follows the network settings: with no resolvers of its own
+  in the DNS section only network names go to the mesh, with them the whole node
+  DNS does. The node card says the same.
+
 ## [0.16.3] - 2026-09-29
 
 ### Changed
