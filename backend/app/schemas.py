@@ -258,8 +258,6 @@ class EnrollIn(RequestModel):
 
     _norm_name = field_validator("name")(normalize_node_name)
     os: Literal["linux", "windows", "macos", "android"] = "linux"
-    # exit-нода: скрипт анонсирует exit + на Linux закрепляет ip_forward.
-    exit_node: bool = False
 
 
 class EnrollOut(BaseModel):
