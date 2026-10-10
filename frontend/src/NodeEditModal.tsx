@@ -277,6 +277,15 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
                 <p className="muted small">
                   {t('Сервер становится exit-нодой. Отметьте устройства, которым разрешён выход в интернет через него — это та же связь, что и в карточке устройства, просто с этой стороны. Сам себе выход шлюз не открывает.')}
                 </p>
+                <p className="muted small">
+                  {t('Анонс exit и постоянный ip_forward включит агент ноды, в течение минуты. Без агента нода шлюзом не станет:')}{' '}
+                  {agentCmd ? null : (
+                    <button type="button" className="ghost small" onClick={loadAgentCmd}>
+                      {t('показать команду установки')}
+                    </button>
+                  )}
+                </p>
+                {agentCmd && <pre className="enroll-script cmd-oneline">{agentCmd}</pre>}
                 <div className="field">
                   <span>{t('Разрешить выход через этот шлюз устройствам')}</span>
                   {devices.length === 0 ? (

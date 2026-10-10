@@ -62,7 +62,6 @@ if ! command -v tailscale >/dev/null 2>&1; then
     echo "NodeRoost: systemd не найден — запустите tailscaled вручную." >&2
   fi
 fi
-@@EXITSETUP@@
 @@CAROOT@@
 # --reset обязателен: если на машине уже стояли какие-то настройки Tailscale
 # (например --exit-node-allow-lan-access от прошлого выхода через шлюз),
@@ -116,15 +115,6 @@ fi
 # возвращаем запись истории (если скрипт упал раньше — просто откройте новый шелл)
 set -o history 2>/dev/null || true
 """
-
-# Блок для exit-ноды (Linux): включает IP-форвардинг и делает его ПОСТОЯННЫМ
-# (иначе после ребута exit перестаёт роутить). Скрипт и так под root.
-_EXIT_SETUP_LINUX = (
-    "\n# NodeRoost: exit-нода — включаю IP-форвардинг и закрепляю его\n"
-    "printf 'net.ipv4.ip_forward = 1\\nnet.ipv6.conf.all.forwarding = 1\\n'"
-    " > /etc/sysctl.d/99-noderoost-exit.conf\n"
-    "sysctl -p /etc/sysctl.d/99-noderoost-exit.conf >/dev/null 2>&1 || true"
-)
 
 # --- Windows (PowerShell от администратора, MSI нужной версии) ---
 # Весь скрипт — ОДИН блок `& { ... }` намеренно. Его вставляют в консоль целиком,
@@ -456,7 +446,6 @@ def _fill(
     hostname: str,
     extra: str = "",
     pkgbase: str = "",
-    exit_setup: str = "",
     caroot: str = "",
 ) -> str:
     return (
@@ -464,7 +453,6 @@ def _fill(
         .replace("@@LOGIN@@", server_url)
         .replace("@@KEY@@", key)
         .replace("@@NAME@@", hostname)
-        .replace("@@EXITSETUP@@", exit_setup)
         .replace("@@CAROOT@@", caroot)
         .replace("@@EXTRA@@", extra)
         .replace("@@PKGBASE@@", pkgbase)
@@ -478,14 +466,13 @@ def build_script(
     hostname: str,
     version: str | None = None,
     force_reauth: bool = False,
-    exit_node: bool = False,
     ca_pem: str = "",
 ) -> str:
     """version=None → пиновая из настроек. force_reauth — для переподключения
     (переоформить регистрацию под новым ключом → новый IP из текущего диапазона).
-    exit_node — нода анонсирует exit (--advertise-exit-node) + на Linux включаем и
-    ЗАКРЕПЛЯЕМ ip_forward (иначе после ребута роутинг отвалится). Одобрить exit-
-    маршрут всё равно нужно в панели («Маршруты»). Бинарь — с нашего мирора
+    Шлюзом выхода нода становится не здесь, а в своей карточке: флаг едет агенту,
+    он анонсирует exit и закрепляет ip_forward. Решают это обычно не в минуту
+    подключения, а когда уже понятно, зачем сервер нужен. Бинарь — с нашего мирора
     (server_url + /pkgs), при неудаче — с офиц. ca_pem — корень своей CA панели:
     он ставится в доверенные прямо здесь, чтобы имена внутри сети открывались
     без ругани с первой минуты, а не после похода по машинам с файлом."""
@@ -505,8 +492,6 @@ def build_script(
     flags = ["--accept-routes"]
     if force_reauth:
         flags.append("--force-reauth")
-    if exit_node:
-        flags.append("--advertise-exit-node")
     return _fill(
         tpl,
         version=version or settings.tailscale_version,
@@ -515,7 +500,6 @@ def build_script(
         hostname=hostname,
         extra=" ".join(flags),
         pkgbase=pkgbase,
-        exit_setup=_EXIT_SETUP_LINUX if (exit_node and os_name == "linux") else "",
         caroot=ca_block(os_name, ca_pem),
     )
 

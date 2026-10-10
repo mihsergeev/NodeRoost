@@ -212,6 +212,19 @@ async def test_join_link_serves_the_script_until_the_key_expires(client):
     assert (await client.get("/join/нет-такого")).status_code == 404
 
 
+def test_join_script_does_not_make_a_gateway():
+    """Шлюзом выхода нода становится в своей карточке, а не в минуту подключения.
+
+    Флаг едет агенту, он анонсирует exit и закрепляет ip_forward сам, поэтому
+    скрипту тут делать нечего - и решение не приходится принимать заранее.
+    """
+    from app import enroll as e
+
+    script = e.build_script("linux", _S, "KEY", "gw-1")
+    assert "--advertise-exit-node" not in script
+    assert "ip_forward" not in script
+
+
 def test_every_node_joins_with_mesh_dns():
     """Выбора у ноды больше нет, и это не упрощение ради упрощения.
 
