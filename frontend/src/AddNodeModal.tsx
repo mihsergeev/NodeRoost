@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   getAgent,
+  getHsInfo,
   enrollNode,
   defaultMeshDns,
   enrollStatus,
@@ -42,6 +43,22 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [copied, setCopied] = useState(false)
   const [cmdCopied, setCmdCopied] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Заданы ли в разделе DNS свои резолверы: от этого зависит, чем обернётся
+  // галка «DNS из меша». Без них в меш уходят только имена сети, с ними - весь
+  // DNS ноды, и подпись обязана говорить то, что будет на самом деле.
+  const [resolversSet, setResolversSet] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    getHsInfo()
+      .then((h) => {
+        if (alive) setResolversSet(h.dns.nameservers.length > 0)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // поллинг статуса подключения ноды
   useEffect(() => {
@@ -184,9 +201,13 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
               />
               <span className="route-cidr">{t('DNS из меша')}</span>
               <span className="muted small">
-                {meshDnsOn
-                  ? t('машина будет резолвить имена сети, но при настройке «использовать только эти серверы» весь её DNS уйдёт в меш - свой резолвер она перестанет спрашивать')
-                  : t('машина оставит свой DNS (корпоративный, облачный, локальный) и не будет резолвить имена сети - для сервера это обычно то, что нужно')}
+                {t('с галкой машина резолвит имена сети - короткие имена нод и домены из раздела DNS')}
+                {'. '}
+                {resolversSet
+                  ? t('Сейчас в разделе DNS заданы свои резолверы, а с ними в меш уходит ВЕСЬ DNS машины: свой резолвер - корпоративный, облачный, локальный - она спрашивать перестанет.')
+                  : t('Свой резолвер - корпоративный, облачный, локальный - у неё остаётся: в меш уходят только имена сети.')}
+                {' '}
+                {t('Без галки DNS машины не трогаем вовсе.')}
               </span>
             </label>
             {error && <p className="form-error">{error}</p>}

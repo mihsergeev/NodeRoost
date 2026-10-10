@@ -605,6 +605,15 @@ const EN: Record<string, string> = {
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
   'DNS из меша': 'Mesh DNS',
+  'с галкой машина резолвит имена сети - короткие имена нод и домены из раздела DNS':
+    'with this on, the machine resolves network names - short node names and the domains from the DNS section',
+  'Сейчас в разделе DNS заданы свои резолверы, а с ними в меш уходит ВЕСЬ DNS машины: свой резолвер - корпоративный, облачный, локальный - она спрашивать перестанет.':
+    'Right now the DNS section has its own resolvers, and with those the mesh takes over ALL of the machine DNS: it stops asking its own resolver - corporate, cloud or local.',
+  'Свой резолвер - корпоративный, облачный, локальный - у неё остаётся: в меш уходят только имена сети.':
+    'Its own resolver - corporate, cloud or local - stays: only network names go to the mesh.',
+  'Без галки DNS машины не трогаем вовсе.': 'With it off the machine DNS is left alone.',
+  'С галкой нода резолвит имена сети - короткие имена нод и домены из раздела DNS, свой резолвер остаётся для всего остального. Если же в разделе DNS заданы свои резолверы, в меш уходит весь DNS ноды, и сервер со своим резолвером перестаёт видеть внутренние имена. Без галки имена сети не резолвятся. На ноде с агентом выбор применяется сам, на остальных - командой tailscale set --accept-dns=false.':
+    'With this on the node resolves network names - short node names and the domains from the DNS section - and keeps its own resolver for everything else. If the DNS section has its own resolvers, the mesh takes over the whole node DNS instead, and a server with its own resolver stops seeing internal names. With it off network names are not resolved. A node with the agent applies the choice itself, the rest need tailscale set --accept-dns=false.',
   'Брать DNS из меша': 'Use mesh DNS',
   'На этой ноде стоит агент - он применит выбор сам, в течение минуты.':
     'This node runs the agent - it applies the choice itself, within a minute.',
