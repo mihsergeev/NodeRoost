@@ -559,6 +559,10 @@ const EN: Record<string, string> = {
   'Базовый домен': 'Base domain',
   'DNS-серверы': 'DNS servers',
   'Search-домены': 'Search domains',
+  'Пока здесь что-то задано, все ноды отдают в меш весь свой DNS, а не только имена сети. Имена внутри сети работают и с пустым полем.':
+    'While anything is set here, every node hands its whole DNS to the mesh, not just the network names. Names inside the network work with this field empty.',
+  'Свои DNS-серверы заберут у ВСЕХ нод весь DNS: сервер со своим резолвером (корпоративный, облачный, локальный) перестанет видеть внутренние имена, а там, где эти серверы из его сети недоступны, потеряет резолв целиком. Имена внутри сети работают и без этого поля. Всё равно задать?':
+    'Your own DNS servers take over the whole DNS of EVERY node: a server with its own resolver - corporate, cloud or local - stops seeing internal names, and where those servers are unreachable from its network it loses name resolution entirely. Names inside the network work without this field. Set them anyway?',
   'DNS-серверы (через запятую)': 'DNS servers (comma-separated)',
   'Применить': 'Apply',
   'Применение…': 'Applying…',
@@ -604,41 +608,14 @@ const EN: Record<string, string> = {
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
-  'DNS из меша': 'Mesh DNS',
-  'с галкой машина резолвит имена сети - короткие имена нод и домены из раздела DNS':
-    'with this on, the machine resolves network names - short node names and the domains from the DNS section',
-  'Сейчас в разделе DNS заданы свои резолверы, а с ними в меш уходит ВЕСЬ DNS машины: свой резолвер - корпоративный, облачный, локальный - она спрашивать перестанет.':
-    'Right now the DNS section has its own resolvers, and with those the mesh takes over ALL of the machine DNS: it stops asking its own resolver - corporate, cloud or local.',
-  'Свой резолвер - корпоративный, облачный, локальный - у неё остаётся: в меш уходят только имена сети.':
-    'Its own resolver - corporate, cloud or local - stays: only network names go to the mesh.',
-  'Без галки DNS машины не трогаем вовсе.': 'With it off the machine DNS is left alone.',
-  'С галкой нода резолвит имена сети - короткие имена нод и домены из раздела DNS, свой резолвер остаётся для всего остального. Если же в разделе DNS заданы свои резолверы, в меш уходит весь DNS ноды, и сервер со своим резолвером перестаёт видеть внутренние имена. Без галки имена сети не резолвятся. На ноде с агентом выбор применяется сам, на остальных - командой tailscale set --accept-dns=false.':
-    'With this on the node resolves network names - short node names and the domains from the DNS section - and keeps its own resolver for everything else. If the DNS section has its own resolvers, the mesh takes over the whole node DNS instead, and a server with its own resolver stops seeing internal names. With it off network names are not resolved. A node with the agent applies the choice itself, the rest need tailscale set --accept-dns=false.',
-  'Брать DNS из меша': 'Use mesh DNS',
-  'На этой ноде стоит агент - он применит выбор сам, в течение минуты.':
-    'This node runs the agent - it applies the choice itself, within a minute.',
-  'Агента на ноде нет, поэтому выполните под root (или поставьте агента - тогда панель будет делать это сама):':
-    'There is no agent on this node, so run it as root (or install the agent and the panel will do it for you):',
-  'Выключить DNS из меша': 'Turn mesh DNS off',
-  'Выключено - не напоминать': 'Turned off - stop reminding',
   'Нода резолвит имена сети. Если в разделе DNS заданы свои резолверы, туда уйдёт весь её DNS - сервер со своим резолвером перестанет видеть внутренние имена.':
     'The node resolves network names. With resolvers set in the DNS section, all of its DNS goes there - a server with its own resolver stops seeing internal names.',
-  'Нода оставляет свой DNS и не резолвит имена сети. На ноде с агентом это применяется само, на остальных - командой tailscale set --accept-dns=false.':
-    'The node keeps its own DNS and does not resolve network names. A node with the agent applies this by itself; elsewhere use tailscale set --accept-dns=false.',
   'машина будет резолвить имена сети, но при настройке «использовать только эти серверы» весь её DNS уйдёт в меш - свой резолвер она перестанет спрашивать':
     'the machine will resolve network names, but with "use only these servers" its entire DNS goes to the mesh and it stops asking its own resolver',
   'машина оставит свой DNS (корпоративный, облачный, локальный) и не будет резолвить имена сети - для сервера это обычно то, что нужно':
     'the machine keeps its own DNS (corporate, cloud, local) and will not resolve network names - usually what a server wants',
-  'переподключение сбрасывает настройки клиента, поэтому выбор задаётся заново':
-    'reconnecting resets the client settings, so the choice is made again here',
-  'Эта нода, скорее всего, отдаёт весь свой DNS в меш':
-    'This node is probably handing its entire DNS to the mesh',
-  'В разделе DNS заданы свои DNS-серверы, а значит нода с DNS из меша спрашивает их обо всех именах, а не только о меш-именах. Сервер со своим резолвером (корпоративный, облачный, локальный) тихо перестаёт видеть внутренние имена, а там, где эти резолверы из его сети недоступны, теряет резолв целиком. Сам сервер при этом работает, поэтому заметно становится не сразу.':
-    'The DNS section has its own DNS servers set, so a node with mesh DNS asks them about every name, not just mesh names. A server with its own resolver (corporate, cloud, local) quietly stops seeing internal names, and where those resolvers are unreachable from its network it loses resolution altogether. The server itself keeps running, so this takes a while to notice.',
   'Выполните на ноде под root:': 'Run on the node as root:',
   'Уже сделано - не напоминать': 'Already done - stop reminding',
-  'Имена сети и MagicDNS на этой ноде после команды резолвиться не будут - связь по мешу от неё не зависит.':
-    'Network names and MagicDNS will no longer resolve on this node - mesh connectivity does not depend on them.',
   'Эти серверы нужны, только если вы хотите навязать нодам свой резолвер. Имена внутри сети работают и без них: панель прописывает маршрут их зоны в меш, поэтому нода спрашивает у меша ровно свои имена, а остальное - у своего резолвера. А вот заданные здесь серверы клиент Tailscale берёт как основные для ВСЕХ имён, и сервер со своим резолвером (корпоративный со split-horizon, облачный, локальный) тихо перестаёт видеть внутренние имена; если эти серверы из его сети недоступны, он теряет резолв целиком. Поэтому лучше оставить поле пустым.':
     'These servers are only needed if you want to force your own resolver onto the nodes. Names inside the network work without them: the panel routes their zone to the mesh, so a node asks the mesh about exactly its own names and its own resolver about everything else. Servers set here, on the other hand, are taken by the Tailscale client as the primary ones for EVERY name, and a server with its own resolver (corporate split-horizon, cloud, local) quietly stops seeing internal names; if those servers are unreachable from its network, it loses resolution altogether. So it is better to leave the field empty.',
   'Ноды панель обслуживает сама. Машину, которую подключали руками, проще всего научить доверять одной командой — она снимет прежний сертификат панели и поставит текущий:':

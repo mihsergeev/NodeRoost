@@ -266,20 +266,22 @@ def test_agent_applies_mesh_dns_only_when_told():
     assert 'if [ -n "\\$MESH_DNS" ]; then' in setup
 
 
-async def test_state_carries_the_dns_choice_of_this_node(client):
-    """Панель отдаёт агенту то, что сказал администратор, и молчит, если он не
-    говорил ничего."""
+async def test_state_tells_every_node_to_take_mesh_dns(client):
+    """DNS меша одинаков для всех нод, поэтому панель шлёт агенту одно и то же.
+
+    Заодно это чинит ноду, которой когда-то выставили `--accept-dns=false`
+    руками: агент приводит клиента к состоянию из панели.
+    """
     from app import settings_store
 
     app = client._transport.app
     async with app.state.session_factory() as s:
         await settings_store.set_agent_all(s, {"7": {"token": "tok7"}, "8": {"token": "tok8"}})
-        await settings_store.set_node_meta(s, "7", mesh_dns=False)
+        await settings_store.set_node_meta(s, "7", kind="server")
 
-    known = await client.get("/agent/tok7")
-    assert "mesh_dns=false" in known.text
-    unknown = await client.get("/agent/tok8")
-    assert "mesh_dns=\n" in unknown.text
+    for token in ("tok7", "tok8"):
+        state = await client.get(f"/agent/{token}")
+        assert "mesh_dns=true" in state.text
 
 
 async def test_agent_counts_as_installed_only_after_it_applied(client):

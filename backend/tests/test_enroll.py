@@ -212,32 +212,25 @@ async def test_join_link_serves_the_script_until_the_key_expires(client):
     assert (await client.get("/join/нет-такого")).status_code == 404
 
 
-def test_server_joins_without_mesh_dns():
-    """Серверу меш-DNS по умолчанию не нужен, и это не косметика.
+def test_every_node_joins_with_mesh_dns():
+    """Выбора у ноды больше нет, и это не упрощение ради упрощения.
 
-    При `override_local_dns` клиент с accept-dns забирает у ноды ВЕСЬ DNS, а не
-    только зону меша: на Linux это `~.` на tailscale0. Сервер со своим резолвером
-    (корпоративный split-horizon, DNS облака) тихо перестаёт видеть внутренние
-    имена — сам он при этом жив, поэтому замечают такое не по симптому, а много
-    позже и случайно.
+    Имена сети панель раздаёт маршрутами их зон (dns.nameservers.split): нода
+    спрашивает у меша ровно свои имена, а всё остальное - у собственного
+    резолвера. Весь DNS уходит в меш, только если в разделе DNS заданы свои
+    DNS-серверы, и решается это один раз там, а не галкой у каждой ноды.
     """
     from app import enroll as e
 
-    lin = e.build_script("linux", _S, "KEY", "srv-1")
-    assert "--accept-dns=false" in lin
-    # личной машине имена меша как раз и нужны — ради них их заводят
-    for os_name in ("windows", "macos"):
-        assert "--accept-dns=false" not in e.build_script(os_name, _S, "KEY", "n1")
-    # но выбор всегда за администратором, в обе стороны
-    assert "--accept-dns=false" not in e.build_script("linux", _S, "KEY", "n1", mesh_dns=True)
-    assert "--accept-dns=false" in e.build_script("windows", _S, "KEY", "n1", mesh_dns=False)
+    for os_name in ("linux", "windows", "macos", "android"):
+        assert "--accept-dns" not in e.build_script(os_name, _S, "KEY", "n1")
 
 
-async def test_reconnect_keeps_the_dns_choice(client, monkeypatch):
-    """Скрипт зовёт `tailscale up --reset`, то есть возвращает клиента к
-    умолчаниям. Значит выставленный на ноде `--accept-dns=false` переподключение
-    сотрёт, и сервер снова молча отдаст весь DNS мешу — если панель не передаст
-    флаг заново."""
+async def test_reconnect_leaves_mesh_dns_alone(client, monkeypatch):
+    """Переподключение зовёт `tailscale up --reset`, то есть возвращает клиента к
+    умолчаниям. Умолчание теперь одно для всех - DNS меша включён, - поэтому
+    скрипт его не выключает. А заметки панели переезжают на новую запись ноды:
+    она приходит с другим id."""
     from app import settings_store
     from app.api import nodes as api_nodes
 
@@ -267,7 +260,7 @@ async def test_reconnect_keeps_the_dns_choice(client, monkeypatch):
 
     app = client._transport.app
     async with app.state.session_factory() as s:
-        await settings_store.set_node_meta(s, "7", kind="server", mesh_dns=False)
+        await settings_store.set_node_meta(s, "7", kind="server")
 
     r = await client.post("/api/auth/login",
                           json={"username": "admin", "password": ADMIN_PASSWORD})
@@ -275,24 +268,23 @@ async def test_reconnect_keeps_the_dns_choice(client, monkeypatch):
     resp = await client.post("/api/nodes/7/reconnect", json={"os": "linux"},
                              headers={"Authorization": f"Bearer {tok}"})
     assert resp.status_code == 200
-    assert "--accept-dns=false" in resp.json()["script"]
+    assert "--accept-dns" not in resp.json()["script"]
 
-    # решение переезжает на новую запись ноды: она вернётся с другим id
     async with app.state.session_factory() as s:
         moved = await settings_store.claim_pending_meta(s, [{"id": "42", "givenName": "srv-1"}])
         assert moved == 1
         meta = await settings_store.get_node_meta(s)
-    assert meta["42"]["mesh_dns"] is False
+    assert meta["42"]["kind"] == "server"
 
 
 async def test_pending_note_survives_a_meta_written_first(session):
-    """Решение про DNS откладывается по имени (ноды ещё нет), а тип панель может
-    записать раньше — сливаем, иначе решение потерялось бы."""
+    """Заметка откладывается по имени (ноды ещё нет), а тип панель может записать
+    раньше - сливаем, иначе отложенное потерялось бы."""
     from app import settings_store
 
-    await settings_store.stash_node_meta(session, "srv-2", {"mesh_dns": False})
+    await settings_store.stash_node_meta(session, "srv-2", {"description": "стенд"})
     await settings_store.set_node_meta(session, "9", kind="server")
     await settings_store.claim_pending_meta(session, [{"id": "9", "givenName": "srv-2"}])
     meta = await settings_store.get_node_meta(session)
-    assert meta["9"]["mesh_dns"] is False
+    assert meta["9"]["description"] == "стенд"
     assert meta["9"]["kind"] == "server"  # выставленное руками не затёрто

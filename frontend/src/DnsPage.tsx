@@ -197,6 +197,19 @@ export function DnsPage({ onUnauthorized }: Props) {
       parsedServers.join(',') !== info.dns.nameservers.join(','))
 
   async function saveServers() {
+    // Единственная настройка, которой можно отнять у нод их DNS: спрашиваем о ней
+    // прямо, а не надеемся, что человек прочитал пояснение под полем.
+    if (
+      parsedServers.length > 0 &&
+      info &&
+      info.dns.nameservers.length === 0 &&
+      !window.confirm(
+        t(
+          'Свои DNS-серверы заберут у ВСЕХ нод весь DNS: сервер со своим резолвером (корпоративный, облачный, локальный) перестанет видеть внутренние имена, а там, где эти серверы из его сети недоступны, потеряет резолв целиком. Имена внутри сети работают и без этого поля. Всё равно задать?',
+        ),
+      )
+    )
+      return
     if (
       !window.confirm(
         t(
@@ -648,6 +661,11 @@ export function DnsPage({ onUnauthorized }: Props) {
                 placeholder="1.1.1.1, 1.0.0.1"
               />
             </label>
+            {parsedServers.length > 0 && (
+              <p className="form-error">
+                {t('Пока здесь что-то задано, все ноды отдают в меш весь свой DNS, а не только имена сети. Имена внутри сети работают и с пустым полем.')}
+              </p>
+            )}
             <label className="field field-check">
               <input
                 type="checkbox"

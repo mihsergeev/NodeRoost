@@ -101,8 +101,6 @@ export type Node = {
   kind: 'server' | 'device'
   admin: boolean
   muted: boolean
-  // берёт ли нода DNS из меша; null = панель не знает (подключена до настройки)
-  mesh_dns: boolean | null
   exit_gateway: boolean  // сервер — шлюз выхода в интернет (exit-нода с уникальным тегом)
   exit_via: string[]     // устройство: id серверов-шлюзов, через которые ему разрешён выход
   force_exit: string     // id шлюза: весь трафик этой ноды принудительно через него (exit-node)
@@ -140,7 +138,6 @@ export function setNodeMeta(
     force_exit?: string
     group?: string
     subgroup?: string
-    mesh_dns?: boolean
   },
 ): Promise<Node> {
   return api<Node>(`/api/nodes/${id}/meta`, {
@@ -623,19 +620,11 @@ export function enrollNode(
   name: string,
   os: NodeOs,
   exitNode = false,
-  meshDns?: boolean,
 ): Promise<EnrollResult> {
   return api<EnrollResult>('/api/enroll', {
     method: 'POST',
-    body: JSON.stringify({ name, os, exit_node: exitNode, mesh_dns: meshDns }),
+    body: JSON.stringify({ name, os, exit_node: exitNode }),
   })
-}
-
-// Брать ли ноде DNS из меша, если администратор не трогал галку. Серверу - нет:
-// при «Использовать только эти серверы» меш забирает у ноды весь DNS, и сервер
-// со своим резолвером тихо теряет внутренние имена.
-export function defaultMeshDns(os: NodeOs): boolean {
-  return os !== 'linux'
 }
 
 export function enrollStatus(
@@ -646,14 +635,10 @@ export function enrollStatus(
   return api<EnrollStatus>(`/api/enroll/status?${q.toString()}`)
 }
 
-export function reconnectNode(
-  id: string,
-  os: NodeOs,
-  meshDns?: boolean,
-): Promise<EnrollResult> {
+export function reconnectNode(id: string, os: NodeOs): Promise<EnrollResult> {
   return api<EnrollResult>(`/api/nodes/${id}/reconnect`, {
     method: 'POST',
-    body: JSON.stringify({ os, mesh_dns: meshDns }),
+    body: JSON.stringify({ os }),
   })
 }
 
