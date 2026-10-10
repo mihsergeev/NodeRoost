@@ -2,9 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   getAgent,
-  getHsInfo,
   enrollNode,
-  defaultMeshDns,
   enrollStatus,
   OS_TABS,
   setNodeMeta,
@@ -27,9 +25,6 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [name, setName] = useState('')
   const [os, setOs] = useState<NodeOs>('linux')
   const [exitNode, setExitNode] = useState(false)
-  // null = как принято для этой ОС; администратор может решить иначе
-  const [meshDns, setMeshDns] = useState<boolean | null>(null)
-  const meshDnsOn = meshDns ?? defaultMeshDns(os)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EnrollResult | null>(null)
@@ -43,23 +38,6 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [copied, setCopied] = useState(false)
   const [cmdCopied, setCmdCopied] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Заданы ли в разделе DNS свои резолверы: от этого зависит, чем обернётся
-  // галка «DNS из меша». Без них в меш уходят только имена сети, с ними - весь
-  // DNS ноды, и подпись обязана говорить то, что будет на самом деле.
-  const [resolversSet, setResolversSet] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    getHsInfo()
-      .then((h) => {
-        if (alive) setResolversSet(h.dns.nameservers.length > 0)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [])
-
   // поллинг статуса подключения ноды
   useEffect(() => {
     if (!result || connected) return
@@ -105,7 +83,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
     setBusy(true)
     setError(null)
     try {
-      setResult(await enrollNode(name, os, exitNode, meshDnsOn))
+      setResult(await enrollNode(name, os, exitNode))
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized()
@@ -193,23 +171,6 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
                 </span>
               </label>
             )}
-            <label className="route-row exit-opt">
-              <input
-                type="checkbox"
-                checked={meshDnsOn}
-                onChange={(e) => setMeshDns(e.target.checked)}
-              />
-              <span className="route-cidr">{t('DNS из меша')}</span>
-              <span className="muted small">
-                {t('с галкой машина резолвит имена сети - короткие имена нод и домены из раздела DNS')}
-                {'. '}
-                {resolversSet
-                  ? t('Сейчас в разделе DNS заданы свои резолверы, а с ними в меш уходит ВЕСЬ DNS машины: свой резолвер - корпоративный, облачный, локальный - она спрашивать перестанет.')
-                  : t('Свой резолвер - корпоративный, облачный, локальный - у неё остаётся: в меш уходят только имена сети.')}
-                {' '}
-                {t('Без галки DNS машины не трогаем вовсе.')}
-              </span>
-            </label>
             {error && <p className="form-error">{error}</p>}
             <div className="modal-actions">
               <button className="ghost" onClick={onClose}>

@@ -28,12 +28,6 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
   const [name, setName] = useState(node.name)
   const [kind, setKind] = useState<'server' | 'device'>(node.kind)
   const [admin, setAdmin] = useState(node.admin)
-  // DNS из меша: панель держит это как желаемое состояние ноды, агент применяет.
-  // null = панель не знает (нода подключена до появления выбора); сохранение
-  // всегда записывает решение, потому что молчание тут и есть источник беды.
-  const [meshDns, setMeshDns] = useState<boolean>(
-    node.mesh_dns ?? node.kind !== 'server',
-  )
   const [muted, setMuted] = useState(node.muted)
   const [exitGateway, setExitGateway] = useState(node.exit_gateway)
   const [exitVia, setExitVia] = useState<Set<string>>(() => new Set(node.exit_via))
@@ -173,7 +167,6 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
           force_exit: effForce,
           group: group.trim(),
           subgroup: subgroup.trim(),
-          mesh_dns: meshDns,
         })
       }
       // Серверная сторона выбора выхода: обновляем, каким устройствам разрешён
@@ -250,18 +243,6 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
           <span>{t('Не слать алерты по этой ноде')}</span>
         </label>
 
-        <label className="field field-check">
-          <input
-            type="checkbox"
-            className="field-checkbox"
-            checked={meshDns}
-            onChange={(e) => setMeshDns(e.target.checked)}
-          />
-          <span>{t('Брать DNS из меша')}</span>
-        </label>
-        <p className="muted small">
-          {t('С галкой нода резолвит имена сети - короткие имена нод и домены из раздела DNS, свой резолвер остаётся для всего остального. Если же в разделе DNS заданы свои резолверы, в меш уходит весь DNS ноды, и сервер со своим резолвером перестаёт видеть внутренние имена. Без галки имена сети не резолвятся. На ноде с агентом выбор применяется сам, на остальных - командой tailscale set --accept-dns=false.')}
-        </p>
         {muted && (
           <p className="muted small">
             {t('Наблюдение продолжается: статус и история в панели остаются, молчат только уведомления. Нода будет помечена в списке — заглушённый сервер, о котором забыли, опаснее шумного.')}

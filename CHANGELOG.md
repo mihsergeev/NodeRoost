@@ -5,6 +5,24 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.17.0] - 2026-10-11
+
+### Changed
+
+- **The "Mesh DNS" checkbox is gone: every node now resolves network names.** The
+  choice existed because the panel used to hand its own resolvers to the nodes,
+  and the mesh then took over a server whole DNS - a server with its own resolver
+  quietly stopped seeing internal names. Network names have since been served by
+  routes for their zones: a node asks the mesh for exactly its own names and its
+  own resolver for everything else, so there is nothing left to turn off. The
+  enrollment script no longer passes `--accept-dns=false` to anyone, and the agent
+  brings nodes that had it set by hand back in line.
+- **The guard moved to where the danger actually is** - the DNS section and its
+  own-DNS-servers field. While that field is not empty the panel says plainly that
+  every node hands its whole DNS to the mesh, and it asks for confirmation when
+  servers are set there for the first time. The warning on the node card, along
+  with its "Turn mesh DNS off" button, is gone: there is nothing to fix there.
+
 ## [0.16.4] - 2026-10-11
 
 ### Changed
