@@ -19,10 +19,41 @@ type Props = {
   onUnauthorized: () => void
 }
 
+const NODE_NAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
+
+const RU: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+}
+
+// Из того, что человек написал, делаем имя, которое примет сеть: нижний регистр,
+// кириллица транслитом, всё прочее - дефис. Пустую строку не предлагаем.
+function suggestNodeName(raw: string): string {
+  const out = raw
+    .trim()
+    .toLowerCase()
+    .split('')
+    .map((ch) => (ch in RU ? RU[ch] : ch))
+    .join('')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63)
+    .replace(/-+$/g, '')
+  return NODE_NAME_RE.test(out) ? out : ''
+}
+
 export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Props) {
   const { t } = useI18n()
   const dismiss = useModalDismiss(onClose)
   const [name, setName] = useState('')
+  // Имя ноды становится её именем в сети, поэтому латиница, цифры и дефис.
+  // Человек об этом не знает и пишет «cs24 o8 терминал»; вместо отказа показываем
+  // годный вариант и даём подставить его одной кнопкой.
+  const suggestion = suggestNodeName(name)
+  const nameOk = name.trim() === '' || NODE_NAME_RE.test(name.trim().toLowerCase())
   const [os, setOs] = useState<NodeOs>('linux')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,6 +174,23 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
                 autoFocus
               />
             </label>
+            {!nameOk && (
+              <p className="muted small">
+                {t('Это имя машины в сети: латинские буквы, цифры и дефис, без пробелов и точек. Человеческое название впишите потом в описание ноды.')}
+                {suggestion && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="ghost small"
+                      onClick={() => setName(suggestion)}
+                    >
+                      {t('Назвать «{name}»', { name: suggestion })}
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
             <div className="field">
               <span>{t('Операционная система')}</span>
               <div className="os-tabs">

@@ -5,6 +5,25 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.18.1] - 2026-10-11
+
+### Fixed
+
+- **The panel explains what went wrong again, instead of "HTTP error 422".**
+  Validation sends the reason as a list rather than a string, and that case was
+  never unpacked: naming a node in Russian showed an error number instead of the
+  text written for exactly this. The reason is now shown, and the enrollment
+  dialog says up front that a node name is latin letters, digits and hyphens,
+  offering a valid one in a single click: "cs24 o8 терминал" becomes
+  `cs24-o8-terminal`.
+- **The "not picking up settings" alert no longer fires for machines that have
+  no agent.** A state request by token was enough to count as one, and `curl`
+  from a diagnostic can make that request - after which the panel treated the
+  agent as alive and complained minutes later that it had gone quiet. That is
+  what happened to a personal Windows machine, where the agent cannot run at all.
+  The alert now covers only nodes that have APPLIED state at least once, and it
+  calls a node what it is: a server or a device.
+
 ## [0.18.0] - 2026-10-11
 
 ### Changed

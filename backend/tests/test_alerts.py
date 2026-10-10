@@ -176,14 +176,19 @@ async def test_reconcile_agents_silent_and_recovery(session, monkeypatch):
     now = datetime.now(timezone.utc)
     fresh = (now - timedelta(minutes=1)).isoformat()
     stale = (now - timedelta(minutes=30)).isoformat()
-    names = {"1": "srv-1", "2": "srv-2", "3": "srv-3"}
+    names = {"1": "srv-1", "2": "srv-2", "3": "srv-3", "4": "notebook"}
 
     # свежий опрос — тихо; агента не ставили (last_poll нет) — тоже тихо
-    agents = {"1": {"last_poll": fresh}, "2": {}}
+    agents = {"1": {"last_poll": fresh, "last_applied": fresh}, "2": {}}
     assert await alerts.reconcile_agents(session, st, agents, names, {"1": True, "2": True}) == []
 
     # нода лежит — молчание агента объясняется падением, второй алерт был бы шумом
-    agents = {"3": {"last_poll": stale}}
+    # по токену сходили, а состояние ни разу не применяли - агента там нет: так
+    # выглядит личная машина, по которой кто-то дёрнул токен руками
+    agents = {"4": {"last_poll": stale}}
+    assert await alerts.reconcile_agents(session, st, agents, names, {"4": True}) == []
+
+    agents = {"3": {"last_poll": stale, "last_applied": stale}}
     assert await alerts.reconcile_agents(session, st, agents, names, {"3": False}) == []
 
     # нода жива, а агент замолчал — вот это инцидент
@@ -192,7 +197,7 @@ async def test_reconcile_agents_silent_and_recovery(session, monkeypatch):
     assert await alerts.reconcile_agents(session, st, agents, names, {"3": True}) == []
 
     # снова отзывается — сообщаем один раз
-    agents = {"3": {"last_poll": fresh}}
+    agents = {"3": {"last_poll": fresh, "last_applied": fresh}}
     assert await alerts.reconcile_agents(session, st, agents, names, {"3": True}) == ["srv-3"]
     assert await alerts.reconcile_agents(session, st, agents, names, {"3": True}) == []
 
