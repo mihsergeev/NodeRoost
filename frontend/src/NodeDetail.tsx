@@ -3,14 +3,10 @@ import {
   ApiError,
   deleteNode,
   expireNode,
-  getAgent,
-  getHsInfo,
   getPolicyRules,
   putPolicyRules,
-  setNodeMeta,
   type AclRule,
   type AclSelector,
-  type HsInfo,
   type Node,
 } from './api'
 import { groupGrants, portLabel, selLabel, toggleRule } from './aclui'
@@ -56,20 +52,7 @@ export function NodeDetail({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
-  const [hs, setHs] = useState<HsInfo | null>(null)
-  const [agentOn, setAgentOn] = useState(false)
 
-  // Панель не видит настройки клиента: headscale их не отдаёт. Поэтому
-  // предупреждаем по тому, что знаем сами - сеть раздаёт свои резолверы, нода
-  // помечена сервером, и обратного админ не говорил.
-  // Смотрим на сам список резолверов, а не на галку «использовать только эти»:
-  // клиент забирает у ноды весь DNS уже потому, что резолверы заданы, - проверено
-  // на живой сети, где галка не стояла, а на tailscale0 всё равно висел `~.`.
-  const dnsHijacked =
-    (hs?.dns.nameservers.length ?? 0) > 0 &&
-    node.kind === 'server' &&
-    node.mesh_dns !== false
-  const dnsFix = 'tailscale set --accept-dns=false'
 
   // «имя (IP)» — удобно вставлять в тикеты/конфиги; берём IPv4 ноды
   const v4 = node.ip_addresses.find((ip) => !ip.includes(':'))
@@ -97,17 +80,6 @@ export function NodeDetail({
   useEffect(() => {
     loadRules()
   }, [loadRules])
-
-  useEffect(() => {
-    getHsInfo()
-      .then(setHs)
-      .catch(() => {
-        /* без этих данных просто не показываем предупреждение про DNS */
-      })
-    getAgent(node.id)
-      .then((a) => setAgentOn(a.installed))
-      .catch(() => setAgentOn(false))
-  }, [node.id])
 
   // «Кто может подключаться сюда» (входящие, dst=нода) и «Куда ходит эта нода» (исходящие, src=нода).
   const inRows = useMemo(
@@ -387,52 +359,6 @@ export function NodeDetail({
           )}
         </div>
       </div>
-
-      {dnsHijacked && (
-        <div className="card dns-warn">
-          <h3>{t('Эта нода, скорее всего, отдаёт весь свой DNS в меш')}</h3>
-          <p className="muted small">
-            {t(
-              'В разделе DNS заданы свои DNS-серверы, а значит нода с DNS из меша спрашивает их обо всех именах, а не только о меш-именах. Сервер со своим резолвером (корпоративный, облачный, локальный) тихо перестаёт видеть внутренние имена, а там, где эти резолверы из его сети недоступны, теряет резолв целиком. Сам сервер при этом работает, поэтому заметно становится не сразу.',
-            )}
-          </p>
-          {agentOn ? (
-            <p className="muted small">
-              {t('На этой ноде стоит агент - он применит выбор сам, в течение минуты.')}
-            </p>
-          ) : (
-            <>
-              <p className="muted small">
-                {t('Агента на ноде нет, поэтому выполните под root (или поставьте агента - тогда панель будет делать это сама):')}
-              </p>
-              <pre className="enroll-script cmd-oneline">{dnsFix}</pre>
-            </>
-          )}
-          <div className="enroll-actions">
-            <button
-              onClick={async () => {
-                try {
-                  await setNodeMeta(node.id, { mesh_dns: false })
-                  onChanged()
-                } catch (err) {
-                  if (err instanceof ApiError && err.status === 401) onUnauthorized()
-                  else setError(err instanceof Error ? err.message : t('Ошибка'))
-                }
-              }}
-            >
-              {agentOn ? t('Выключить DNS из меша') : t('Выключено - не напоминать')}
-            </button>
-            {!agentOn && (
-              <button className="ghost" onClick={() => copyValue(dnsFix, 'dnsfix')}>
-                {copied === 'dnsfix' ? t('Скопировано ✓') : t('Скопировать команду')}
-              </button>
-            )}
-          </div>
-          <p className="muted small">
-            {t('Имена сети и MagicDNS на этой ноде после команды резолвиться не будут - связь по мешу от неё не зависит.')}
-          </p>
-        </div>
-      )}
 
       {/* ДОСТУП — редактируется прямо здесь */}
       <div className="card">

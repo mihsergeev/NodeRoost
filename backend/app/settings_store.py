@@ -52,7 +52,6 @@ async def set_node_meta(
     exit_gateway: bool | None = None,
     exit_via: list[str] | None = None,
     force_exit: str | None = None,
-    mesh_dns: bool | None = None,
 ) -> None:
     """Заметка панели о ноде: описание, тип, флаг «админ» и группировка
     (группа → подгруппа, напр. организация → проект). Пустые поля убираются;
@@ -95,11 +94,6 @@ async def set_node_meta(
     # молчат только уведомления. Полезно на плановых работах, когда сервер гасят
     # намеренно и алерт про это — чистый шум.
     put("muted", True, bool(muted)) if muted is not None else None
-    # Берёт ли нода DNS из меша. Значимы ОБА значения, поэтому храним как есть, а
-    # не через put (он стирает ключ на False): «выключено» здесь — это ответ, а
-    # отсутствие ключа — «панель не знает», и по нему она предупреждает админа.
-    if mesh_dns is not None:
-        entry["mesh_dns"] = bool(mesh_dns)
     if group is not None:
         put("group", group.strip(), bool(group.strip()))
     if subgroup is not None:
