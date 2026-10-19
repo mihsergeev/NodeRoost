@@ -49,7 +49,7 @@ prints your credentials:
   Panel:           https://panel.example.com
   Control server:  https://hs.example.com
   Login:           admin
-  Password:        npMBKFqLc5aiDVsmuUV8
+  Password:        <generated-password>
 ```
 
 Let's Encrypt issues the certificate on the first request — if the page does not

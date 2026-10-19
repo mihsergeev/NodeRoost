@@ -50,7 +50,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const dismiss = useModalDismiss(onClose)
   const [name, setName] = useState('')
   // Имя ноды становится её именем в сети, поэтому латиница, цифры и дефис.
-  // Человек об этом не знает и пишет «cs24 o8 терминал»; вместо отказа показываем
+  // Человек об этом не знает и пишет «corp o8 терминал»; вместо отказа показываем
   // годный вариант и даём подставить его одной кнопкой.
   const suggestion = suggestNodeName(name)
   const nameOk = name.trim() === '' || NODE_NAME_RE.test(name.trim().toLowerCase())

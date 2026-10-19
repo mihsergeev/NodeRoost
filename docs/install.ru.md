@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/mihsergeev/NodeRoost/main/ops/insta
   Panel:           https://panel.example.com
   Control server:  https://hs.example.com
   Login:           admin
-  Password:        npMBKFqLc5aiDVsmuUV8
+  Password:        <generated-password>
 ```
 
 Сертификат Let's Encrypt выдаётся при первом обращении — если страница не

@@ -14,8 +14,8 @@ project follows [semantic versioning](https://semver.org/).
   never unpacked: naming a node in Russian showed an error number instead of the
   text written for exactly this. The reason is now shown, and the enrollment
   dialog says up front that a node name is latin letters, digits and hyphens,
-  offering a valid one in a single click: "cs24 o8 терминал" becomes
-  `cs24-o8-terminal`.
+  offering a valid one in a single click: "corp o8 терминал" becomes
+  `corp-o8-terminal`.
 - **The "not picking up settings" alert no longer fires for machines that have
   no agent.** A state request by token was enough to count as one, and `curl`
   from a diagnostic can make that request - after which the panel treated the
