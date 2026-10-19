@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noderoost-backend"
-version = "0.18.1"
+version = "0.18.2"
 description = "NodeRoost — backend for the self-hosted headscale management panel"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,7 +16,7 @@ dependencies = [
     "aiosqlite>=0.20",
     "alembic>=1.13",
     "bcrypt>=4.1",
-    "PyJWT>=2.8",
+    "PyJWT>=2.15.1",
     "httpx>=0.27",
     "PyYAML>=6.0",
     "ruamel.yaml>=0.18",

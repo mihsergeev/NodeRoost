@@ -5,6 +5,22 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.18.2] - 2026-10-20
+
+### Security
+
+- **PyJWT 2.13.0 -> 2.15.1.** The dependency check in CI had been red since a
+  batch of advisories landed on 2.13.0. Most of them are about JWKS, public keys
+  and mixed algorithm lists, and the panel uses none of that: its sign-in token
+  is HS256 with the secret from `.env`. One did apply: a token with a deeply
+  nested header made `jwt.decode` raise `RecursionError` instead of a JWT error,
+  so such a request got a 500 and a traceback in the log instead of a plain 401.
+  It is a 401 now. Tokens issued before the update stay valid, nobody has to
+  sign in again.
+- **source-map-js 1.2.1 -> 1.2.2** in the frontend build (it comes with Vite via
+  postcss): a crafted source map could stall the build. It is used only while
+  building, nothing of it reaches the browser.
+
 ## [0.18.1] - 2026-10-11
 
 ### Fixed
