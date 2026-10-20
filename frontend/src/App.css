@@ -2620,3 +2620,29 @@ button.node-group-head {
   opacity: 0.75;
   letter-spacing: 0.03em;
 }
+
+/* Оффлайновая нода. Раньше её выдавали только серая точка и строчка «видели
+   17 мин назад» - на экране с десятком карточек это не читалось. Теперь у
+   карточки своя кромка и приглушённый фон, а рядом с именем красная плашка. */
+.node-card.node-off {
+  border-color: rgba(255, 107, 94, 0.45);
+  box-shadow: inset 3px 0 0 0 var(--danger);
+}
+
+.node-card.node-off .node-name {
+  color: var(--danger);
+}
+
+/* Скрытая нода: видно, что она есть, но она не тянет на себя внимание. */
+.node-card.node-hidden {
+  opacity: 0.55;
+}
+
+.node-group-hidden {
+  margin-top: 1.25rem;
+  opacity: 0.85;
+}
+
+.node-group-hidden .node-group-head {
+  cursor: pointer;
+}

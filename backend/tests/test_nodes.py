@@ -184,6 +184,31 @@ async def test_explicit_false_still_clears(session):
     assert "muted" not in e and e["exit_gateway"] is True  # снято только muted
 
 
+async def test_hidden_node_is_marked_and_silenced(session):
+    """Скрытая нода - это «пока не нужна», а не «сломалась».
+
+    Её нет в счётчиках списка, и коллектор глушит её наравне с заглушённой:
+    алерт о том, что отложенная машина не отвечает, человек уже не ждёт.
+    """
+    from app import settings_store
+
+    await settings_store.set_node_meta(session, "11", kind="server", hidden=True)
+    meta = await settings_store.get_node_meta(session)
+    assert meta["11"]["hidden"] is True
+
+    silent = {
+        nid
+        for nid, e in meta.items()
+        if isinstance(e, dict) and (e.get("muted") or e.get("hidden"))
+    }
+    assert "11" in silent
+
+    # вернули в список - запись чистится, нода снова на виду и алертит
+    await settings_store.set_node_meta(session, "11", kind="server", hidden=False)
+    meta = await settings_store.get_node_meta(session)
+    assert "hidden" not in meta["11"]
+
+
 async def test_clear_node_meta_wipes_everything(session):
     """Удаление ноды должно уносить и её заметку целиком — иначе при переиспользовании
     id новая нода унаследовала бы чужие флаги."""

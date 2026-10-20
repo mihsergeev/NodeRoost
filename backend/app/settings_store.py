@@ -49,6 +49,7 @@ async def set_node_meta(
     group: str | None = None,
     subgroup: str | None = None,
     muted: bool | None = None,
+    hidden: bool | None = None,
     exit_gateway: bool | None = None,
     exit_via: list[str] | None = None,
     force_exit: str | None = None,
@@ -94,6 +95,7 @@ async def set_node_meta(
     # молчат только уведомления. Полезно на плановых работах, когда сервер гасят
     # намеренно и алерт про это — чистый шум.
     put("muted", True, bool(muted)) if muted is not None else None
+    put("hidden", True, bool(hidden)) if hidden is not None else None
     if group is not None:
         put("group", group.strip(), bool(group.strip()))
     if subgroup is not None:

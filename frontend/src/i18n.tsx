@@ -386,6 +386,15 @@ const EN: Record<string, string> = {
   'Не слать алерты по этой ноде': 'Do not alert about this node',
   'Наблюдение продолжается: статус и история в панели остаются, молчат только уведомления. Нода будет помечена в списке — заглушённый сервер, о котором забыли, опаснее шумного.':
     'Monitoring continues: status and history stay in the panel, only the notifications go quiet. The node is marked in the list — a muted server nobody remembers is worse than a noisy one.',
+  'оффлайн {ago}': 'offline {ago}',
+  'скрыта': 'hidden',
+  'Нода скрыта: не в счётчиках и без алертов': 'The node is hidden: out of the counters and silent',
+  'Скрыть: пока не нужна': 'Hide: not needed for now',
+  'Вернуть в список': 'Bring back to the list',
+  'Скрытые': 'Hidden',
+  'не в счётчиках и без алертов, пока не вернёте': 'out of the counters and silent until you bring them back',
+  'Нода уедет в раздел «Скрытые» под списком: её не будет в счётчиках и по ней не придут алерты. Связь и доступы при этом работают как работали.':
+    'The node moves to the "Hidden" section below the list: it leaves the counters and stops sending alerts. Connectivity and access keep working as before.',
   'без алертов': 'muted',
   'Алерты по этой ноде выключены': 'Alerts for this node are off',
   // --- шлюз выхода в интернет (via) ---
