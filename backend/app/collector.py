@@ -66,8 +66,12 @@ async def collect_once(
         meta = await settings_store.get_node_meta(session)
     kinds = {str(n.get("id", "")): effective_kind(n, meta) for n in raw}
     # «не беспокоить»: помеченные ноды наблюдаем как обычно, но не уведомляем
+    # Скрытая нода молчит так же, как заглушённая: её убрали из списка сознательно
+    # и на время, а алерт о том, что она не отвечает, человек уже не ждёт.
     muted = {
-        nid for nid, e in meta.items() if isinstance(e, dict) and e.get("muted")
+        nid
+        for nid, e in meta.items()
+        if isinstance(e, dict) and (e.get("muted") or e.get("hidden"))
     }
     async with session_factory() as session:
         await alerts.reconcile_nodes(session, settings, online_map, names, kinds, muted)

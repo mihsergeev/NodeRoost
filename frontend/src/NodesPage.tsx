@@ -50,6 +50,7 @@ export function NodesPage({
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
+  const [hiddenOpen, setHiddenOpen] = useState(false)
   const [editNode, setEditNode] = useState<Node | null>(null)
   const [routesNode, setRoutesNode] = useState<Node | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -104,7 +105,12 @@ export function NodesPage({
   }, [load])
 
   // ноды только этого типа (сервер/устройство)
-  const scoped = useMemo(() => (nodes ?? []).filter((n) => n.kind === kind), [nodes, kind])
+  const all = useMemo(() => (nodes ?? []).filter((n) => n.kind === kind), [nodes, kind])
+  // Скрытые живут отдельным разделом внизу: в счётчиках их нет, иначе «1 оффлайн»
+  // горит из-за машины, которую сами же и отложили. Но и совсем прятать нельзя -
+  // забытая нода хуже шумной, поэтому раздел всегда на виду, со своим счётчиком.
+  const scoped = useMemo(() => all.filter((n) => !n.hidden), [all])
+  const hiddenList = useMemo(() => all.filter((n) => n.hidden), [all])
 
   const counts = useMemo(() => {
     return {
@@ -163,6 +169,28 @@ export function NodesPage({
         })),
     }
   }, [visible])
+
+  // Скрыть/вернуть. setNodeMeta переписывает запись целиком, поэтому тащим с
+  // собой остальные поля - как и в переносе между группами.
+  async function doHide(n: Node, hidden: boolean) {
+    setNodes((prev) => (prev ?? []).map((x) => (x.id === n.id ? { ...x, hidden } : x)))
+    try {
+      await setNodeMeta(n.id, {
+        description: n.description,
+        kind: n.kind,
+        admin: n.admin,
+        muted: n.muted,
+        hidden,
+        group: n.group,
+        subgroup: n.subgroup,
+      })
+      await load()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else setError(err instanceof Error ? err.message : t('Ошибка'))
+      await load()
+    }
+  }
 
   const startDrag = (id: string) => {
     dragRef.current = id
@@ -255,7 +283,12 @@ export function NodesPage({
   const renderCard = (n: Node) => (
     <div
       key={n.id}
-      className={`card node-card node-clickable${dragId === n.id ? ' dragging' : ''}`}
+      className={
+        'card node-card node-clickable' +
+        (dragId === n.id ? ' dragging' : '') +
+        (!n.online && !n.hidden ? ' node-off' : '') +
+        (n.hidden ? ' node-hidden' : '')
+      }
       onClick={() => setDetailNodeId(n.id)}
       title={t('Открыть')}
     >
@@ -273,13 +306,27 @@ export function NodesPage({
             ⠿
           </span>
         )}
-        <span className={`dot ${n.online ? 'dot-ok' : 'dot-unknown'}`} />
+        <span className={`dot ${n.online ? 'dot-ok' : 'dot-fail'}`} />
         <div className="node-info">
           <div className="node-title">
             {n.os && <OsIcon os={n.os} size={16} />}
             <CountryFlag code={n.country} />
             <span className="node-name">{n.name || t('без имени')}</span>
             {n.admin && <span className="pill-admin">{t('админ')}</span>}
+            {/* Оффлайн раньше читался только по серой точке и строчке «видели
+                17 мин назад» - на экране с десятком карточек это не видно. */}
+            {!n.online && !n.hidden && (
+              <span className="pill-warn">
+                {n.last_seen
+                  ? t('оффлайн {ago}', { ago: fmtAgo(n.last_seen, t) })
+                  : t('оффлайн')}
+              </span>
+            )}
+            {n.hidden && (
+              <span className="pill-muted" title={t('Нода скрыта: не в счётчиках и без алертов')}>
+                {t('скрыта')}
+              </span>
+            )}
             {/* заглушённая нода обязана быть видна: иначе о ней просто забудут */}
             {n.muted && (
               <span className="pill-muted" title={t('Алерты по этой ноде выключены')}>
@@ -343,13 +390,7 @@ export function NodesPage({
                   {ip}
                 </span>
               ))}
-            <span className="muted small">
-              {n.online
-                ? t('онлайн')
-                : n.last_seen
-                  ? t('видели {ago}', { ago: fmtAgo(n.last_seen, t) })
-                  : t('оффлайн')}
-            </span>
+            {n.online && <span className="muted small">{t('онлайн')}</span>}
             {n.tags.map((tag) => (
               <span key={tag} className="tag-chip">
                 {tag}
@@ -368,6 +409,10 @@ export function NodesPage({
           items={[
             { label: t('Изменить'), onClick: () => setEditNode(n) },
             { label: t('Маршруты'), onClick: () => setRoutesNode(n) },
+            {
+              label: n.hidden ? t('Вернуть в список') : t('Скрыть: пока не нужна'),
+              onClick: () => doHide(n, !n.hidden),
+            },
             { label: t('Отозвать ключ'), onClick: () => doExpire(n) },
             { divider: true },
             { label: t('Удалить'), danger: true, onClick: () => doDelete(n) },
@@ -511,6 +556,26 @@ export function NodesPage({
             )
           })}
         </>
+      )}
+
+      {hiddenList.length > 0 && (
+        <div className="node-group node-group-hidden">
+          <div
+            className="node-group-head"
+            onClick={() => setHiddenOpen((v) => !v)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && setHiddenOpen((v) => !v)}
+          >
+            <span className="node-group-caret">{hiddenOpen ? '▾' : '▸'}</span>
+            <span className="node-group-name">{t('Скрытые')}</span>
+            <span className="muted small">{hiddenList.length}</span>
+            <span className="muted small">
+              {t('не в счётчиках и без алертов, пока не вернёте')}
+            </span>
+          </div>
+          {hiddenOpen && <div className="node-list">{hiddenList.map(renderCard)}</div>}
+        </div>
       )}
 
       {editNode && (

@@ -117,6 +117,7 @@ export type Node = {
   kind: 'server' | 'device'
   admin: boolean
   muted: boolean
+  hidden: boolean  // убрана из списка до лучших времён: не считается и не алертит
   exit_gateway: boolean  // сервер — шлюз выхода в интернет (exit-нода с уникальным тегом)
   exit_via: string[]     // устройство: id серверов-шлюзов, через которые ему разрешён выход
   force_exit: string     // id шлюза: весь трафик этой ноды принудительно через него (exit-node)
@@ -149,6 +150,7 @@ export function setNodeMeta(
     kind?: '' | 'server' | 'device'
     admin?: boolean
     muted?: boolean
+    hidden?: boolean
     exit_gateway?: boolean
     exit_via?: string[]
     force_exit?: string
