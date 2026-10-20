@@ -29,6 +29,8 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
   const [kind, setKind] = useState<'server' | 'device'>(node.kind)
   const [admin, setAdmin] = useState(node.admin)
   const [muted, setMuted] = useState(node.muted)
+  // Скрытая нода: не в счётчиках и без алертов, но связь и доступы живут.
+  const [hidden, setHidden] = useState(node.hidden)
   const [exitGateway, setExitGateway] = useState(node.exit_gateway)
   const [exitVia, setExitVia] = useState<Set<string>>(() => new Set(node.exit_via))
   // принудительный выход: весь трафик этой ноды через выбранный шлюз (exit-node)
@@ -162,6 +164,7 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
           kind,
           admin: effAdmin,
           muted,
+          hidden,
           exit_gateway: effGateway,
           exit_via: effVia,
           force_exit: effForce,
@@ -242,6 +245,21 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
           />
           <span>{t('Не слать алерты по этой ноде')}</span>
         </label>
+
+        <label className="field field-check">
+          <input
+            type="checkbox"
+            className="field-checkbox"
+            checked={hidden}
+            onChange={(e) => setHidden(e.target.checked)}
+          />
+          <span>{t('Скрыть: пока не нужна')}</span>
+        </label>
+        {hidden && (
+          <p className="muted small">
+            {t('Нода уедет в раздел «Скрытые» под списком: её не будет в счётчиках и по ней не придут алерты. Связь и доступы при этом работают как работали.')}
+          </p>
+        )}
 
         {muted && (
           <p className="muted small">

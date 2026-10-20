@@ -111,6 +111,9 @@ class NodeOut(BaseModel):
     kind: str = "server"  # server | device — классификация панели (не из headscale)
     admin: bool = False  # админ-устройство: полный доступ ко всем серверам
     muted: bool = False  # алерты по этой ноде не шлём (наблюдение продолжается)
+    # Нода временно не нужна: в списке её нет (она в отдельном разделе внизу),
+    # в счётчиках не считается, алерты по ней не шлются. Снимается там же.
+    hidden: bool = False
     exit_gateway: bool = False  # сервер — шлюз выхода в интернет (per-device via)
     exit_via: list[str] = []  # у устройства: id серверов-шлюзов, через кот. можно выходить
     force_exit: str = ""  # id шлюза: весь трафик этой ноды принудительно через него
@@ -186,6 +189,7 @@ class NodeMetaIn(RequestModel):
     kind: Literal["", "server", "device"] | None = None
     admin: bool | None = None  # админ-устройство (полный доступ ко всем серверам)
     muted: bool | None = None  # не слать алерты по этой ноде
+    hidden: bool | None = None  # убрать из списка до лучших времён
     exit_gateway: bool | None = None  # сервер — шлюз выхода
     exit_via: list[str] | None = Field(default=None, max_length=64)
     # id шлюза, через который принудительно гнать весь трафик этой ноды (exit-node)

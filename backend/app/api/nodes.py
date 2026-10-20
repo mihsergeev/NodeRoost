@@ -93,6 +93,7 @@ def _map_node(n: dict, meta: dict | None = None, hinfo: dict | None = None) -> N
         kind=kind,
         admin=bool(entry.get("admin", False)),
         muted=bool(entry.get("muted", False)),
+        hidden=bool(entry.get("hidden", False)),
         exit_gateway=bool(entry.get("exit_gateway", False)),
         exit_via=[str(i) for i in (entry.get("exit_via") or [])],
         force_exit=str(entry.get("force_exit") or ""),
@@ -260,8 +261,8 @@ async def set_meta(
             eff_via.append(eff_force)
     await settings_store.set_node_meta(
         session, node_id, body.description, body.kind, body.admin,
-        body.group, body.subgroup, body.muted, body.exit_gateway, eff_via,
-        body.force_exit,
+        body.group, body.subgroup, body.muted, body.hidden, body.exit_gateway,
+        eff_via, body.force_exit,
     )
     # Сняли «шлюз выхода» — снимаем и выбор этого шлюза у устройств: иначе связь
     # висит в карточке как рабочая, а принудительный выход гонит трафик на ноду,

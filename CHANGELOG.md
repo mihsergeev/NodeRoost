@@ -5,6 +5,24 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.19.0] - 2026-10-20
+
+### Added
+
+- **A node can be hidden while it is not needed.** The card menu has a "Hide: not
+  needed for now" item (and a checkbox in the edit dialog). A hidden node moves to
+  the "Hidden" section below the list, leaves the Total/Online/Offline counters
+  and stops sending alerts - connectivity and access keep working as before. The
+  section stays visible with its own counter: a parked node everyone forgot about
+  is worse than a noisy one.
+
+### Changed
+
+- **A server that is switched off is now obvious.** Offline used to be a grey dot
+  and a small "last seen 17 min ago" line, which does not read on a screen full of
+  cards. The dot is red now, the card carries a red edge, the name turns red, and
+  a "offline 17 min" badge sits next to it. The duplicate line is gone.
+
 ## [0.18.2] - 2026-10-20
 
 ### Security
