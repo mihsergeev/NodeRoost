@@ -9,7 +9,9 @@ import secrets
 
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app import agent, audit, ca, certs, routing, settings_store
 from app.config import get_settings
@@ -29,6 +31,25 @@ _ALIVE_S = 300
 def _state_url(token: str) -> str:
     base = (get_settings().headscale_server_url or "").rstrip("/")
     return f"{base}/agent/{token}" if token else ""
+
+
+# Агент с релиза 9 шлет токен этим заголовком, а в пути оставляет заглушку.
+# Путь попадает в access-лог любого прокси по дороге, а агент ходит раз в
+# минуту - так токены всех нод гарантированно оказывались в логах открытым текстом.
+AGENT_TOKEN_HEADER = "X-NodeRoost-Agent"
+
+
+async def _agent_token(request: Request, token: str) -> str:
+    """Токен из заголовка, а если его нет - из пути.
+
+    Путь оставлен рабочим надолго: агенты обновляются по кнопке руками, по одному,
+    и сломать старый способ значило бы погасить все ноды сразу после выкатки панели.
+    """
+    hdr = request.headers.get(AGENT_TOKEN_HEADER, "").strip()
+    return hdr or token
+
+
+AgentToken = Annotated[str, Depends(_agent_token)]
 
 
 async def _wanted_routes(session, node_id: str, cfg: dict) -> list[str]:
@@ -85,7 +106,14 @@ def _out(cfg: dict, wanted_hash: str = "") -> AgentOut:
         # молча её игнорирует. Пока панель этого не показывала, выглядело это как
         # «включил — ничего не произошло». Свежие агенты обновляются сами.
         script_current=(not installed) or cfg.get("script") == agent.SCRIPT_VERSION,
+        token_at=cfg.get("token_at") or None,
     )
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def _require_node(node_id: str) -> None:
@@ -109,6 +137,7 @@ async def get_agent(node_id: str, _: CurrentUser, session: SessionDep) -> AgentO
     cfg = all_cfg.get(node_id, {})
     if not cfg.get("token"):  # токен выдаём один раз и держим стабильным
         cfg["token"] = secrets.token_urlsafe(16)
+        cfg["token_at"] = _now_iso()
         all_cfg[node_id] = cfg
         await settings_store.set_agent_all(session, all_cfg)
     return _out(cfg, await _wanted_hash(session, node_id, cfg))
@@ -122,6 +151,7 @@ async def put_agent(
     cfg = all_cfg.get(node_id, {})
     if not cfg.get("token"):
         cfg["token"] = secrets.token_urlsafe(16)
+        cfg["token_at"] = _now_iso()
     cfg["routes"] = [r.strip() for r in body.routes if r.strip()]
     cfg["exit"] = body.exit_node
     all_cfg[node_id] = cfg
@@ -135,6 +165,37 @@ async def put_agent(
         "agent_set",
         node_id,
         f"маршруты: {', '.join(cfg['routes']) or 'нет'}; exit: {'да' if cfg['exit'] else 'нет'}",
+    )
+    return _out(cfg, await _wanted_hash(session, node_id, cfg))
+
+
+@router.post("/{node_id}/reissue", response_model=AgentOut)
+async def reissue_agent_token(
+    node_id: str, user: CurrentUser, session: SessionDep
+) -> AgentOut:
+    """Выдать ноде НОВЫЙ токен агента, старый перестает работать сразу.
+
+    Раньше токен выдавался один раз и навсегда: сменить его было нечем, даже
+    если он утек (логи прокси, снятый диск, чужой root на ноде), а им заказывается
+    сертификат на внутренние имена этой ноды. Срока жизни у токена нет намеренно:
+    истёкший сам по себе погасил бы агента на рабочей ноде без всякого повода.
+
+    После перевыпуска агента на ноде надо поставить заново - команда в ответе.
+    """
+    all_cfg = await settings_store.get_agent_all(session)
+    if node_id not in all_cfg:
+        await _require_node(node_id)
+    cfg = all_cfg.get(node_id, {})
+    cfg["token"] = secrets.token_urlsafe(16)
+    cfg["token_at"] = _now_iso()
+    # Старый агент больше не придет, и считать его установленным нельзя:
+    # иначе карточка показывала бы живого агента там, где его уже нет.
+    for k in ("last_poll", "last_applied", "applied", "script"):
+        cfg.pop(k, None)
+    all_cfg[node_id] = cfg
+    await settings_store.set_agent_all(session, all_cfg)
+    await audit.record(
+        session, user.username, "agent_token_reissue", node_id, "выдан новый токен агента"
     )
     return _out(cfg, await _wanted_hash(session, node_id, cfg))
 
@@ -184,7 +245,7 @@ async def _wanted_hash(session, node_id: str, cfg: dict) -> str:
 
 
 @public_router.get("/agent/{token}/setup")
-async def agent_setup(token: str, session: SessionDep) -> Response:
+async def agent_setup(token: AgentToken, session: SessionDep) -> Response:
     if await settings_store.get_agent_by_token(session, token) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     return Response(
@@ -193,7 +254,7 @@ async def agent_setup(token: str, session: SessionDep) -> Response:
 
 
 @public_router.get("/agent/{token}/manifest")
-async def agent_manifest(token: str, session: SessionDep) -> Response:
+async def agent_manifest(token: AgentToken, session: SessionDep) -> Response:
     """Подписанный манифест релиза: что именно нода имеет право поставить."""
     if await settings_store.get_agent_by_token(session, token) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
@@ -204,7 +265,7 @@ async def agent_manifest(token: str, session: SessionDep) -> Response:
 
 
 @public_router.get("/agent/{token}/manifest.sig")
-async def agent_manifest_sig(token: str, session: SessionDep) -> Response:
+async def agent_manifest_sig(token: AgentToken, session: SessionDep) -> Response:
     """Подпись манифеста офлайн-ключом. Панель её только раздаёт: приватного
     ключа у неё нет, поэтому подделать содержимое обновления она не может."""
     if await settings_store.get_agent_by_token(session, token) is None:
@@ -216,7 +277,7 @@ async def agent_manifest_sig(token: str, session: SessionDep) -> Response:
 
 
 @public_router.get("/agent/{token}/setup.tmpl")
-async def agent_setup_template(token: str, session: SessionDep) -> Response:
+async def agent_setup_template(token: AgentToken, session: SessionDep) -> Response:
     """Скрипт агента БЕЗ подстановок — ровно те байты, что покрыты подписью.
 
     Свои значения (адрес состояния, ключ подписи) нода подставляет сама: возьми
@@ -228,7 +289,7 @@ async def agent_setup_template(token: str, session: SessionDep) -> Response:
 
 
 @public_router.get("/agent/{token}/remove")
-async def agent_remove(token: str, session: SessionDep) -> Response:
+async def agent_remove(token: AgentToken, session: SessionDep) -> Response:
     if await settings_store.get_agent_by_token(session, token) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     return Response(content=agent.build_remove(), media_type="text/plain")
@@ -236,7 +297,7 @@ async def agent_remove(token: str, session: SessionDep) -> Response:
 
 @public_router.post("/agent/{token}/applied")
 async def agent_applied(
-    token: str, h: str, session: SessionDep, s: str = "", r: int = 0
+    token: AgentToken, h: str, session: SessionDep, s: str = "", r: int = 0
 ) -> Response:
     """Агент подтверждает, что ПРИМЕНИЛ состояние (h — sha256 применённого файла).
 
@@ -261,7 +322,7 @@ async def agent_applied(
 
 
 @public_router.get("/agent/{token}")
-async def agent_state(token: str, session: SessionDep) -> Response:
+async def agent_state(token: AgentToken, session: SessionDep) -> Response:
     """Желаемое состояние для ноды. Сам факт запроса = агент жив."""
     found = await settings_store.get_agent_by_token(session, token)
     if found is None:
@@ -291,7 +352,7 @@ async def agent_state(token: str, session: SessionDep) -> Response:
 
 
 @public_router.get("/agent/{token}/ca")
-async def agent_ca(token: str, session: SessionDep) -> Response:
+async def agent_ca(token: AgentToken, session: SessionDep) -> Response:
     """Корневой сертификат панели — нода ставит его себе в доверенные.
 
     Секрета тут нет (приватный ключ остаётся в панели), но ручка всё равно за
@@ -324,7 +385,7 @@ async def _node_may_ask(session, token: str, name: str) -> str:
 
 
 @public_router.post("/agent/{token}/csr")
-async def agent_csr(token: str, name: str, request: Request, session: SessionDep) -> Response:
+async def agent_csr(token: AgentToken, name: str, request: Request, session: SessionDep) -> Response:
     """Нода прислала CSR — панель подписывает его своим корнем и отвечает.
 
     Ключ остаётся на ноде: сюда приезжает только запрос на подпись.
@@ -364,7 +425,7 @@ async def agent_csr(token: str, name: str, request: Request, session: SessionDep
 
 
 @public_router.get("/agent/{token}/cert")
-async def agent_cert(token: str, name: str, session: SessionDep) -> Response:
+async def agent_cert(token: AgentToken, name: str, session: SessionDep) -> Response:
     """Забрать уже выданный сертификат (например, если файл на ноде потерялся)."""
     await _node_may_ask(session, token, name)
     row = await certs.get(session, name)

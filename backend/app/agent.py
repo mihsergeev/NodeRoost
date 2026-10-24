@@ -34,6 +34,13 @@ TEMPLATE = r"""#!/bin/sh
 # Запускать под root ОДИН раз. Дальше всё управляется галками в панели.
 set -e
 STATE_URL="@@STATE_URL@@"
+# Токен и базовый адрес - из того же STATE_URL, без отдельного плейсхолдера:
+# старый агент при самообновлении подставляет только четыре известных ему поля,
+# и пятое осталось бы пустым на всех нодах сразу после обновления.
+AGENT_TOKEN="${STATE_URL##*/}"
+# В пути остается заглушка: сам токен едет заголовком, иначе он попадает
+# в access-лог каждого прокси по дороге, а ходим мы раз в минуту.
+API_URL="${STATE_URL%/*}/-"
 DIR=/lib65/noderoost-agent
 mkdir -p "$DIR"
 # Только root: в apply.sh зашит адрес состояния, а в нём - токен агента. С
@@ -55,6 +62,14 @@ cat > "$DIR/apply.sh" <<EOF
 # «ничего не происходит», причём молча — панель ждала от ноды того, чего её агент
 # делать не умеет.
 SCRIPT_V="@@SCRIPT_V@@"
+# Адрес без токена и сам токен. Запекает setup.sh при установке.
+API="$API_URL"
+TOK="$AGENT_TOKEN"
+# Полный адрес с токеном нужен ровно в одном месте - подставить в новый
+# шаблон при самообновлении. В запросы он больше не уходит.
+SELF_URL="$STATE_URL"
+# Заголовок с токеном одной строкой, чтобы не повторять его у каждого curl.
+AUTH="X-NodeRoost-Agent: \$TOK"
 # Публичный ключ подписи релизов и номер установленного релиза. Ключ вшивается
 # ОДИН РАЗ — сейчас, когда установку запустил человек. Дальше нода принимает
 # обновление, только если оно подписано этим ключом: захваченная панель своего
@@ -77,11 +92,11 @@ systemctl is-active --quiet tailscaled 2>/dev/null || {
 # Панель недоступна — молча выходим: это её дело, а не ноды. Но 404 значит другое:
 # такого узла панель больше не знает (его удалили). Тогда сообщаем по-человечески,
 # а не сыплем в журнал сырым «curl: (22) … 404» каждую минуту.
-CODE=\$(curl -sS --max-time 15 -o "\$TMP" -w '%{http_code}' "$STATE_URL" 2>/dev/null || echo 000)
+CODE=\$(curl -sS --max-time 15 -H "\$AUTH" -o "\$TMP" -w '%{http_code}' "\$API" 2>/dev/null || echo 000)
 if [ "\$CODE" = 404 ]; then
   rm -f "\$TMP"
   echo "NodeRoost: панель больше не знает этот узел — агент можно удалить:" >&2
-  echo "  curl -fsSL $STATE_URL/remove | sh" >&2
+  echo "  curl -fsSL -H '\$AUTH' \$API/remove | sh" >&2
   exit 0
 fi
 [ "\$CODE" = 200 ] || { rm -f "\$TMP"; exit 0; }
@@ -107,9 +122,9 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
   echo "\$NOW" > "\$STAMP"; echo "\$WANT_REL" > "$DIR/.update-rel"
   UPD=\$(mktemp -d)
   printf '%s' "\$AGENT_PUB_B64" | base64 -d > "\$UPD/agent.pub" 2>/dev/null
-  curl -fsS --max-time 30 -o "\$UPD/manifest.json" "$STATE_URL/manifest" 2>/dev/null
-  curl -fsS --max-time 30 -o "\$UPD/manifest.sig" "$STATE_URL/manifest.sig" 2>/dev/null
-  curl -fsS --max-time 60 -o "\$UPD/setup.tmpl" "$STATE_URL/setup.tmpl" 2>/dev/null
+  curl -fsS --max-time 30 -H "\$AUTH" -o "\$UPD/manifest.json" "\$API/manifest" 2>/dev/null
+  curl -fsS --max-time 30 -H "\$AUTH" -o "\$UPD/manifest.sig" "\$API/manifest.sig" 2>/dev/null
+  curl -fsS --max-time 60 -H "\$AUTH" -o "\$UPD/setup.tmpl" "\$API/setup.tmpl" 2>/dev/null
   if ! openssl dgst -sha256 -verify "\$UPD/agent.pub" -signature "\$UPD/manifest.sig" \
        "\$UPD/manifest.json" >/dev/null 2>&1; then
     echo "NodeRoost: ПОДПИСЬ ОБНОВЛЕНИЯ НЕВЕРНА — отказ (панель могла быть подменена)" >&2
@@ -127,7 +142,7 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
       P='@'; P="\$P\$P"
       # Адрес экранируем: символ | закрыл бы выражение sed, а & подставил бы
       # найденное - вместо рабочего скрипта на ноду лёг бы испорченный.
-      URL_ESC=\$(printf '%s' "$STATE_URL" | sed -e 's/[|&]/\\\\&/g')
+      URL_ESC=\$(printf '%s' "\$SELF_URL" | sed -e 's/[|&]/\\\\&/g')
       sed -e "s|\${P}STATE_URL\${P}|\$URL_ESC|" \\
           -e "s|\${P}SCRIPT_V\${P}|\$(printf %s "\$SUM" | cut -c1-8)|" \\
           -e "s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" \\
@@ -210,7 +225,7 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
     [ -f "\$CA_DST" ] && { rm -f "\$CA_DST"; \$CA_UPD >/dev/null 2>&1; \\
       echo "NodeRoost: сертификат CA панели убран из доверенных" >&2; }
   elif [ "\$WANT_CA" != "\$HAVE" ]; then
-    if curl -fsS --max-time 30 -o "\$TMPD/ca" "$STATE_URL/ca" 2>/dev/null; then
+    if curl -fsS --max-time 30 -H "\$AUTH" -o "\$TMPD/ca" "\$API/ca" 2>/dev/null; then
       GOT=\$(openssl x509 -in "\$TMPD/ca" -noout -fingerprint -sha256 2>/dev/null \\
         | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
       # Корень панели ставится в СИСТЕМНОЕ хранилище доверенных, то есть ему
@@ -280,7 +295,7 @@ if [ -n "\$CERTS" ]; then
         [ -f "\$KEY" ] || { openssl ecparam -genkey -name prime256v1 -out "\$KEY" 2>/dev/null && chmod 600 "\$KEY"; }
         openssl req -new -key "\$KEY" -subj "/CN=\$NAME" -addext "subjectAltName=DNS:\$NAME" -out "\$TMPD/csr" 2>/dev/null
         CODE=\$(curl -sS --max-time 120 -X POST --data-binary @"\$TMPD/csr" -o "\$TMPD/crt" \
-          -w '%{http_code}' "$STATE_URL/csr?name=\$NAME" 2>/dev/null || echo 000)
+          -w '%{http_code}' -H "\$AUTH" "\$API/csr?name=\$NAME" 2>/dev/null || echo 000)
         if [ "\$CODE" = 200 ]; then
           mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
           CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
@@ -290,7 +305,7 @@ if [ -n "\$CERTS" ]; then
         rm -f "\$TMPD/csr" "\$TMPD/crt"
       elif [ -n "\$FP" ] && [ "\$FP" != "\$LOCAL" ]; then
         CODE=\$(curl -sS --max-time 30 -o "\$TMPD/crt" -w '%{http_code}' \
-          "$STATE_URL/cert?name=\$NAME" 2>/dev/null || echo 000)
+          -H "\$AUTH" "\$API/cert?name=\$NAME" 2>/dev/null || echo 000)
         [ "\$CODE" = 200 ] && {
           mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
           CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
@@ -341,7 +356,7 @@ fi
 # DNS меша. Сервер со своим резолвером, забравший весь DNS в меш, перестаёт
 # видеть внутренние имена и делает это молча, поэтому настройку держит панель, а
 # не человек на ноде: выставленное руками стирается первым же переподключением
-# (скрипт зовёт `tailscale up --reset`).
+# (скрипт зовёт tailscale up --reset).
 if [ -n "\$MESH_DNS" ]; then
   tailscale set --accept-dns="\$MESH_DNS"
 fi
@@ -351,7 +366,7 @@ rm -f "\$TMP"
 # агента от ноды, которая просто дёргает свой URL и ничего не делает. Шлём хеш
 # применённого состояния — по нему видно и то, что нода отстала от задания.
 HASH=\$(sha256sum "$DIR/state" 2>/dev/null | cut -d' ' -f1)
-[ -n "\$HASH" ] && curl -fsS --max-time 10 -X POST "$STATE_URL/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
+[ -n "\$HASH" ] && curl -fsS --max-time 10 -H "\$AUTH" -X POST "\$API/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
 EOF
 chmod 700 "$DIR/apply.sh"
 
@@ -393,7 +408,7 @@ bad() { echo "  [FAIL] $1" >&2; fail=1; }
 
 systemctl is-active --quiet noderoost-agent.timer && ok "агент запущен (раз в минуту)" \
   || bad "таймер агента не активен (systemctl status noderoost-agent.timer)"
-curl -fsS --max-time 15 "$STATE_URL" >/dev/null 2>&1 \
+curl -fsS --max-time 15 -H "X-NodeRoost-Agent: $AGENT_TOKEN" "$API_URL" >/dev/null 2>&1 \
   && ok "панель отвечает, состояние забирается" \
   || bad "не достучаться до панели: $STATE_URL (DNS/сеть/токен)"
 [ -f "$DIR/state" ] && ok "состояние применено" || bad "состояние не получено"

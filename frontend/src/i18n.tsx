@@ -507,6 +507,14 @@ const EN: Record<string, string> = {
   'На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Обновление ставится только с подписью: нода проверит её ключом, вшитым при установке, и чужой скрипт не примет.':
     'The node runs an agent from an earlier release — it does not understand the panel’s newer abilities. An update installs only when signed: the node checks it against the key baked in at install time and refuses anything else.',
   'Обновить агента': 'Update the agent',
+  'Перевыпустить': 'Re-issue',
+  'Выпускаем…': 'Issuing…',
+  'Токен агента выдан {date}': 'Agent token issued on {date}',
+  'Токен агента выдан давно': 'Agent token issued a while ago',
+  'Токен выдан заново. Поставьте агента на ноде командой ниже.':
+    'A new token has been issued. Install the agent on the node with the command below.',
+  'Старый токен перестанет работать сразу, и агента на ноде придётся поставить заново — команда появится здесь же. Продолжить?':
+    'The old token stops working immediately, and the agent has to be installed on the node again — the command will appear right here. Continue?',
   'Отправляем…': 'Sending…',
   '…или командой на ноде': '…or by command on the node',
   'Заказано — нода проверит подпись и обновится в течение минуты':

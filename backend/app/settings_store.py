@@ -631,7 +631,45 @@ async def save_join_script(
     await _set_raw(session, JOIN_KEY, json.dumps(data, ensure_ascii=False))
 
 
+# Сколько ссылка живет ПОСЛЕ первой выдачи. Прямая одноразовость здесь вредит:
+# человек запускает команду, та падает на полпути (забыл sudo, нет сети), он
+# повторяет - и получает 404 вместо установки. Десять минут покрывают повторы
+# того, кто сейчас стоит у консоли, и закрывают ссылку задолго до конца часа.
+_JOIN_GRACE_S = 600
+
+
+@serialized
+async def take_join_script(session: AsyncSession, token: str) -> str | None:
+    """Выдать скрипт и отметить ссылку как выданную.
+
+    Без отметки ссылка жила целый час, и любой, кто ее увидел (плечо, чат,
+    история браузера), мог подключить в сеть СВОЮ машину - и если успевал первым,
+    панель применяла к ней настройки, приготовленные для своей.
+    """
+    raw = await _get_raw(session, JOIN_KEY)
+    data = json.loads(raw) if raw else {}
+    item = data.get(token)
+    if not item:
+        return None
+    now = datetime.now(timezone.utc)
+    if str(item.get("expires_at", "")) <= now.isoformat():
+        return None  # протух вместе с ключом
+    first = item.get("first_at")
+    if first:
+        try:
+            if (now - datetime.fromisoformat(first)).total_seconds() > _JOIN_GRACE_S:
+                return None
+        except (ValueError, TypeError):
+            return None  # испорченная отметка - считаем ссылку выданной
+    else:
+        item["first_at"] = now.isoformat()
+        data[token] = item
+        await _set_raw(session, JOIN_KEY, json.dumps(data, ensure_ascii=False))
+    return str(item.get("script") or "")
+
+
 async def get_join_script(session: AsyncSession, token: str) -> str | None:
+    """Чтение без отметки - для проверок и тестов."""
     raw = await _get_raw(session, JOIN_KEY)
     data = json.loads(raw) if raw else {}
     item = data.get(token)

@@ -322,3 +322,74 @@ async def test_agent_counts_as_installed_only_after_it_applied(client):
 
     real = (await client.get("/api/agent/3", headers=h)).json()
     assert real["installed"] is True and real["polling_only"] is False
+
+
+def test_token_does_not_travel_in_the_url():
+    """Токен стоял в пути, а путь попадает в access-лог любого прокси по дороге.
+    Агент ходит раз в минуту, так что токены всех нод там оказывались гарантированно."""
+    setup = agent.build_setup("https://hs.example/agent/s3cr3t-token")
+    for line in setup.split("\n"):
+        if "curl" not in line or line.lstrip().startswith("#"):
+            continue
+        assert "s3cr3t-token" not in line, line
+
+
+def test_token_is_baked_into_the_node_file_but_sent_as_a_header():
+    """На самой ноде токен лежать обязан - без него агенту нечем представляться;
+    важно, что в сеть он уходит заголовком, а каталог агента закрыт правами 0700."""
+    setup = agent.build_setup("https://hs.example/agent/s3cr3t-token")
+    assert 'AGENT_TOKEN="${STATE_URL##*/}"' in setup
+    assert 'API_URL="${STATE_URL%/*}/-"' in setup
+    assert 'AUTH="X-NodeRoost-Agent: ' + chr(92) + '$TOK"' in setup
+    assert 'chmod 700 "$DIR"' in setup
+
+
+def test_update_keeps_the_four_old_placeholders():
+    """Старый агент при самообновлении заполняет РОВНО четыре поля.
+
+    Пятый плейсхолдер в шаблоне означал бы, что после обновления он остался бы
+    незаполненным сразу на всех нодах - именно поэтому токен вычисляется из STATE_URL.
+    """
+    import re
+
+    found = set(re.findall(r"@@([A-Z_]+)@@", agent.TEMPLATE))
+    assert found == {"STATE_URL", "SCRIPT_V", "PUBKEY", "RELEASE"}, found
+
+
+async def test_panel_takes_the_token_from_the_header(client, monkeypatch):
+    """Сервер принимает токен заголовком, а в пути довольствуется заглушкой."""
+    from app import settings_store
+
+    async def fake(session, token):
+        return ("7", {"token": token, "routes": ["10.0.0.0/24"]}) if token == "realtok" else None
+
+    monkeypatch.setattr(settings_store, "get_agent_by_token", fake)
+    async def noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(settings_store, "touch_agent_poll", noop)
+
+    ok = await client.get("/agent/-", headers={"X-NodeRoost-Agent": "realtok"})
+    assert ok.status_code == 200
+    assert "10.0.0.0/24" in ok.text
+
+    # заголовка нет - смотрим в путь, старый агент должен работать
+    legacy = await client.get("/agent/realtok")
+    assert legacy.status_code == 200
+
+    # заглушка без заголовка ничего не дает
+    assert (await client.get("/agent/-")).status_code == 404
+
+
+def test_nothing_in_apply_runs_while_setup_writes_it():
+    """Тело apply.sh уезжает в heredoc без кавычек: setup.sh сам подставляет в
+    него адрес и каталог. Значит любая НЕэкранированная подстановка исполняется
+    на ноде прямо при установке. Так комментарий с обратными кавычками вокруг
+    tailscale up --reset звал эту команду на каждой ноде, и ее вывод попадал в
+    текст apply.sh вместо кавычек."""
+    import re
+
+    body = agent.TEMPLATE.split('cat > "$DIR/apply.sh" <<EOF\n', 1)[1]
+    body = body.split("\nEOF\n", 1)[0]
+    assert "`" not in body, "обратные кавычки в heredoc исполняются"
+    assert not re.findall(r"(?<!\\)\$\(", body), "подстановка $(...) без \\ исполняется"

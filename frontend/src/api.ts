@@ -245,9 +245,17 @@ export type AgentCfg = {
   // агент свежий (его скрипт той же версии, что отдаёт панель); false — он от
   // прошлого релиза и новых возможностей просто не понимает
   script_current: boolean
+  // когда выдан токен; срока жизни у него нет намеренно — истёкший сам по
+  // себе погасил бы агента на рабочей ноде без всякого повода
+  token_at: string | null
 }
 export function getAgent(nodeId: string): Promise<AgentCfg> {
   return api<AgentCfg>(`/api/agent/${nodeId}`)
+}
+// Выдать ноде новый токен агента: старый перестаёт работать сразу,
+// агента на ноде надо поставить заново командой из ответа.
+export function reissueAgentToken(nodeId: string): Promise<AgentCfg> {
+  return api<AgentCfg>(`/api/agent/${nodeId}/reissue`, { method: 'POST' })
 }
 // Заказать ноде обновление агента до текущего подписанного релиза. Нода поставит
 // его, только если подпись сойдётся с ключом, вшитым при установке.
