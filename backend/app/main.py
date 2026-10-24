@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import secrets
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -27,23 +29,44 @@ from app.heartbeat import heartbeat_loop
 from app.routing import routing_loop
 
 
+log = logging.getLogger("noderoost.main")
+
 _WEAK_SECRETS = {"", "changeme", "dev-insecure-change-me"}
 _WEAK_PASSWORDS = {"", "changeme", "admin"}
 
 
 def _enforce_secrets(settings) -> None:
-    """Отказываемся стартовать в проде с дефолтными/слабыми секретами."""
+    """Отказываемся стартовать в проде с дефолтными/слабыми секретами.
+
+    В отладке панель не падает (иначе локальный запуск требовал бы возни с
+    .env), но дефолтный секрет подписи ВСЁ РАВНО не остаётся: он опубликован в
+    исходниках, и с ним кто угодно подписал бы себе админский токен. Вместо
+    отказа подставляем случайный на время процесса - после перезапуска сессии
+    просто придётся открыть заново.
+    """
+    weak_secret = settings.jwt_secret in _WEAK_SECRETS or len(settings.jwt_secret) < 32
+    weak_password = (
+        settings.admin_password in _WEAK_PASSWORDS or len(settings.admin_password) < 8
+    )
     if settings.debug:
+        if weak_secret:
+            settings.jwt_secret = secrets.token_hex(32)
+            log.warning(
+                "NODEROOST_DEBUG=1 и слабый NODEROOST_JWT_SECRET: подставлен "
+                "случайный секрет на время процесса, выданные токены умрут с ним"
+            )
+        if weak_password:
+            log.warning("NODEROOST_DEBUG=1: пароль администратора слабый")
         return
-    if settings.jwt_secret in _WEAK_SECRETS or len(settings.jwt_secret) < 32:
+    if weak_secret:
         raise RuntimeError(
             "NODEROOST_JWT_SECRET не задан или слишком слабый — задайте случайный "
             "секрет (openssl rand -hex 32). Панель не запущена в целях безопасности."
         )
-    if settings.admin_password in _WEAK_PASSWORDS:
+    if weak_password:
         raise RuntimeError(
-            "NODEROOST_ADMIN_PASSWORD не задан или дефолтный — задайте надёжный "
-            "пароль. Панель не запущена в целях безопасности."
+            "NODEROOST_ADMIN_PASSWORD не задан, дефолтный или короче 8 символов — "
+            "задайте надёжный пароль. Панель не запущена в целях безопасности."
         )
 
 

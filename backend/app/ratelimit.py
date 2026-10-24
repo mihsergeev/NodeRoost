@@ -9,7 +9,11 @@ import time
 
 WINDOW = 300  # сек: окно подсчёта неудачных попыток
 MAX_FAILURES = 10  # неудач в окне до блокировки
-LOCKOUT = 900  # сек: длительность блокировки после превышения
+# Сек: сколько держится блокировка после превышения. Отсчитывается от последней
+# неудачи, а не от окна подсчёта: раньше решение принималось по WINDOW, и через
+# 5 минут блокировка снималась сама - получалось 10 попыток на каждые 5 минут
+# вместо обещанных 15.
+LOCKOUT = 900
 
 # Публичные роуты по токену (/agent/*): доступны из любой точки
 # интернета и на КАЖДЫЙ запрос читают настройки из БД — в том числе когда токен
@@ -54,15 +58,19 @@ def is_locked(key: str, *, now: float | None = None) -> bool:
         _failures[key] = times
     else:
         _failures.pop(key, None)
-    recent = [ts for ts in times if t - ts < WINDOW]
-    # блокируем, если за окно набралось >= MAX_FAILURES и последняя ещё «свежая»
-    return len(recent) >= MAX_FAILURES
+    # блокируем, пока в пределах LOCKOUT набрано >= MAX_FAILURES неудач
+    return len(times) >= MAX_FAILURES
 
 
 def record_failure(key: str, *, now: float | None = None) -> bool:
     """Регистрирует неудачную попытку. Возвращает True, если ИМЕННО эта попытка
     перевела ключ в состояние блокировки (для однократного алерта)."""
     t = _now(now)
+    # Тот же потолок, что и у счётчика публичных роутов: иначе поток неудачных
+    # входов с разных адресов копит записи без предела и выедает память панели.
+    if len(_failures) > _MAX_KEYS:
+        for k in [k for k, v in _failures.items() if not v or t - v[-1] > LOCKOUT]:
+            _failures.pop(k, None)
     times = [ts for ts in _failures.get(key, []) if t - ts < LOCKOUT]
     times.append(t)
     _failures[key] = times

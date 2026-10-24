@@ -20,6 +20,19 @@ log = logging.getLogger("noderoost.heartbeat")
 HEARTBEAT_INTERVAL = 60  # сек
 
 
+def _one_line(v: object) -> str:
+    """Значение для файла пульса: ровно одна строка, без управляющих символов.
+
+    Пульс читает хостовый сторож (ops/panel-watchdog.sh) построчно, первым
+    совпадением grep. Перевод строки в значении дописал бы туда лишнюю пару
+    ключ=значение ВЫШЕ настоящей и подменил бы адрес, куда root с хоста шлёт
+    алерты вместе с токеном бота. Схема такие значения уже не пропускает, но
+    сюда они приходят ещё и из переменных окружения, которые валидацию не
+    проходят, - поэтому режем на месте записи.
+    """
+    return "".join(ch for ch in str(v or "") if ch >= " " and ch != "\x7f")
+
+
 async def _self_test(cfg: dict) -> bool:
     """Проверяет канал алертов. Telegram → getMe (токен валиден + API доступен).
     Только webhook/ничего → безопасно протестировать нечем, считаем ок."""
@@ -45,11 +58,11 @@ async def heartbeat_loop(session_factory, settings: Settings) -> None:
             ok = await _self_test(cfg)
             lines = [
                 f"ts={int(time.time())}",
-                f"panel={panel}",
-                f"tg_token={cfg.get('telegram_token') or ''}",
-                f"tg_chat={cfg.get('telegram_chat') or ''}",
-                f"tg_api={cfg.get('telegram_api') or ''}",
-                f"webhook={cfg.get('webhook') or ''}",
+                f"panel={_one_line(panel)}",
+                f"tg_token={_one_line(cfg.get('telegram_token'))}",
+                f"tg_chat={_one_line(cfg.get('telegram_chat'))}",
+                f"tg_api={_one_line(cfg.get('telegram_api'))}",
+                f"webhook={_one_line(cfg.get('webhook'))}",
                 f"alerts_ok={1 if ok else 0}",
             ]
             path.parent.mkdir(parents=True, exist_ok=True)

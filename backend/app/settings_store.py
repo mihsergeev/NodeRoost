@@ -1,5 +1,6 @@
 """Хранилище редактируемых настроек панели (в БД, поверх env-дефолтов)."""
 
+import hmac
 import json
 from datetime import datetime, timezone
 
@@ -382,11 +383,24 @@ async def set_agent_all(session: AsyncSession, data: dict) -> None:
     await _set_raw(session, AGENT_KEY, json.dumps(data, ensure_ascii=False))
 
 
+def _same_token(stored: object, given: str) -> bool:
+    """Сравнение токена агента в постоянном времени.
+
+    Остальные секреты панели (коды 2FA, пароли) и так сравниваются так же;
+    обычное == выбивалось из этого ряда без причины.
+    """
+    # Сравниваем байты: compare_digest отказывается работать со строками, в
+    # которых есть не-ASCII, а в путь публичного роута может прийти что угодно.
+    if not isinstance(stored, str) or not isinstance(given, str):
+        return False
+    return hmac.compare_digest(stored.encode(), given.encode())
+
+
 async def get_agent_by_token(session: AsyncSession, token: str) -> tuple[str, dict] | None:
     if not token:
         return None
     for node_id, cfg in (await get_agent_all(session)).items():
-        if cfg.get("token") == token:
+        if _same_token(cfg.get("token"), token):
             return node_id, cfg
     return None
 
@@ -397,7 +411,7 @@ async def touch_agent_poll(session: AsyncSession, token: str) -> None:
     all_cfg = await get_agent_all(session)
     now = datetime.now(timezone.utc)
     for node_id, cfg in all_cfg.items():
-        if cfg.get("token") != token:
+        if not _same_token(cfg.get("token"), token):
             continue
         prev = cfg.get("last_poll")
         if prev:
@@ -423,7 +437,7 @@ async def mark_agent_applied(
     работающего агента от ноды, которая только опрашивает URL, и видит отставание."""
     all_cfg = await get_agent_all(session)
     for node_id, cfg in all_cfg.items():
-        if cfg.get("token") != token:
+        if not _same_token(cfg.get("token"), token):
             continue
         if (
             cfg.get("applied_hash") == state_hash

@@ -16,7 +16,11 @@ async def record(
     try:
         session.add(
             AuditLog(
-                username=username or "",
+                # Обрезаем так же, как target: колонка varchar(64), и строка
+                # длиннее роняла всю запись (на Postgres - ошибка вставки и
+                # откат), то есть длинным логином глушился след неудачных
+                # попыток входа. На sqlite в тестах это не всплывало.
+                username=str(username or "")[:64],
                 action=action,
                 target=str(target)[:255],
                 detail=str(detail)[:2000],

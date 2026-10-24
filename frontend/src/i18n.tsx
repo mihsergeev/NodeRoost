@@ -806,8 +806,8 @@ const EN: Record<string, string> = {
   'Неверный код': 'Invalid code',
   '2FA включена. Вход требует код из приложения.':
     '2FA is on. Login requires a code from the app.',
-  'Чтобы отключить, введите текущий код из приложения-аутентификатора.':
-    'To turn it off, enter the current code from your authenticator app.',
+  'Чтобы отключить, введите текущий пароль и код из приложения-аутентификатора.':
+    'To turn it off, enter your current password and the code from your authenticator app.',
   'Отключить 2FA': 'Disable 2FA',
   'Отсканируйте QR в приложении-аутентификаторе (Google Authenticator, Aegis, 1Password) или введите ключ вручную, затем подтвердите кодом.':
     'Scan the QR in an authenticator app (Google Authenticator, Aegis, 1Password) or enter the key manually, then confirm with a code.',

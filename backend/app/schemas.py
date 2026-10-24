@@ -27,9 +27,12 @@ class RequestModel(BaseModel):
 
 
 class LoginRequest(RequestModel):
-    username: str
-    password: str
-    otp: str | None = None
+    # Потолки не косметика: username уходит в журнал (varchar(64)), и строка
+    # длиннее молча роняла запись о неудачном входе вместе с откатом сессии -
+    # то есть одним полем запроса выключался единственный след брутфорса.
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=128)
+    otp: str | None = Field(None, max_length=16)
 
 
 class TwoFAStatusOut(BaseModel):
@@ -42,7 +45,20 @@ class TwoFASetupOut(BaseModel):
 
 
 class TwoFAVerifyRequest(RequestModel):
+    """Код плюс текущий пароль.
+
+    Пароль здесь по той же причине, что и в смене пароля: иначе угнанный токен
+    позволял привязать СВОЙ секрет 2FA к чужой учётке (или снять чужой) и
+    запереть владельца панели - войти он уже не мог ничем, кроме аварийного
+    сброса с доступом к хосту.
+    """
+
     otp: str = Field(min_length=1, max_length=16)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class TwoFASetupRequest(RequestModel):
+    password: str = Field(min_length=1, max_length=128)
 
 
 class PasswordChangeRequest(RequestModel):
@@ -762,10 +778,26 @@ class MetricsHistory(BaseModel):
 
 
 class AlertConfigIn(RequestModel):
-    telegram_token: str = ""
-    telegram_chat: str = ""
-    telegram_api: str = ""
-    webhook: str = ""
+    """Настройки канала алертов.
+
+    Управляющие символы здесь запрещены не для красоты: эти значения панель раз
+    в минуту пишет в файл пульса построчно (heartbeat.py), а хостовый сторож
+    читает его первым совпадением grep. Перевод строки внутри значения дописал
+    бы в пульс лишнюю строку ВЫШЕ настоящей - и сторож, который идёт от root вне
+    контейнера, отправил бы токен бота на чужой адрес.
+    """
+
+    telegram_token: str = Field("", max_length=200)
+    telegram_chat: str = Field("", max_length=200)
+    telegram_api: str = Field("", max_length=400)
+    webhook: str = Field("", max_length=400)
+
+    @field_validator("telegram_token", "telegram_chat", "telegram_api", "webhook")
+    @classmethod
+    def _no_control_chars(cls, v: str) -> str:
+        if any(ch < " " or ch == "\x7f" for ch in v):
+            raise ValueError("управляющие символы в значении недопустимы")
+        return v
 
 
 class AlertConfigOut(BaseModel):

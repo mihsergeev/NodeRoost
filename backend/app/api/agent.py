@@ -14,6 +14,8 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from app import agent, audit, ca, certs, routing, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, PublicRateLimit, SessionDep
+from app.hs_client import get_client
+from app.hs_util import hs_call, require_hs
 from app.schemas import AgentIn, AgentOut
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -86,9 +88,24 @@ def _out(cfg: dict, wanted_hash: str = "") -> AgentOut:
     )
 
 
+async def _require_node(node_id: str) -> None:
+    """Токен выдаём только существующей ноде.
+
+    Раньше запрос на любую строку в пути заводил запись с новым токеном, и
+    цикл по случайным идентификаторам раздувал блок настроек, который потом
+    переписывается целиком на каждый опрос агента.
+    """
+    settings = get_settings()
+    require_hs(settings)
+    if not await hs_call(get_client(settings).get_node(node_id)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
+
+
 @router.get("/{node_id}", response_model=AgentOut)
 async def get_agent(node_id: str, _: CurrentUser, session: SessionDep) -> AgentOut:
     all_cfg = await settings_store.get_agent_all(session)
+    if node_id not in all_cfg:
+        await _require_node(node_id)
     cfg = all_cfg.get(node_id, {})
     if not cfg.get("token"):  # токен выдаём один раз и держим стабильным
         cfg["token"] = secrets.token_urlsafe(16)

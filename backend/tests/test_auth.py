@@ -64,11 +64,17 @@ async def test_totp_code_used_to_enable_cannot_log_in(client):
                           json={"username": "admin", "password": ADMIN_PASSWORD})
     tok = r.json()["access_token"]
     h = {"Authorization": f"Bearer {tok}"}
-    secret = (await client.post("/api/auth/2fa/setup", json={}, headers=h)).json()["secret"]
+    setup = await client.post(
+        "/api/auth/2fa/setup", json={"password": ADMIN_PASSWORD}, headers=h
+    )
+    secret = setup.json()["secret"]
 
     used = code_at(secret)
-    assert (await client.post("/api/auth/2fa/enable", json={"otp": used},
-                              headers=h)).status_code == 200
+    assert (await client.post(
+        "/api/auth/2fa/enable",
+        json={"otp": used, "password": ADMIN_PASSWORD},
+        headers=h,
+    )).status_code == 200
     r = await client.post(
         "/api/auth/login",
         json={"username": "admin", "password": ADMIN_PASSWORD, "otp": used},
@@ -76,8 +82,11 @@ async def test_totp_code_used_to_enable_cannot_log_in(client):
     assert r.status_code == 401          # тот же код на вход больше не годится
 
     # возвращаем пользователя как было: база у тестов общая
-    off = await client.post("/api/auth/2fa/disable",
-                            json={"otp": code_at(secret, 1)}, headers=h)
+    off = await client.post(
+        "/api/auth/2fa/disable",
+        json={"otp": code_at(secret, 1), "password": ADMIN_PASSWORD},
+        headers=h,
+    )
     assert off.status_code == 200 and off.json()["enabled"] is False
 
 
@@ -127,3 +136,60 @@ async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
     assert verify_password("FromEnvPass123", user.password_hash)
     assert user.totp_enabled is False and user.totp_secret == ""
     assert user.token_version == before + 1      # старые сессии больше не годятся
+
+
+async def test_2fa_setup_needs_the_password(client):
+    """Токена мало: иначе угнанная сессия привязывает свой второй фактор.
+
+    Владелец панели после этого не войдёт ничем - ни паролем, ни кодом,
+    которого у него нет, - и останется только аварийный сброс с доступом к
+    хосту. Поэтому включение и выключение 2FA подтверждается паролем, как и
+    смена пароля.
+    """
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    assert (await client.post("/api/auth/2fa/setup", json={}, headers=h)).status_code == 422
+    wrong = await client.post(
+        "/api/auth/2fa/setup", json={"password": "not-the-password"}, headers=h
+    )
+    assert wrong.status_code == 400
+    assert (await client.post(
+        "/api/auth/2fa/setup", json={"password": ADMIN_PASSWORD}, headers=h
+    )).status_code == 200
+
+
+async def test_logout_kills_the_token_server_side(client):
+    """Кнопка «Выйти» завершает сессию, а не только стирает её в браузере."""
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    assert (await client.get("/api/auth/me", headers=h)).status_code == 200
+    assert (await client.post("/api/auth/logout", headers=h)).status_code == 204
+    assert (await client.get("/api/auth/me", headers=h)).status_code == 401
+
+
+async def test_long_username_still_lands_in_the_journal(client):
+    """Логин длиннее колонки журнала не должен стирать след попытки входа.
+
+    Колонка varchar(64): на Postgres запись падала целиком и откатывалась,
+    то есть один длинный логин выключал журналирование брутфорса.
+    """
+    long_name = "a" * 64
+    assert (await client.post(
+        "/api/auth/login", json={"username": long_name, "password": "nope"}
+    )).status_code == 401
+
+    r = await client.post("/api/auth/login",
+                          json={"username": "admin", "password": ADMIN_PASSWORD})
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    rows = (await client.get("/api/logs/audit", headers=h)).json()
+    fails = [x for x in rows if x["action"] == "login_fail"]
+    assert any(x["username"] == long_name for x in fails)
+
+    # и слишком длинный логин отвергается схемой, не доходя до базы
+    assert (await client.post(
+        "/api/auth/login", json={"username": "a" * 65, "password": "nope"}
+    )).status_code == 422

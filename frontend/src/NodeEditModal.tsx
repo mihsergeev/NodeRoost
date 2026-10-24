@@ -152,6 +152,7 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
         kind !== node.kind ||
         effAdmin !== node.admin ||
         muted !== node.muted ||
+        hidden !== node.hidden ||
         effGateway !== node.exit_gateway ||
         effVia.join(',') !== oldVia.join(',') ||
         effForce !== (node.force_exit || '') ||

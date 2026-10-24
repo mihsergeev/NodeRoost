@@ -11,6 +11,7 @@ from app.schemas import (
     PasswordChangeRequest,
     TokenResponse,
     TwoFASetupOut,
+    TwoFASetupRequest,
     TwoFAStatusOut,
     TwoFAVerifyRequest,
     UserOut,
@@ -26,6 +27,29 @@ _DUMMY_HASH = hash_password("no-such-user-timing-guard")
 
 def _client_key(request: Request) -> str:
     return client_ip(request)
+
+
+def _stepup_key(request: Request) -> str:
+    return f"stepup:{_client_key(request)}"
+
+
+def _require_password(request: Request, user, password: str) -> None:
+    """Подтверждение текущим паролем перед операцией с доступом в панель.
+
+    Один токен не должен быть достаточным условием: его можно угнать, а срок
+    жизни у него длинный. Счётчик отдельный от входного, чтобы подбор пароля
+    здесь не был бесплатным.
+    """
+    key = _stepup_key(request)
+    if ratelimit.is_locked(key):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Слишком много неверных попыток — подождите немного.",
+        )
+    if not verify_password(password, user.password_hash):
+        ratelimit.record_failure(key)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный текущий пароль")
+    ratelimit.clear(key)
 
 
 async def _record_failure(session, settings, key: str, username: str, action: str) -> None:
@@ -90,16 +114,7 @@ async def change_password(
     body: PasswordChangeRequest, request: Request, user: CurrentUser, session: SessionDep
 ) -> TokenResponse:
     """Смена пароля из UI: проверяет текущий, инвалидирует все старые токены."""
-    step_key = f"stepup:{_client_key(request)}"
-    if ratelimit.is_locked(step_key):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Слишком много неверных попыток — подождите немного.",
-        )
-    if not verify_password(body.current_password, user.password_hash):
-        ratelimit.record_failure(step_key)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный текущий пароль")
-    ratelimit.clear(step_key)
+    _require_password(request, user, body.current_password)
     user.password_hash = hash_password(body.new_password)
     user.token_version += 1  # все ранее выданные токены становятся недействительны
     await session.commit()
@@ -117,6 +132,19 @@ async def change_password(
     return TokenResponse(access_token=token)
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(request: Request, user: CurrentUser, session: SessionDep) -> None:
+    """Выход завершает сессию на сервере, а не только в браузере.
+
+    Раньше кнопка «Выйти» просто стирала токен из localStorage, и снятая до
+    этого копия работала ещё до конца срока жизни (12 часов). Поднимаем версию
+    токенов: все ранее выданные перестают проходить проверку.
+    """
+    user.token_version += 1
+    await session.commit()
+    await audit.record(session, user.username, "logout", user.username, _client_key(request))
+
+
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser) -> User:
     return user
@@ -128,7 +156,10 @@ async def twofa_status(user: CurrentUser) -> TwoFAStatusOut:
 
 
 @router.post("/2fa/setup", response_model=TwoFASetupOut)
-async def twofa_setup(user: CurrentUser, session: SessionDep) -> TwoFASetupOut:
+async def twofa_setup(
+    body: TwoFASetupRequest, request: Request, user: CurrentUser, session: SessionDep
+) -> TwoFASetupOut:
+    _require_password(request, user, body.password)
     if user.totp_enabled:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -146,8 +177,9 @@ async def twofa_setup(user: CurrentUser, session: SessionDep) -> TwoFASetupOut:
 
 @router.post("/2fa/enable", response_model=TwoFAStatusOut)
 async def twofa_enable(
-    body: TwoFAVerifyRequest, user: CurrentUser, session: SessionDep
+    body: TwoFAVerifyRequest, request: Request, user: CurrentUser, session: SessionDep
 ) -> TwoFAStatusOut:
+    _require_password(request, user, body.password)
     if user.totp_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA уже включена")
     if not user.totp_secret:
@@ -169,8 +201,9 @@ async def twofa_enable(
 
 @router.post("/2fa/disable", response_model=TwoFAStatusOut)
 async def twofa_disable(
-    body: TwoFAVerifyRequest, user: CurrentUser, session: SessionDep
+    body: TwoFAVerifyRequest, request: Request, user: CurrentUser, session: SessionDep
 ) -> TwoFAStatusOut:
+    _require_password(request, user, body.password)
     if not user.totp_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA не включена")
     counter = totp.matched_counter(user.totp_secret, body.otp)

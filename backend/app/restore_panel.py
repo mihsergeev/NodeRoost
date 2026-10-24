@@ -89,8 +89,17 @@ async def restore_panel(path: str) -> dict:
                 if existing is not None:
                     existing.password_hash = u["password_hash"]
                     existing.totp_secret = u.get("totp_secret", "") or ""
-                    existing.totp_enabled = bool(u.get("totp_enabled", False))
-                    existing.token_version = int(u.get("token_version", 0))
+                    # Второй фактор не понижаем: архив, снятый до его включения,
+                    # иначе тихо выключил бы 2FA при восстановлении.
+                    existing.totp_enabled = bool(
+                        u.get("totp_enabled", False) or existing.totp_enabled
+                    )
+                    # Версию токенов двигаем только вверх и ещё на шаг: иначе
+                    # старый архив вернул бы счётчик назад и оживил токены,
+                    # отозванные при смене пароля, до конца их срока.
+                    existing.token_version = (
+                        max(existing.token_version, int(u.get("token_version", 0))) + 1
+                    )
                 else:
                     session.add(
                         User(
