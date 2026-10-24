@@ -47,12 +47,17 @@ async def _join_link(session, settings, script: str, os_name: str, expires_at: s
 
 @public_router.get("/join/{token}")
 async def join_script(token: str, session: SessionDep) -> Response:
-    """Скрипт подключения по одноразовой ссылке. Секрет здесь — сам токен."""
-    script = await settings_store.get_join_script(session, token)
+    """Скрипт подключения по ссылке. Секрет здесь — сам токен.
+
+    Первый запрос запускает короткий отсчет: повторы того, кто сейчас стоит у
+    консоли, работают, а сама ссылка закрывается задолго до конца часа.
+    """
+    script = await settings_store.take_join_script(session, token)
     if script is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            "Ссылка не найдена или устарела — создайте подключение в панели заново",
+            "Ссылка не найдена, устарела или уже была использована — "
+            "создайте подключение в панели заново",
         )
     return Response(content=script, media_type="text/plain; charset=utf-8")
 

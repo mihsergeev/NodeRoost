@@ -304,3 +304,43 @@ async def test_pending_note_survives_a_meta_written_first(session):
     meta = await settings_store.get_node_meta(session)
     assert meta["9"]["description"] == "стенд"
     assert meta["9"]["kind"] == "server"  # выставленное руками не затёрто
+
+
+async def test_join_link_closes_after_it_has_been_handed_out(client):
+    """Ссылка жила целый час и не закрывалась после выдачи: кто увидел ее в
+    этот час, мог подключить в сеть свою машину вместо чужой."""
+    from datetime import datetime, timedelta, timezone
+
+    from app import settings_store
+    from app.db import create_engine_and_factory
+    from app.config import get_settings
+
+    settings = get_settings()
+    engine, factory = create_engine_and_factory(settings.db_url)
+    exp = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    async with factory() as session:
+        await settings_store.save_join_script(session, "jtok", "echo hi", "linux", exp)
+
+    first = await client.get("/join/jtok")
+    assert first.status_code == 200 and "echo hi" in first.text
+
+    # тот же человек повторяет команду - должно работать
+    again = await client.get("/join/jtok")
+    assert again.status_code == 200
+
+    # прошло больше льготного окна - ссылка закрыта
+    async with factory() as session:
+        raw = await settings_store._get_raw(session, settings_store.JOIN_KEY)
+        import json
+
+        data = json.loads(raw)
+        data["jtok"]["first_at"] = (
+            datetime.now(timezone.utc) - timedelta(seconds=settings_store._JOIN_GRACE_S + 60)
+        ).isoformat()
+        await settings_store._set_raw(
+            session, settings_store.JOIN_KEY, json.dumps(data, ensure_ascii=False)
+        )
+
+    late = await client.get("/join/jtok")
+    assert late.status_code == 404
+    await engine.dispose()

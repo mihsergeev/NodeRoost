@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   getAgent,
+  reissueAgentToken,
   resolveHost,
   setAgent,
   setNodeRoutes,
@@ -35,6 +36,8 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
   const [updBusy, setUpdBusy] = useState(false)
   const [updMsg, setUpdMsg] = useState<string | null>(null)
   const [updErr, setUpdErr] = useState<string | null>(null)
+  // перевыпуск токена: старый умирает сразу, поэтому только с подтверждением
+  const [reBusy, setReBusy] = useState(false)
 
   // маршруты, которые нода анонсирует САМА (не через агента) — их по-прежнему
   // одобряем галками, чтобы ручной сценарий не сломался
@@ -156,6 +159,31 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
   // маршруты, анонсированные вручную (не заказанные через панель)
   const manual = advertised.filter((r) => !agent?.routes.includes(r))
 
+  async function reissue() {
+    if (
+      !window.confirm(
+        t('Старый токен перестанет работать сразу, и агента на ноде придётся поставить заново — команда появится здесь же. Продолжить?'),
+      )
+    ) {
+      return
+    }
+    setReBusy(true)
+    setUpdErr(null)
+    setUpdMsg(null)
+    try {
+      setAgentCfg(await reissueAgentToken(node.id))
+      setUpdMsg(t('Токен выдан заново. Поставьте агента на ноде командой ниже.'))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setUpdErr(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setReBusy(false)
+    }
+  }
+
   return (
     <div className="modal-backdrop" onClick={dismiss}>
       <div className="card modal" onClick={(e) => e.stopPropagation()}>
@@ -189,6 +217,20 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
               <span className="dot dot-ok" />
               <span>{t('Агент установлен — настройки применяются автоматически')}</span>
             </div>
+
+            {/* Токен выдавался один раз и навсегда: утёк — сменить было нечем,
+                а им заказывается сертификат на внутренние имена этой ноды. */}
+            <p className="muted small">
+              {agent.token_at
+                ? t('Токен агента выдан {date}', {
+                    date: new Date(agent.token_at).toLocaleDateString(),
+                  })
+                : t('Токен агента выдан давно')}
+              {' '}
+              <button className="ghost small" onClick={reissue} disabled={reBusy || busy}>
+                {reBusy ? t('Выпускаем…') : t('Перевыпустить')}
+              </button>
+            </p>
 
             {/* Агент от прошлого релиза молча не умеет нового: выглядит это как
                 «включил в панели — ничего не произошло». Свежие обновляются сами,

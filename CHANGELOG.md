@@ -5,6 +5,48 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.21.0] - 2026-10-24
+
+### Changed
+
+- **The agent token no longer travels in the request path - it goes in the
+  `X-NodeRoost-Agent` header.** In the path it ended up in the reverse proxy
+  access log, in the shell history on the node and in the `Referer` of nearby
+  requests, and that token can order a certificate for the node's internal name
+  signed by the panel's own root. The old `/agent/<token>/...` path still works:
+  otherwise every agent already installed would have dropped off at once. There
+  is no fifth placeholder in the template - an old agent updating itself
+  substitutes exactly the four it knows about and would have left a new one
+  empty, so the new agent derives both the token and the base address from the
+  same `@@STATE_URL@@`.
+
+### Added
+
+- **The node card now shows when the agent token was issued, with a "Re-issue"
+  button.** The token was handed out once and for good: if it leaked, there was
+  nothing to rotate. There is deliberately no hard expiry - an expired token
+  would silently kill the agent on a working node; instead the panel shows the
+  issue date, and re-issuing asks for confirmation and hands over the install
+  command right away, with the old token dying at that moment. Re-issues are
+  written to the audit log.
+
+### Fixed
+
+- **A join link kept working for a full hour after a machine had already been
+  installed with it.** Anyone who caught sight of it (over a shoulder, in a
+  chat, in browser history) could join THEIR machine to the network and pick up
+  the settings prepared for someone else's. The first hand-out now starts a
+  short clock: ten minutes for the retries of whoever is standing at the console
+  (the command died halfway, sudo was missing), after that the link is closed
+  even if the hour has not run out.
+- **A comment in the agent body ran `tailscale up --reset` on the node during
+  install.** The body of apply.sh is written to the node inside an unquoted
+  heredoc, so the shell parses it while writing, and the comment had the command
+  name in backticks. On a node already connected to headscale tailscale refused
+  to change the login server, so the error only littered the install output, but
+  the command's output was spliced into the script text in place of the
+  backticks. A test now keeps backticks and unescaped `$(...)` out of that body.
+
 ## [0.20.4] - 2026-10-24
 
 ### Fixed
