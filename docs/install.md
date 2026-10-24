@@ -36,8 +36,14 @@ surface is exposed.
 curl -fsSL https://raw.githubusercontent.com/mihsergeev/NodeRoost/main/ops/install.sh \
   | sudo bash -s -- \
       --panel-domain panel.example.com \
-      --hs-domain hs.example.com
+      --hs-domain hs.example.com \
+      --allow-ips "203.0.113.10"
 ```
+
+Put your own address in `--allow-ips` (`curl -s https://ifconfig.me`). Without it
+the script refuses to run: the panel is the control plane of the whole network, and
+an installer that puts it on the internet by itself defeats the point. To let
+anyone reach the login page, say so with `--open-to-world` instead of `--allow-ips`.
 
 It installs Docker, fetches NodeRoost into `/opt/noderoost`, generates the
 secrets, brings up the panel, headscale and Caddy, obtains the certificates and
@@ -64,7 +70,8 @@ but leaves passwords, the database and issued certificates alone.
 |---|---|
 | `--panel-domain DOMAIN` | The panel's name. Required. |
 | `--hs-domain DOMAIN` | The control server's name. Required. |
-| `--allow-ips "LIST"` | Space-separated addresses allowed into the panel. Open to everyone by default. |
+| `--allow-ips "LIST"` | Space-separated addresses and subnets allowed into the panel. Required unless `--open-to-world` is given. Nodes are not affected: the control server stays reachable from anywhere. |
+| `--open-to-world` | Let anyone reach the login page instead of `--allow-ips`. Then a password is all that stands between the internet and the control plane. |
 | `--ufw` | Configure the firewall: deny everything except SSH, 80, 443 and 3478/udp. |
 | `--dir PATH` | Where to install. `/opt/noderoost` by default. |
 | `--version TAG` | Image version. Latest release by default. |
@@ -253,6 +260,34 @@ press "already done" there.
 
 ---
 
+## Backups off the server
+
+The panel's archives sit next to the panel itself, in `data/backups`, so they do
+not survive losing the server. `ops/backup-offsite.sh` ships them into restic:
+
+```bash
+sudo install -d -m700 /lib65/noderoost
+sudo tee /lib65/noderoost/offsite.env >/dev/null <<'EOF'
+export RESTIC_REPOSITORY="rest:https://user:pass@backup.example.com/noderoost/"
+export RESTIC_PASSWORD="repository encryption password"
+EOF
+sudo chmod 600 /lib65/noderoost/offsite.env
+sudo apt install -y restic
+cd /opt/noderoost && sudo ops/update.sh
+```
+
+The rest happens on its own: `update.sh` and `install.sh` see `offsite.env`, put
+the script into `/lib65/noderoost` and add a cron entry for 03:30. A failed upload
+sends a message to the same channel as the panel's alerts, and a second one when it
+starts working again. Without that the failure would go unnoticed: archives keep
+piling up on the server, the panel shows a fresh backup, and everything looks fine.
+
+Prefer an append-only repository (rest-server): then taking over the panel's server
+does not let anyone erase the older copies. Retention in that mode is configured on
+the storage side — the script never deletes anything.
+
+---
+
 ## Installing without the script
 
 Nothing magic happens in it — the same steps by hand:
@@ -280,7 +315,10 @@ docker compose up -d backend
 `COMPOSE_FILE` — the frontend publishes `NODEROOST_BIND` again
 (`127.0.0.1:8080` by default), proxy to that. For the control server's domain
 reproduce the rules from `deploy/Caddyfile`: `/api/v1*` and `/swagger*` → 404,
-`/pkgs/*` and `/agent/*` → the frontend, everything else → `headscale:8080`.
+`/pkgs/*`, `/agent/*`, `/join/*` and `/ca/*` → the frontend, everything else →
+`headscale:8080`. `/join/*` and `/ca/*` are easy to miss, and without them nodes
+cannot join (the command from the panel returns 404) and the root certificate for
+internal names cannot be installed.
 For caddy-docker-proxy there is a ready override: `compose.caddy.yml`.
 
 ---

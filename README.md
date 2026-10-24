@@ -149,7 +149,7 @@ The backend needs a headscale API key, which can only be created once headscale 
 running:
 
 ```bash
-docker compose exec headscale headscale apikeys create --expiration 999d
+docker compose exec headscale headscale apikeys create --expiration 3650d
 # put it in .env as NODEROOST_HEADSCALE_API_KEY, then:
 docker compose up -d backend
 ```
@@ -177,7 +177,7 @@ Panel state lives in Postgres, headscale keeps its own SQLite.
 ## Development
 
 ```bash
-cd backend  && python -m venv .venv && .venv/bin/pip install -e . && pytest
+cd backend  && python -m venv .venv && .venv/bin/pip install -e ".[dev]" && .venv/bin/pytest
 cd frontend && npm install && npm run dev
 ```
 

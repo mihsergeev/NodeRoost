@@ -59,6 +59,15 @@ jobs:
     needs: images
     runs-on: ubuntu-latest
     steps:
+      # Anonymous imagetools inspect works only while the packages are public:
+      # flip one to private and this job starts failing with "unauthorized"
+      # right after a release, on the one step that tells us what to pin to.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # Digests are what production should pin to: we move tags ourselves, a
       # digest never changes. Printed into the release summary so nobody has to
       # go looking for them.
