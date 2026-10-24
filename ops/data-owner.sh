@@ -43,4 +43,22 @@ done
 # бэкапы содержат приватные ключи узла и дамп базы - только владельцу
 chmod 700 data/backups 2>/dev/null || true
 
-echo "владелец ./data и каталогов панели: $UID_APP (postgres, caddy и headscale/lib не тронуты)"
+# База нод headscale и его приватные ключи. Бэкенд их ЧИТАЕТ
+# (смонтировано :ro): оттуда берутся host_info для карточек нод и копия
+# для бэкапа. headscale пишет туда от root с umask 077, и после перехода
+# бэкенда на uid 10001 автобэкап падал с Permission denied.
+#
+# Владельца НЕ меняем - пишет сам headscale. Отдаем доступ ровно одной
+# группе и только на чтение. На -wal и -shm разовой правки достаточно:
+# sqlite создает их с правами самого файла базы, а не по umask процесса
+# (проверено на живом headscale: после рестарта новые -wal и -shm пришли с 640
+# и тем же владельцем и группой).
+if [ -d data/headscale/lib ]; then
+    chgrp -R "$UID_APP" data/headscale/lib
+    chmod -R g+rX data/headscale/lib
+    chmod g-w,o-rwx data/headscale/lib
+    find data/headscale/lib -type f -exec chmod g-w,o-rwx {} +
+fi
+
+echo "владелец ./data и каталогов панели: $UID_APP (postgres и caddy не тронуты,
+headscale/lib остался за headscale и открыт панели только на чтение)"

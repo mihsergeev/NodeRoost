@@ -5,6 +5,22 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.20.4] - 2026-10-24
+
+### Fixed
+
+- **The automatic backup stopped working once the backend dropped root.**
+  headscale's node database and its private keys are mode 0600 owned by root (it
+  writes them with umask 077), and the backend reads them: that is where the copy
+  for the backup and the client version for the node cards come from. As uid 10001
+  the read hit `Permission denied`, and the panel sent a "backup was NOT created"
+  alert. `ops/data-owner.sh` now gives that directory to group 10001, read-only,
+  and leaves headscale as the owner. One pass is enough for `-wal` and `-shm` too:
+  sqlite creates them with the database file's own permissions rather than the
+  process umask (verified by restarting headscale). On a fresh install
+  `ops/install.sh` calls the script a second time, after headscale's first start -
+  before that the database does not exist yet.
+
 ## [0.20.3] - 2026-10-24
 
 ### Security
