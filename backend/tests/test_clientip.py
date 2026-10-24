@@ -36,11 +36,11 @@ def test_spoofed_header_cannot_win():
 def test_tailnet_client_is_kept():
     """Панель, открытая по мешу: 100.64/10 — законный адрес клиента, а не хоп.
     Иначе все клиенты из меша делили бы один ключ лимитера."""
-    assert client_ip(_Req("100.100.0.2, 172.18.0.2")) == "100.100.0.2"
+    assert client_ip(_Req("100.64.0.2, 172.18.0.2")) == "100.64.0.2"
 
 
 def test_tailnet_spoof_still_loses_to_real_address():
-    assert client_ip(_Req(f"100.100.0.99, {PUBLIC}, 172.18.0.2")) == PUBLIC
+    assert client_ip(_Req(f"100.64.0.99, {PUBLIC}, 172.18.0.2")) == PUBLIC
 
 
 def test_garbage_is_ignored():
@@ -49,3 +49,29 @@ def test_garbage_is_ignored():
 
 def test_no_header_falls_back_to_peer():
     assert client_ip(_Req(peer=OTHER_PUBLIC)) == OTHER_PUBLIC
+
+
+def test_private_client_cannot_spoof_itself_public():
+    """Клиент из локальной сети присылает свой X-Forwarded-For.
+
+    Раньше скан искал первый ПУБЛИЧНЫЙ адрес справа, проезжал приватный адрес
+    самого клиента и брал его подделку - то есть лимит попыток входа
+    обходился сменой заголовка, а в журнал шёл выдуманный адрес. Теперь адрес
+    отсчитывается по числу своих прокси, и подделка остаётся левее.
+    """
+    req = _Req(f"{PUBLIC}, 192.168.1.50, 172.18.0.2")
+    assert client_ip(req) == "192.168.1.50"
+
+
+def test_hops_zero_ignores_header():
+    """Панель без прокси: заголовок не смотрим вовсе."""
+    assert client_ip(_Req(f"{PUBLIC}, 172.18.0.2", peer=OTHER_PUBLIC), hops=0) == OTHER_PUBLIC
+
+
+def test_short_chain_takes_leftmost_trusted():
+    """Запрос пришёл в обход внешнего прокси: цепочка короче ожидаемой."""
+    assert client_ip(_Req("172.18.0.2")) == "172.18.0.2"
+
+
+def test_garbage_at_our_hop_falls_back_to_peer():
+    assert client_ip(_Req("не-ip, 172.18.0.2", peer=OTHER_PUBLIC)) == OTHER_PUBLIC

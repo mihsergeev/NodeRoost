@@ -18,7 +18,12 @@ RAW_URL="https://raw.githubusercontent.com/mihsergeev/NodeRoost/main"
 DIR="/opt/noderoost"
 PANEL_DOMAIN=""
 HS_DOMAIN=""
-ALLOW_IPS="0.0.0.0/0 ::/0"
+# No default on purpose: the panel is the control plane of the whole network, and
+# an installer that opens it to the internet by itself defeats the fail-closed
+# check the panel does on an empty value. Either --allow-ips or --open-to-world
+# has to be spelled out.
+ALLOW_IPS=""
+OPEN_WORLD=0
 VERSION=""
 BUILD=0
 UFW=0
@@ -36,10 +41,15 @@ Install NodeRoost.
 Required:
   --panel-domain DOMAIN  the name you will open the panel at
   --hs-domain DOMAIN     the control server's name; nodes remember it, changing it later is costly
+  --allow-ips "LIST"     space-separated addresses allowed into the panel,
+                         e.g. "203.0.113.10 198.51.100.0/24" (your own address:
+                         curl -s https://ifconfig.me). Nodes are not affected:
+                         the control server stays reachable from anywhere
 
 Optional:
-  --allow-ips "LIST"     space-separated addresses allowed into the panel
-                         (default: everyone, "0.0.0.0/0 ::/0")
+  --open-to-world        let anyone reach the panel's login page instead of
+                         --allow-ips. Only the password stands between the
+                         internet and the control plane - avoid it
   --dir PATH             where to install (default /opt/noderoost)
   --version TAG          image version (default: latest release)
   --build                build images from source instead of pulling
@@ -58,6 +68,7 @@ while [ $# -gt 0 ]; do
         --panel-domain) PANEL_DOMAIN="${2:-}"; shift 2 ;;
         --hs-domain)    HS_DOMAIN="${2:-}"; shift 2 ;;
         --allow-ips)    ALLOW_IPS="${2:-}"; shift 2 ;;
+        --open-to-world) OPEN_WORLD=1; shift ;;
         --dir)          DIR="${2:-}"; shift 2 ;;
         --version)      VERSION="${2:-}"; shift 2 ;;
         --public-ip)    PUBLIC_IP="${2:-}"; shift 2 ;;
@@ -72,6 +83,15 @@ done
 [ -n "$PANEL_DOMAIN" ] || { usage; die "--panel-domain is missing"; }
 [ -n "$HS_DOMAIN" ] || { usage; die "--hs-domain is missing"; }
 [ "$PANEL_DOMAIN" != "$HS_DOMAIN" ] || die "the panel and the control server need different domains"
+if [ "$OPEN_WORLD" -eq 1 ]; then
+    [ -z "$ALLOW_IPS" ] || die "--allow-ips and --open-to-world are mutually exclusive"
+    ALLOW_IPS="0.0.0.0/0 ::/0"
+    warn "the panel will accept logins from anywhere: only the password protects the control plane"
+    warn "set NODEROOST_ALLOW_IPS in $DIR/.env and restart caddy once you know your address"
+elif [ -z "$ALLOW_IPS" ]; then
+    usage
+    die "--allow-ips is missing (or pass --open-to-world to let anyone reach the login page)"
+fi
 
 # ── 1. Docker ─────────────────────────────────────────────────────────────
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
