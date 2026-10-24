@@ -451,7 +451,9 @@ tailscale set --exit-node=`}</pre>
           </div>
           <div className="access-block">
             <h4>{t('Windows (PowerShell от администратора)')}</h4>
-            <pre className="enroll-script">{`$ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
+            {/* Слэши удвоены: в шаблонной строке \T съедается, а \t становится
+                табуляцией - человек копировал неработающую команду. */}
+            <pre className="enroll-script">{`$ts = "$env:ProgramFiles\\Tailscale\\tailscale.exe"
 
 # включить выход через exit-ноду:
 & $ts set --exit-node=${node.ip_addresses.find((ip) => !ip.includes(':')) ?? node.name} --exit-node-allow-lan-access

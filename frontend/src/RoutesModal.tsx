@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   getAgent,
@@ -45,9 +45,16 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
 
   // Пока агент не отозвался, опрашиваем чаще: карточка должна переключиться
   // сама, как только он установлен.
+  const loadSeq = useRef(0)
   const load = useCallback(() => {
+    // Поколение запроса: таймер тикает каждые 15 секунд, и ответ, который
+    // стартовал до сохранения, приходил после него - только что добавленный
+    // маршрут пропадал из списка до следующего тика.
+    const seq = ++loadSeq.current
     getAgent(node.id)
-      .then(setAgentCfg)
+      .then((cfg) => {
+        if (seq === loadSeq.current) setAgentCfg(cfg)
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) onUnauthorized()
       })
@@ -68,6 +75,7 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
     setBusy(true)
     setError(null)
     try {
+      loadSeq.current += 1  // ответ на сохранение свежее любого поллинга
       setAgentCfg(await setAgent(node.id, routes, exitNode))
       onSaved()
     } catch (err) {
@@ -109,6 +117,7 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
     setUpdErr(null)
     setUpdMsg(null)
     try {
+      loadSeq.current += 1
       setAgentCfg(await updateAgent(node.id))
       setUpdMsg(t('Заказано — нода проверит подпись и обновится в течение минуты'))
     } catch (err) {

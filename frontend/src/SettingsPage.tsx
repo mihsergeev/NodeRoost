@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   listNodes,
@@ -80,6 +80,16 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   const [tsUpstream, setTsUpstream] = useState('')
   // Диапазон меша настраивается один раз и почти никогда не меняется, а цена
   // случайной правки высокая (рестарт headscale) — карточка закрыта на «Изменить».
+  // Отложенная перепроверка после перезапуска control-сервера: держим
+  // таймер, чтобы снять его при уходе со страницы - иначе он срабатывал
+  // уже на размонтированном экране.
+  const recheck = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (recheck.current !== null) window.clearTimeout(recheck.current)
+    },
+    [],
+  )
   const [netLocked, setNetLocked] = useState(true)
   // ноды нужны карточке DERP: релей важен ровно настолько, насколько ноды НЕ
   // смогли соединиться напрямую — это и показываем вместо голого конфига
@@ -152,7 +162,7 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
       seedForms(updated)
       setNetLocked(true)
       setNetMsg(t('Сохранено. headscale перезапускается…'))
-      window.setTimeout(() => {
+      recheck.current = window.setTimeout(() => {
         getHsInfo()
           .then((i) => {
             setInfo(i)

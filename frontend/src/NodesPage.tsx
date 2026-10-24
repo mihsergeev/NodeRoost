@@ -50,7 +50,22 @@ export function NodesPage({
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
-  const [hiddenOpen, setHiddenOpen] = useState(false)
+  const [hiddenOpen, setHiddenOpen] = useState(() => {
+    try {
+      return localStorage.getItem(`noderoost_layout_${kind}_hidden_open`) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleHidden = () =>
+    setHiddenOpen((v) => {
+      try {
+        localStorage.setItem(`noderoost_layout_${kind}_hidden_open`, v ? '0' : '1')
+      } catch {
+        /* см. выше: без хранилища раскладка просто не запомнится */
+      }
+      return !v
+    })
   const [editNode, setEditNode] = useState<Node | null>(null)
   const [routesNode, setRoutesNode] = useState<Node | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -63,14 +78,35 @@ export function NodesPage({
   // перетаскивание ноды между группами (как в соседней панели): ref переживает
   // ре-рендеры, state нужен только для подсветки
   const dragRef = useRef<string | null>(null)
+  // ноды, по которым прямо сейчас летит запрос скрытия: пункт меню не
+  // блокируется, и второй клик слал ещё один конкурирующий запрос
+  const hideBusy = useRef<Set<string>>(new Set())
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Раскладка списка переживает переходы по меню. Страница пересоздаётся при
+  // каждом клике по навигации (даже по текущему разделу), и свёрнутые группы с
+  // открытым разделом «Скрытые» сбрасывались - приходилось складывать их заново
+  // по десять раз за сеанс. Это личное удобство одного браузера, поэтому
+  // localStorage, а не настройка на сервере.
+  const layoutKey = `noderoost_layout_${kind}`
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`${layoutKey}_collapsed`)
+      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
 
   const toggleCollapse = (k: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev)
       next.has(k) ? next.delete(k) : next.add(k)
+      try {
+        localStorage.setItem(`${layoutKey}_collapsed`, JSON.stringify([...next]))
+      } catch {
+        /* приватный режим или запрет на хранилище - раскладка просто не запомнится */
+      }
       return next
     })
 
@@ -102,6 +138,12 @@ export function NodesPage({
 
   useEffect(() => {
     load()
+    // Обновляемся сами, как и остальные страницы панели (здоровье - 30 с,
+    // направления - 20 с, маршруты - 15 с). Без таймера на открытой вкладке час
+    // висело «оффлайн 2 мин назад», а нода, упавшая после загрузки страницы, не
+    // подсвечивалась вовсе - то есть ровно то, ради чего подсветку и делали.
+    const id = window.setInterval(load, 30000)
+    return () => window.clearInterval(id)
   }, [load])
 
   // ноды только этого типа (сервер/устройство)
@@ -120,24 +162,33 @@ export function NodesPage({
     }
   }, [scoped])
 
-  const visible = useMemo(() => {
-    let list = scoped
-    if (filter === 'online') list = list.filter((n) => n.online)
-    if (filter === 'offline') list = list.filter((n) => !n.online)
-    const q = search.trim().toLowerCase()
-    if (q) {
-      list = list.filter(
-        (n) =>
-          n.name.toLowerCase().includes(q) ||
-          n.hostname.toLowerCase().includes(q) ||
-          n.ip_addresses.some((ip) => ip.toLowerCase().includes(q)) ||
-          n.tags.some((tag) => tag.toLowerCase().includes(q)) ||
-          (n.group ?? '').toLowerCase().includes(q) ||
-          (n.subgroup ?? '').toLowerCase().includes(q),
-      )
-    }
-    return list
-  }, [scoped, filter, search])
+  // Одна воронка для обоих списков. Раньше поиск и плитки применялись только к
+  // основному: вводишь имя, которого ни у кого нет, сверху «Ничего не найдено»,
+  // а снизу раздел «Скрытые» как ни в чём не бывало со всеми нодами.
+  const applyFilters = useCallback(
+    (list: Node[]) => {
+      let out = list
+      if (filter === 'online') out = out.filter((n) => n.online)
+      if (filter === 'offline') out = out.filter((n) => !n.online)
+      const q = search.trim().toLowerCase()
+      if (q) {
+        out = out.filter(
+          (n) =>
+            n.name.toLowerCase().includes(q) ||
+            n.hostname.toLowerCase().includes(q) ||
+            n.ip_addresses.some((ip) => ip.toLowerCase().includes(q)) ||
+            n.tags.some((tag) => tag.toLowerCase().includes(q)) ||
+            (n.group ?? '').toLowerCase().includes(q) ||
+            (n.subgroup ?? '').toLowerCase().includes(q),
+        )
+      }
+      return out
+    },
+    [filter, search],
+  )
+
+  const visible = useMemo(() => applyFilters(scoped), [scoped, applyFilters])
+  const hiddenVisible = useMemo(() => applyFilters(hiddenList), [hiddenList, applyFilters])
 
   // Раскладка списка: админские ноды закреплены сверху отдельным блоком, затем
   // группы (организация) → подгруппы (проект). Без группы — в конце, чтобы
@@ -173,6 +224,8 @@ export function NodesPage({
   // Скрыть/вернуть. setNodeMeta переписывает запись целиком, поэтому тащим с
   // собой остальные поля - как и в переносе между группами.
   async function doHide(n: Node, hidden: boolean) {
+    if (hideBusy.current.has(n.id)) return
+    hideBusy.current.add(n.id)
     setNodes((prev) => (prev ?? []).map((x) => (x.id === n.id ? { ...x, hidden } : x)))
     try {
       await setNodeMeta(n.id, {
@@ -189,6 +242,8 @@ export function NodesPage({
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
       else setError(err instanceof Error ? err.message : t('Ошибка'))
       await load()
+    } finally {
+      hideBusy.current.delete(n.id)
     }
   }
 
@@ -315,8 +370,11 @@ export function NodesPage({
             {n.admin && <span className="pill-admin">{t('админ')}</span>}
             {/* Оффлайн раньше читался только по серой точке и строчке «видели
                 17 мин назад» - на экране с десятком карточек это не видно. */}
-            {!n.online && !n.hidden && (
-              <span className="pill-warn">
+            {!n.online && (
+              // И у скрытой тоже: «как давно лежит» - главное, что нужно для
+              // решения «вернуть или удалить», а раньше в разделе «Скрытые» от
+              // этого оставалась одна точка. Карточка там и так приглушена.
+              <span className={n.hidden ? 'pill-muted' : 'pill-warn'}>
                 {n.last_seen
                   ? t('оффлайн {ago}', { ago: fmtAgo(n.last_seen, t) })
                   : t('оффлайн')}
@@ -470,7 +528,7 @@ export function NodesPage({
 
       {nodes === null ? (
         <p className="muted">{t('загрузка…')}</p>
-      ) : scoped.length === 0 ? (
+      ) : all.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <span className="empty-emoji">{kind === 'server' ? '🖥️' : '💻'}</span>
@@ -486,7 +544,15 @@ export function NodesPage({
           </div>
         </div>
       ) : visible.length === 0 ? (
-        <p className="muted">{t('Ничего не найдено')}</p>
+        // Все ноды отложены - это не «ничего нет»: иначе страница предлагала
+        // добавить сервер, а прямо под ней висел раздел «Скрытые (4)».
+        scoped.length === 0 && hiddenList.length > 0 ? (
+          <p className="muted">
+            {t('Все ноды в разделе «Скрытые» ниже')}
+          </p>
+        ) : (
+          <p className="muted">{t('Ничего не найдено')}</p>
+        )
       ) : (
         <>
           {sections.admins.length > 0 && (
@@ -558,23 +624,19 @@ export function NodesPage({
         </>
       )}
 
-      {hiddenList.length > 0 && (
+      {hiddenVisible.length > 0 && (
         <div className="node-group node-group-hidden">
-          <div
-            className="node-group-head"
-            onClick={() => setHiddenOpen((v) => !v)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && setHiddenOpen((v) => !v)}
-          >
+          {/* настоящая кнопка, как у групп выше: самодельная из div понимала
+              только Enter, а role="button" обязан отзываться и на пробел */}
+          <button className="node-group-head" onClick={toggleHidden}>
             <span className="node-group-caret">{hiddenOpen ? '▾' : '▸'}</span>
             <span className="node-group-name">{t('Скрытые')}</span>
-            <span className="muted small">{hiddenList.length}</span>
+            <span className="muted small">{hiddenVisible.length}</span>
             <span className="muted small">
               {t('не в счётчиках и без алертов, пока не вернёте')}
             </span>
-          </div>
-          {hiddenOpen && <div className="node-list">{hiddenList.map(renderCard)}</div>}
+          </button>
+          {hiddenOpen && <div className="node-list">{hiddenVisible.map(renderCard)}</div>}
         </div>
       )}
 
