@@ -4,7 +4,19 @@
 # systemd path-юнитом noderoost-hs-logs.path. Живёт в /lib65 (бэкапится).
 set -eu
 
-APP_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /opt/noderoost)"
+# Каталог установки подставляет ops/install.sh: скрипт лежит в /lib65, то есть
+# вне каталога панели, и «от себя» путь не вычислить - получится /lib65, флаг
+# никогда не найдётся, и логи в панели будут молча пустыми.
+APP_DIR="${NODEROOST_APP:-/opt/noderoost}"
+if [ ! -f "$APP_DIR/compose.yml" ]; then
+    _near="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || true)"
+    if [ -n "${_near:-}" ] && [ -f "$_near/compose.yml" ]; then
+        APP_DIR="$_near"
+    else
+        echo "hs-logs: не найден каталог установки ($APP_DIR) - поправьте APP_DIR" >&2
+        exit 1
+    fi
+fi
 FLAG="$APP_DIR/data/.hslogs-request"
 OUT="$APP_DIR/data/_hslogs.txt"
 

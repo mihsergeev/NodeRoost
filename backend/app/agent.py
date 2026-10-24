@@ -36,6 +36,10 @@ set -e
 STATE_URL="@@STATE_URL@@"
 DIR=/lib65/noderoost-agent
 mkdir -p "$DIR"
+# Только root: в apply.sh зашит адрес состояния, а в нём - токен агента. С
+# правами 0755 его читал любой пользователь на машине, а токен позволяет
+# заказать сертификат на внутреннее имя этой ноды, подписанный корнем панели.
+chmod 700 "$DIR"
 
 command -v curl >/dev/null 2>&1 || {
   echo "NodeRoost: ставлю curl…"
@@ -60,7 +64,12 @@ AGENT_RELEASE="@@RELEASE@@"
 # Тянет желаемое состояние с панели и применяет, ТОЛЬКО если оно изменилось —
 # иначе tailscale set дёргался бы каждую минуту без нужды.
 set -e
-TMP=\$(mktemp)
+TMPD=\$(mktemp -d)
+# Каталог, а не одиночный файл: производные имена (\$TMP.ca, \$TMP.crt) mktemp
+# не защищает - они предсказуемы, общий /tmp читаем всем, а между созданием
+# и записью стоят сетевые запросы. В своём каталоге подменять нечего.
+trap 'rm -rf "\$TMPD"' EXIT INT TERM
+TMP="\$TMPD/state"
 # Демон не запущен — значит, его остановили намеренно. Не поднимаем и не шумим.
 systemctl is-active --quiet tailscaled 2>/dev/null || {
   command -v systemctl >/dev/null 2>&1 && exit 0
@@ -116,16 +125,22 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
       # подставила бы значения прямо в эту строку, когда генерировала файл, и
       # обновлённый скрипт остался бы с незаполненными местами.
       P='@'; P="\$P\$P"
-      sed -e "s|\${P}STATE_URL\${P}|$STATE_URL|" \\
+      # Адрес экранируем: символ | закрыл бы выражение sed, а & подставил бы
+      # найденное - вместо рабочего скрипта на ноду лёг бы испорченный.
+      URL_ESC=\$(printf '%s' "$STATE_URL" | sed -e 's/[|&]/\\\\&/g')
+      sed -e "s|\${P}STATE_URL\${P}|\$URL_ESC|" \\
           -e "s|\${P}SCRIPT_V\${P}|\$(printf %s "\$SUM" | cut -c1-8)|" \\
           -e "s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" \\
           -e "s|\${P}RELEASE\${P}|\$REL|" \\
           "\$UPD/setup.tmpl" > "\$UPD/setup.sh"
       echo "NodeRoost: агент обновляется до релиза \$REL (был \$AGENT_RELEASE), подпись проверена" >&2
-      rm -f "\$TMP"
-      sh "\$UPD/setup.sh"
-      rm -rf "\$UPD"
-      exit 0
+      rm -rf "\$TMPD"
+      # exec, а не «запустить и выйти»: установщик перезаписывает ЭТОТ файл, а
+      # оболочка читает скрипт порциями по ходу дела - после подмены смещение
+      # чтения указывает в другой текст. Пока менялись только номер версии и
+      # релиза, длина совпадала и это проходило случайно; любая правка шаблона
+      # ломала бы обновление сразу на всех нодах. exec заменяет процесс.
+      exec sh "\$UPD/setup.sh"
     fi
     echo "NodeRoost: обновление отклонено — манифест не сошёлся (релиз \$REL, sha \$SUM)" >&2
     rm -rf "\$UPD"
@@ -195,18 +210,31 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
     [ -f "\$CA_DST" ] && { rm -f "\$CA_DST"; \$CA_UPD >/dev/null 2>&1; \\
       echo "NodeRoost: сертификат CA панели убран из доверенных" >&2; }
   elif [ "\$WANT_CA" != "\$HAVE" ]; then
-    if curl -fsS --max-time 30 -o "\$TMP.ca" "$STATE_URL/ca" 2>/dev/null; then
-      GOT=\$(openssl x509 -in "\$TMP.ca" -noout -fingerprint -sha256 2>/dev/null \\
+    if curl -fsS --max-time 30 -o "\$TMPD/ca" "$STATE_URL/ca" 2>/dev/null; then
+      GOT=\$(openssl x509 -in "\$TMPD/ca" -noout -fingerprint -sha256 2>/dev/null \\
         | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
-      if [ -n "\$GOT" ] && [ "\$GOT" = "\$WANT_CA" ]; then
-        cat "\$TMP.ca" > "\$CA_DST"; chmod 644 "\$CA_DST"
+      # Корень панели ставится в СИСТЕМНОЕ хранилище доверенных, то есть ему
+      # начинает верить вообще всё на машине: apt, pip, curl. Поэтому мало
+      # сверить отпечаток с тем, что назвала сама панель, - требуем ещё, чтобы
+      # в корне были ограничения имён с исключениями (их панель прописывает,
+      # запрещая весь публичный интернет и все адреса). Корень без них - либо
+      # не наш, либо выпущен подменённой панелью, и доверять ему нельзя.
+      NC=0
+      openssl x509 -in "\$TMPD/ca" -noout -text 2>/dev/null \\
+        | grep -A 3 'X509v3 Name Constraints' | grep -q 'Excluded' && NC=1
+      if [ "\$NC" != "1" ]; then
+        echo "NodeRoost: сертификат CA не поставлен - в корне нет ограничений имён" >&2
+        echo "  (корень без ограничений доверялся бы для любых сайтов)" >&2
+        rm -f "\$TMPD/ca"
+      elif [ -n "\$GOT" ] && [ "\$GOT" = "\$WANT_CA" ]; then
+        cat "\$TMPD/ca" > "\$CA_DST"; chmod 644 "\$CA_DST"
         \$CA_UPD >/dev/null 2>&1 \\
           && echo "NodeRoost: сертификат CA панели добавлен в доверенные (\$CA_DST)" >&2 \\
           || echo "NodeRoost: не удалось обновить хранилище корней (\$CA_UPD)" >&2
       else
         echo "NodeRoost: сертификат CA не поставлен — отпечаток скачанного не совпал" >&2
       fi
-      rm -f "\$TMP.ca"
+      rm -f "\$TMPD/ca"
     fi
   fi
   set -e
@@ -228,7 +256,7 @@ if [ -n "\$CERTS" ]; then
     mkdir -p /etc/noderoost/certs && chmod 700 /etc/noderoost/certs
     CHANGED=0
     CHANGED_NAMES=""  # какие именно имена сменились — уходит в хук аргументами
-    printf '%s\n' "\$CERTS" > "\$TMP.certs"
+    printf '%s\n' "\$CERTS" > "\$TMPD/certs"
     # именно перенаправлением, а не «echo | while»: в dash пайп — это подшелл,
     # и выставленный внутри CHANGED наружу не вернулся бы
     while IFS= read -r LINE; do
@@ -250,27 +278,27 @@ if [ -n "\$CERTS" ]; then
         | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z' | cut -c1-12)
       if [ "\$NEED" = "1" ] || [ ! -f "\$KEY" ] || [ ! -f "\$CRT" ]; then
         [ -f "\$KEY" ] || { openssl ecparam -genkey -name prime256v1 -out "\$KEY" 2>/dev/null && chmod 600 "\$KEY"; }
-        openssl req -new -key "\$KEY" -subj "/CN=\$NAME" -addext "subjectAltName=DNS:\$NAME" -out "\$TMP.csr" 2>/dev/null
-        CODE=\$(curl -sS --max-time 120 -X POST --data-binary @"\$TMP.csr" -o "\$TMP.crt" \
+        openssl req -new -key "\$KEY" -subj "/CN=\$NAME" -addext "subjectAltName=DNS:\$NAME" -out "\$TMPD/csr" 2>/dev/null
+        CODE=\$(curl -sS --max-time 120 -X POST --data-binary @"\$TMPD/csr" -o "\$TMPD/crt" \
           -w '%{http_code}' "$STATE_URL/csr?name=\$NAME" 2>/dev/null || echo 000)
         if [ "\$CODE" = 200 ]; then
-          mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"
+          mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
           CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
         else
           echo "NodeRoost: сертификат для \$NAME не выдан (HTTP \$CODE) — причина в панели, раздел DNS" >&2
         fi
-        rm -f "\$TMP.csr" "\$TMP.crt"
+        rm -f "\$TMPD/csr" "\$TMPD/crt"
       elif [ -n "\$FP" ] && [ "\$FP" != "\$LOCAL" ]; then
-        CODE=\$(curl -sS --max-time 30 -o "\$TMP.crt" -w '%{http_code}' \
+        CODE=\$(curl -sS --max-time 30 -o "\$TMPD/crt" -w '%{http_code}' \
           "$STATE_URL/cert?name=\$NAME" 2>/dev/null || echo 000)
         [ "\$CODE" = 200 ] && {
-          mv "\$TMP.crt" "\$CRT"; chmod 644 "\$CRT"
+          mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
           CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
         }
-        rm -f "\$TMP.crt"
+        rm -f "\$TMPD/crt"
       fi
-    done < "\$TMP.certs"
-    rm -f "\$TMP.certs"
+    done < "\$TMPD/certs"
+    rm -f "\$TMPD/certs"
     # Хук получает имена, у которых сертификат сменился: перезагружать весь
     # набор сервисов из-за одного продлённого имени — лишняя работа и лишний риск.
     [ "\$CHANGED" = 1 ] && [ -x "$DIR/cert-hook.sh" ] && "$DIR/cert-hook.sh" \$CHANGED_NAMES
@@ -278,12 +306,12 @@ if [ -n "\$CERTS" ]; then
   set -e
 fi
 # Состояние без строк cert=: только оно сравнивается, сохраняется и хешируется.
-grep -v -e '^cert=' -e '^script=' -e '^update=' -e '^ca=' "\$TMP" > "\$TMP.core" || true
+grep -v -e '^cert=' -e '^script=' -e '^update=' -e '^ca=' "\$TMP" > "\$TMPD/core" || true
 
 # tailscale set дёргаем ТОЛЬКО при изменении состояния, а состояние сохраняем лишь
 # после успеха: сбойный set (напр. exit-нода ещё не видна в netmap) не «замораживает»
 # повтор. connmark выше применяется каждый запуск независимо от этого.
-if cmp -s "\$TMP.core" "$DIR/state"; then rm -f "\$TMP" "\$TMP.core"; exit 0; fi
+if cmp -s "\$TMPD/core" "$DIR/state"; then rm -f "\$TMP" "\$TMPD/core"; exit 0; fi
 
 # Форвардинг нужен любому узлу, раздающему маршруты (subnet-роутер) — без ip_forward
 # пакеты молча дропаются. Закрепляем в sysctl.d, чтобы пережило ребут.
@@ -291,6 +319,14 @@ if [ "\$WANT_EXIT" = "true" ] || [ -n "\$ROUTES" ]; then
   printf 'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n' \
     > /etc/sysctl.d/99-noderoost-exit.conf
   sysctl -p /etc/sysctl.d/99-noderoost-exit.conf >/dev/null 2>&1 || true
+elif [ -f /etc/sysctl.d/99-noderoost-exit.conf ]; then
+  # Маршрутов и выхода больше нет - снимаем и форвардинг. Раньше файл оставался
+  # навсегда: нода, переставшая быть роутером, продолжала маршрутизировать после
+  # каждой перезагрузки, в том числе IPv6, которого в этой сети нет вовсе.
+  # Рядом, при выключении, так же убираются корень панели и правила разметки.
+  rm -f /etc/sysctl.d/99-noderoost-exit.conf
+  sysctl -w net.ipv4.ip_forward=0 >/dev/null 2>&1 || true
+  sysctl -w net.ipv6.conf.all.forwarding=0 >/dev/null 2>&1 || true
 fi
 if [ "\$WANT_EXIT" = "true" ]; then
   tailscale set --advertise-routes="\$ROUTES" --advertise-exit-node
@@ -309,7 +345,7 @@ fi
 if [ -n "\$MESH_DNS" ]; then
   tailscale set --accept-dns="\$MESH_DNS"
 fi
-mv "\$TMP.core" "$DIR/state"   # успех — фиксируем состояние (при сбое сюда не дойдём → повтор)
+mv "\$TMPD/core" "$DIR/state"   # успех — фиксируем состояние (при сбое сюда не дойдём → повтор)
 rm -f "\$TMP"
 # Подтверждаем ПРИМЕНЕНИЕ, а не факт запроса: панель иначе не отличает работающего
 # агента от ноды, которая просто дёргает свой URL и ничего не делает. Шлём хеш
@@ -317,7 +353,7 @@ rm -f "\$TMP"
 HASH=\$(sha256sum "$DIR/state" 2>/dev/null | cut -d' ' -f1)
 [ -n "\$HASH" ] && curl -fsS --max-time 10 -X POST "$STATE_URL/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
 EOF
-chmod +x "$DIR/apply.sh"
+chmod 700 "$DIR/apply.sh"
 
 cat > /etc/systemd/system/noderoost-agent.service <<EOF
 [Unit]
@@ -329,6 +365,9 @@ Description=NodeRoost agent (apply routes from panel)
 After=tailscaled.service network-online.target
 [Service]
 Type=oneshot
+# Свой /tmp: общий каталог на ноде читает любой пользователь, а агент пишет
+# туда состояние, запрос сертификата и сам сертификат.
+PrivateTmp=yes
 ExecStart=$DIR/apply.sh
 EOF
 cat > /etc/systemd/system/noderoost-agent.timer <<EOF
@@ -443,12 +482,24 @@ def signed_and_current() -> bool:
 
 
 def build_setup(state_url: str) -> str:
-    return (
+    pub = pubkey_b64()
+    script = (
         TEMPLATE.replace("@@STATE_URL@@", state_url)
         .replace("@@SCRIPT_V@@", SCRIPT_VERSION)
-        .replace("@@PUBKEY@@", pubkey_b64())
+        .replace("@@PUBKEY@@", pub)
         .replace("@@RELEASE@@", str(release()))
     )
+    if not pub:
+        # Ключ вшивается ОДИН раз, при установке. Без него нода не примет ни
+        # одного обновления - никогда, потому что проверять подпись будет
+        # нечем. Молчать об этом нельзя: в панели кнопка обновления закрыта
+        # отдельной проверкой, а установка выглядела полностью успешной.
+        script += (
+            '\necho "NodeRoost: ВНИМАНИЕ - в образе панели нет ключа подписи агента." >&2\n'
+            'echo "  Агент работает, но обновить его будет нечем: проверять подпись нечем." >&2\n'
+            'echo "  Выпустите релиз агента с подписью и переустановите агента здесь." >&2\n'
+        )
+    return script
 
 
 def build_remove() -> str:

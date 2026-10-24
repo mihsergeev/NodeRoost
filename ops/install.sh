@@ -80,6 +80,10 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || die "root required: run with sudo"
+# Свой каталог вместо предсказуемых имён в общем /tmp: установщик идёт под root.
+NRTMP="$(mktemp -d)"
+NRLOG="$NRTMP/docker.log"
+trap 'rm -rf "$NRTMP"' EXIT INT TERM
 [ -n "$PANEL_DOMAIN" ] || { usage; die "--panel-domain is missing"; }
 [ -n "$HS_DOMAIN" ] || { usage; die "--hs-domain is missing"; }
 [ "$PANEL_DOMAIN" != "$HS_DOMAIN" ] || die "the panel and the control server need different domains"
@@ -101,11 +105,15 @@ else
     if command -v curl >/dev/null 2>&1; then :; else apt-get update -qq </dev/null && apt-get install -y -qq curl </dev/null; fi
     # Официальный установщик знает не про каждый свежий релиз дистрибутива —
     # тогда откатываемся на пакеты самого дистрибутива.
-    if ! curl -fsSL https://get.docker.com | sh >/tmp/nr-docker.log 2>&1 </dev/null; then
+    if ! curl -fsSL https://get.docker.com | sh >"$NRLOG" 2>&1 </dev/null; then
         warn "get.docker.com failed, falling back to the distro packages"
         apt-get update -qq </dev/null
-        apt-get install -y -qq docker.io docker-compose-v2 </dev/null \
-            || die "could not install Docker, see /tmp/nr-docker.log"
+        apt-get install -y -qq docker.io docker-compose-v2 </dev/null || {
+            # Лог живёт во временном каталоге и уйдёт вместе с ним, поэтому
+            # показываем хвост прямо здесь: иначе причина отказа теряется.
+            tail -n 20 "$NRLOG" >&2 2>/dev/null || true
+            die "could not install Docker (the installer output is above)"
+        }
     fi
     systemctl enable --now docker >/dev/null 2>&1 || true
     docker compose version >/dev/null 2>&1 || die "docker compose is missing after install"
@@ -146,6 +154,9 @@ fi
 
 if [ -f .env ]; then
     ok ".env already exists — secrets left untouched"
+    # Права чиним и существующему файлу: установки, сделанные раньше, держали
+    # секрет подписи токенов и пароли базы в файле, читаемом всей машиной.
+    chmod 600 .env
     # Домены и список адресов обновляем: ради них скрипт и запускают повторно.
     sed -i "s|^NODEROOST_DOMAIN=.*|NODEROOST_DOMAIN=$PANEL_DOMAIN|;
             s|^NODEROOST_HS_DOMAIN=.*|NODEROOST_HS_DOMAIN=$HS_DOMAIN|;
@@ -153,6 +164,9 @@ if [ -f .env ]; then
             s|^NODEROOST_VERSION=.*|NODEROOST_VERSION=$VERSION|" .env
 else
     say "Writing .env (random passwords)"
+    # umask ДО записи: иначе между созданием файла и chmod ниже остаётся окно,
+    # в котором секрет подписи токенов и пароль базы лежат с правами 0644.
+    umask 077
     ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)"
     cat > .env <<EOF
 # Создан ops/install.sh $(date -u +%Y-%m-%dT%H:%M:%SZ). Пароли ниже — случайные.

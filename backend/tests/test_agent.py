@@ -44,7 +44,7 @@ def test_apply_script_reports_applied_state_hash():
     assert "sha256sum" in setup
     assert "/applied?h=" in setup
     # подтверждение идёт ПОСЛЕ переноса состояния (то есть после успешного apply)
-    assert setup.index(r'mv "\$TMP.core"') < setup.index("/applied?h=")
+    assert setup.index(r'mv "\$TMPD/core"') < setup.index("/applied?h=")
 
 
 def test_state_hash_matches_what_the_agent_hashes():
@@ -119,7 +119,7 @@ def test_certificates_do_not_enter_the_state_hash():
     strip = "grep -v -e '^cert=' -e '^script='"
     assert strip in setup
     # состояние обрезается ДО сравнения, иначе выпуск выглядел бы как правка
-    assert setup.index(strip) < setup.index(r'cmp -s "\$TMP.core"')
+    assert setup.index(strip) < setup.index(r'cmp -s "\$TMPD/core"')
 
 
 def test_agent_installs_only_a_signed_update():
@@ -150,7 +150,7 @@ def test_placeholders_of_the_update_are_not_filled_in_advance():
     assert r"s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" in setup
     # адрес подставляется СВОЙ: в скрипте установки это ещё переменная, её
     # раскрывает heredoc на самой ноде — из присланного файла адрес не берётся
-    assert r"s|\${P}STATE_URL\${P}|$STATE_URL|" in setup
+    assert r"s|\${P}STATE_URL\${P}|\$URL_ESC|" in setup
     assert "@@PUBKEY@@" not in setup and "@@RELEASE@@" not in setup
 
 
@@ -186,11 +186,11 @@ def test_key_stays_on_the_node():
     setup = agent.build_setup("https://hs.example/agent/tok")
     assert "openssl req -new -key" in setup and "/csr?name=" in setup
     # ключ никуда не отправляется — единственное, что уходит наверх, это CSR
-    assert r'--data-binary @"\$TMP.csr"' in setup
+    assert r'--data-binary @"\$TMPD/csr"' in setup
     assert ".key" in setup and "curl" in setup
     for line in setup.splitlines():
         if "curl" in line and "--data-binary" in line:
-            assert ".csr" in line and ".key" not in line
+            assert "/csr" in line and ".key" not in line
 
 
 def test_update_request_is_not_part_of_the_state():

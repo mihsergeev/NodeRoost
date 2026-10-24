@@ -11,7 +11,10 @@ def test_linux_script():
     assert "https://hs.test" in s
     assert "authkey-abc" in s
     assert "web-1" in s
-    assert "pkgs.tailscale.com/stable/tailscale_" in s
+    assert "pkgs.tailscale.com/stable" in s
+    # контрольная сумма обязательна: из архива ставится tailscaled под root
+    assert "$SRC/$PKG.sha256" in s and "sha256sum" in s
+    assert "установка остановлена" in s
     assert "tailscale up --reset --login-server=" in s
     # без --accept-routes источник молча игнорирует направления/полный туннель
     assert "--accept-routes" in s
