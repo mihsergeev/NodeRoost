@@ -13,7 +13,8 @@ from app.hs_client import get_client
 from app.hs_util import hs_call, norm_ts, require_hs
 from app.nodekind import editable_tags, effective_kind, is_online, node_tags
 from app.policy_apply import apply_policy, declare_tags
-from app.schemas import (
+from app.schemas import (  # noqa: I001
+    normalize_node_name,
     EnrollOut,
     ExitClientsIn,
     NodeMetaIn,
@@ -452,7 +453,19 @@ async def reconnect_node(
     node = await hs_call(client.get_node(node_id))
     if not node:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
-    name = node.get("givenName") or node.get("name", "") or "node"
+    # Имя приходит из headscale, а уходит в root-скрипт, который человек
+    # запускает на машине. Через обычное подключение оно валидируется схемой, и
+    # тут проверка стоит одну строку: своё имя нода выбирает сама
+    # (tailscale up --hostname), а headscale её выбор нормализует не до конца.
+    raw_name = str(node.get("givenName") or node.get("name", "") or "node")
+    try:
+        name = normalize_node_name(raw_name)
+    except ValueError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Имя ноды «{raw_name}» не годится для скрипта подключения: "
+            "переименуйте ноду и повторите.",
+        ) from None
 
     # все ноды под одним техническим владельцем headscale (сущности «пользователь»
     # в панели нет); ключ без тегов → владельцем станет именно он

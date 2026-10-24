@@ -21,6 +21,16 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 ENVF="${NODEROOST_OFFSITE_ENV:-/lib65/noderoost/offsite.env}"
 [ -r "$ENVF" ] || { echo "нет $ENVF — offsite не настроен, выходим" >&2; exit 0; }
+# Файл содержит пароль репозитория бэкапов и ключи хранилища, а мы его
+# ИСПОЛНЯЕМ (точка-пробел): доступный на запись кому-то кроме root, он
+# превращается в чужой код от root. Инструкция про chmod 600 была, проверки не
+# было - проверяем сами.
+if [ -n "$(find "$ENVF" -maxdepth 0 -perm /go+w 2>/dev/null)" ]; then
+    echo "$ENVF доступен на запись группе или всем - исправьте: chmod 600 $ENVF" >&2
+    exit 1
+fi
+_owner=$(stat -c '%u' "$ENVF" 2>/dev/null || echo 0)
+[ "$_owner" = "0" ] || { echo "$ENVF принадлежит не root (uid $_owner) - исправьте: chown root $ENVF" >&2; exit 1; }
 # shellcheck disable=SC1090
 . "$ENVF"
 : "${RESTIC_REPOSITORY:?offsite.env: не задан RESTIC_REPOSITORY}"
