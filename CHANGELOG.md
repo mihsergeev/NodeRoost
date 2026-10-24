@@ -5,6 +5,19 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.20.3] - 2026-10-24
+
+### Security
+
+- **Agent tokens sat in the logs in plain text.** The token is part of the
+  request path (`/agent/<token>`) and `access_log` writes the full URI: the agent
+  polls every minute, so every node's token ended up in the container logs, in
+  docker's files on disk and in any log collector. That same token requests a
+  certificate for the node's internal names. nginx now logs the path with the
+  token cut out (`/agent/***`), the same for the join link (`/join/***`), and the
+  query string is not logged at all. `deploy/Caddyfile` says how to hide the path
+  if you turn on an access log of your own.
+
 ## [0.20.2] - 2026-10-24
 
 ### Fixed
