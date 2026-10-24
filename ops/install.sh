@@ -244,6 +244,12 @@ for i in $(seq 1 60); do
 done
 ok "headscale is answering"
 
+# Второй раз, и это не лишнее: базу нод headscale создает только что, при первом
+# старте, с правами 0600 root - до этого момента ее просто не существовало, и
+# первый вызов выше открыть ее панели не мог. Без этого шага на свежей
+# установке молча не работают бэкапы и колонка с версией клиента в карточках.
+ops/data-owner.sh >/dev/null || die "could not set the owner of ./data"
+
 if ! grep -q '^NODEROOST_HEADSCALE_API_KEY=.\+' .env; then
     say "Creating a headscale API key for the panel"
     KEY="$("${COMPOSE[@]}" exec -T headscale headscale apikeys create --expiration 3650d 2>/dev/null </dev/null | tail -1 | tr -d '\r')"
