@@ -190,15 +190,28 @@ async def issue(
 RETRY_AFTER_ERROR = timedelta(minutes=15)
 
 
+def _utc(dt: datetime) -> datetime:
+    """Дата из базы, приведённая к UTC.
+
+    Колонки объявлены как `DateTime(timezone=True)`, но зону хранит только
+    Postgres: sqlite отдаёт то же значение без зоны, и вычитание из `now()`
+    падает с TypeError. Панель на sqlite - штатный режим из `config.py`, и
+    ломалось это не при старте, а на первом же опросе агента после выпуска
+    первого сертификата: состояние отдавать перестаёт, нода остаётся без
+    маршрутов.
+    """
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def needs_renewal(cert: Certificate | None, renew_days: int) -> bool:
     """Пора ли просить у ноды новый CSR: сертификата нет, он скоро истечёт или
     прошлая попытка закончилась ошибкой и пауза вышла."""
     if cert is None:
         return True
     if cert.status == "error" and cert.updated_at:
-        return datetime.now(timezone.utc) - cert.updated_at > RETRY_AFTER_ERROR
+        return datetime.now(timezone.utc) - _utc(cert.updated_at) > RETRY_AFTER_ERROR
     if cert.status != "ok" or not cert.cert_pem:
         return True
     if cert.not_after is None:
         return True
-    return cert.not_after - datetime.now(timezone.utc) <= timedelta(days=renew_days)
+    return _utc(cert.not_after) - datetime.now(timezone.utc) <= timedelta(days=renew_days)

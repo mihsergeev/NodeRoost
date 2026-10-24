@@ -39,6 +39,13 @@ project follows [semantic versioning](https://semver.org/).
   short clock: ten minutes for the retries of whoever is standing at the console
   (the command died halfway, sudo was missing), after that the link is closed
   even if the hour has not run out.
+- **On sqlite the panel started answering the agent with a 500 once the first
+  certificate had been issued.** The date columns are declared with a timezone,
+  but only Postgres stores one: sqlite hands the same value back without it and
+  the "time to renew?" check died on the subtraction. It broke not at startup
+  but on the first agent poll after a certificate was issued, leaving the node
+  without its routes. sqlite is the default from the settings, so this hit every
+  install that is not on Postgres.
 - **A comment in the agent body ran `tailscale up --reset` on the node during
   install.** The body of apply.sh is written to the node inside an unquoted
   heredoc, so the shell parses it while writing, and the comment had the command
