@@ -237,3 +237,28 @@ async def test_certificate_is_installed_by_a_command_not_by_instructions(client)
 
     crt = await client.get("/ca/noderoost-ca.crt")
     assert crt.status_code == 200 and crt.text.startswith("-----BEGIN CERTIFICATE-----")
+
+
+def test_renewal_check_survives_dates_without_a_timezone():
+    """На sqlite колонки DateTime(timezone=True) отдают дату БЕЗ зоны, и
+    вычитание из aware now падало с TypeError. Ловилось это не тестами, а
+    панелью: после выпуска первого сертификата опрос агента отвечал 500 и
+    нода переставала получать маршруты."""
+    from app.models import Certificate
+
+    # sqlite хранит UTC, но зону не отдаёт
+    naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    far = naive_now + timedelta(days=90)
+    cert = Certificate(
+        name="stand.lab", status="ok", cert_pem="-----BEGIN CERTIFICATE-----\n",
+        not_after=far,
+    )
+    assert certs.needs_renewal(cert, 30) is False
+
+    soon = naive_now + timedelta(days=3)
+    cert.not_after = soon
+    assert certs.needs_renewal(cert, 30) is True
+
+    cert.status = "error"
+    cert.updated_at = naive_now - timedelta(hours=1)
+    assert certs.needs_renewal(cert, 30) is True
