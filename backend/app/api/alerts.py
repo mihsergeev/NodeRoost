@@ -8,12 +8,25 @@ from app.schemas import AlertConfigIn, AlertConfigOut, AlertTestResult
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
+def mask_secret(value: str) -> str:
+    """Токен бота и вебхук наружу - только хвостом.
+
+    В остальном коде секреты уже вычищаются из текстов ошибок и из журнала, а
+    эта ручка отдавала их целиком: одного GET хватало, чтобы писать от имени
+    бота и читать его сообщения уже без доступа к панели.
+    """
+    if not value:
+        return ""
+    tail = value[-4:]
+    return f"...{tail}"
+
+
 def _out(cfg: dict) -> AlertConfigOut:
     return AlertConfigOut(
-        telegram_token=cfg["telegram_token"],
+        telegram_token=mask_secret(cfg["telegram_token"]),
         telegram_chat=cfg["telegram_chat"],
         telegram_api=cfg["telegram_api"],
-        webhook=cfg["webhook"],
+        webhook=mask_secret(cfg["webhook"]),
         enabled=alerts.alerts_enabled(cfg),
     )
 
@@ -28,8 +41,22 @@ async def get_alerts(_: CurrentUser, session: SessionDep) -> AlertConfigOut:
 async def put_alerts(
     body: AlertConfigIn, user: CurrentUser, session: SessionDep
 ) -> AlertConfigOut:
+    cur = await settings_store.get_alert_config(session, get_settings())
+    # Поле вернулось таким же, каким мы его отдали (маской) - значит его не
+    # трогали: подставляем прежнее значение, иначе сохранение любой соседней
+    # настройки затирало бы токен тремя точками.
+    token = (
+        cur["telegram_token"]
+        if body.telegram_token and body.telegram_token == mask_secret(cur["telegram_token"])
+        else body.telegram_token
+    )
+    webhook = (
+        cur["webhook"]
+        if body.webhook and body.webhook == mask_secret(cur["webhook"])
+        else body.webhook
+    )
     # адреса, по которым панель пойдёт САМА, — проверяем до сохранения (см. urlguard)
-    for field, value in (("Вебхук", body.webhook), ("Адрес Bot API", body.telegram_api)):
+    for field, value in (("Вебхук", webhook), ("Адрес Bot API", body.telegram_api)):
         try:
             await urlguard.check_outbound_url(value)
         except urlguard.UrlNotAllowed as exc:
@@ -38,9 +65,9 @@ async def put_alerts(
             ) from exc
     await settings_store.set_alert_config(
         session,
-        body.telegram_token,
+        token,
         body.telegram_chat,
-        body.webhook,
+        webhook,
         telegram_api=body.telegram_api,
     )
     cfg = await settings_store.get_alert_config(session, get_settings())

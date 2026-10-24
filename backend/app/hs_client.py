@@ -101,25 +101,28 @@ class HeadscaleClient:
         data = await self._get("/api/v1/node")
         return data.get("nodes", [])
 
+    # Идентификатор ноды и префикс маршрута экранируем: в путь они приходят из
+    # запроса к панели уже раскодированными, и символ вроде # или ? менял бы
+    # смысл управляющего запроса к control-серверу.
     async def get_node(self, node_id: str) -> dict | None:
-        data = await self._get(f"/api/v1/node/{node_id}")
+        data = await self._get(f"/api/v1/node/{quote(str(node_id), safe='')}")
         return data.get("node")
 
     async def delete_node(self, node_id: str) -> None:
-        await self._delete(f"/api/v1/node/{node_id}")
+        await self._delete(f"/api/v1/node/{quote(str(node_id), safe='')}")
 
     async def expire_node(self, node_id: str) -> dict | None:
         """Истечь ключ ноды — она перестанет подключаться до перерегистрации."""
-        data = await self._post(f"/api/v1/node/{node_id}/expire")
+        data = await self._post(f"/api/v1/node/{quote(str(node_id), safe='')}/expire")
         return data.get("node")
 
     async def rename_node(self, node_id: str, new_name: str) -> dict | None:
         """Сменить givenName (имя ноды в тайлнете). Имя уходит в путь URL."""
-        data = await self._post(f"/api/v1/node/{node_id}/rename/{quote(new_name, safe='')}")
+        data = await self._post(f"/api/v1/node/{quote(str(node_id), safe='')}/rename/{quote(new_name, safe='')}")
         return data.get("node")
 
     async def set_node_tags(self, node_id: str, tags: list[str]) -> dict | None:
-        data = await self._post(f"/api/v1/node/{node_id}/tags", json={"tags": tags})
+        data = await self._post(f"/api/v1/node/{quote(str(node_id), safe='')}/tags", json={"tags": tags})
         return data.get("node")
 
 
@@ -130,7 +133,7 @@ class HeadscaleClient:
         анонсирует (availableRoutes). Exit-node = одобренные 0.0.0.0/0 и ::/0.
         """
         data = await self._post(
-            f"/api/v1/node/{node_id}/approve_routes", json={"routes": routes}
+            f"/api/v1/node/{quote(str(node_id), safe='')}/approve_routes", json={"routes": routes}
         )
         return data.get("node")
 
@@ -201,7 +204,7 @@ class HeadscaleClient:
         await self._post("/api/v1/apikey/expire", json={"prefix": prefix})
 
     async def delete_apikey(self, prefix: str) -> None:
-        await self._delete(f"/api/v1/apikey/{prefix}")
+        await self._delete(f"/api/v1/apikey/{quote(str(prefix), safe='')}")
 
     # --- ACL-политика (только в policy.mode: database) ---
 

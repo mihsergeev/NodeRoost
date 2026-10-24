@@ -4,6 +4,7 @@ config + ключи) и настройками панели (app_settings + уч
 
 import io
 import json
+import asyncio
 import os
 import re
 import sqlite3
@@ -170,6 +171,16 @@ def prune_backups(data_dir: str, keep: int) -> None:
             pass
 
 
+def _write_file(path: str, data: bytes) -> None:
+    with open(path, "wb") as fh:
+        fh.write(data)
+
+
+def _verify_file(path: str) -> list[str]:
+    with open(path, "rb") as fh:
+        return verify_archive(fh.read())
+
+
 async def write_backup(
     session_factory, settings: Settings, keep: int
 ) -> tuple[str, list[str]]:
@@ -179,8 +190,10 @@ async def write_backup(
         archive = await build_archive(session, settings)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     path = os.path.join(d, f"noderoost-backup-{stamp}.tar.gz")
-    with open(path, "wb") as fh:
-        fh.write(archive)
+    # Запись и перечитывание архива - в поток: панель одним процессом обслуживает
+    # и интерфейс, и опрос агентов, а архив вместе с базой control-сервера легко
+    # дотягивает до десятков мегабайт.
+    await asyncio.to_thread(_write_file, path, archive)
     # 0600, а не 0644: внутри архива секрет второго фактора открытым текстом, хеш
     # пароля админа, токены агентов и приватные ключи control-сервера. Каталог
     # закрыт правами, но файл живёт дольше каталога — его скачивают, копируют,
@@ -190,8 +203,7 @@ async def write_backup(
     # бэкап удалял последнюю рабочую копию: ретеншн считал его полноценным, хотя
     # проверка ещё не проходила. Битые архивы в счёт хранения не берём — они
     # остаются на диске, но старые копии переживают их.
-    with open(path, "rb") as fh:
-        problems = verify_archive(fh.read())
+    problems = await asyncio.to_thread(_verify_file, path)
     if not problems:
         prune_backups(settings.data_dir, keep)
     return path, problems

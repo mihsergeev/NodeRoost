@@ -1,6 +1,6 @@
 import ipaddress
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -207,13 +207,22 @@ class NodeMetaIn(RequestModel):
     muted: bool | None = None  # не слать алерты по этой ноде
     hidden: bool | None = None  # убрать из списка до лучших времён
     exit_gateway: bool | None = None  # сервер — шлюз выхода
-    exit_via: list[str] | None = Field(default=None, max_length=64)
+    # Идентификаторы шлюзов: только цифры. Раньше сюда принималась любая строка,
+    # и «выход через шлюз 999999» сохранялся, отдавался в карточке и выглядел
+    # рабочим, хотя в политику не попадал вовсе.
+    exit_via: list[Annotated[str, Field(pattern=r"^\d+$", max_length=32)]] | None = Field(
+        default=None, max_length=64
+    )
     # id шлюза, через который принудительно гнать весь трафик этой ноды (exit-node)
     force_exit: str | None = Field(default=None, max_length=32, pattern=r"^\d*$")
     # группировка в списках: группа → подгруппа (напр. организация → проект).
     # Свободный текст, пусто = «без группы».
-    group: str = Field(default="", max_length=63)
-    subgroup: str = Field(default="", max_length=63)
+    # None = поле не передано, как и у соседей. С дефолтом "" любой частичный
+    # вызов стирал группировку: мастер добавления шлёт только тип с описанием, и
+    # повторное подключение уже известной машины (headscale переиспользует её
+    # запись) очищало ей группу и подгруппу.
+    group: str | None = Field(default=None, max_length=63)
+    subgroup: str | None = Field(default=None, max_length=63)
 
 
 class NodeRoutesIn(RequestModel):

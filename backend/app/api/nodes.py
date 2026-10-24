@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app import aclgen, audit, ca, enroll, exitvia, geoip, hostinfo, settings_store
+from app import aclgen, audit, ca, enroll, exitvia, geoip, hostinfo, routing, settings_store
 from app.clientip import client_ip
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
@@ -141,7 +141,7 @@ async def list_nodes(_: CurrentUser, session: SessionDep) -> list[NodeOut]:
     client = get_client(settings)
     nodes = await hs_call(client.get_nodes())
     meta = await settings_store.get_node_meta(session)
-    hinfo = hostinfo.read_all(settings.headscale_db_path)
+    hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
     return [_map_node(n, meta, hinfo) for n in nodes]
 
 
@@ -154,7 +154,7 @@ async def get_node(node_id: str, _: CurrentUser, session: SessionDep) -> NodeOut
     if not node:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
     meta = await settings_store.get_node_meta(session)
-    hinfo = hostinfo.read_all(settings.headscale_db_path)
+    hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
     return _map_node(node, meta, hinfo)
 
 
@@ -245,6 +245,21 @@ async def set_meta(
     eff_force = (
         str(stored.get("force_exit") or "") if body.force_exit is None else body.force_exit
     )
+    # Та же проверка, но для УЖЕ сохранённого признака шлюза. Проверка выше
+    # ловила только галку, выставленную этим же запросом: нода, помеченная
+    # шлюзом раньше, спокойно становилась устройством, тег xgw оставался на ней
+    # и выпадал из политики - у всех, кто выходил через неё, интернет тихо
+    # умирал, а снять галку из интерфейса было уже нельзя (у устройства её не
+    # показывают).
+    if eff_gateway and effective_kind(
+        node, _kind_ctx(meta_stored, node.get("id", node_id), body.kind)
+    ) != "server":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Нода помечена шлюзом выхода в интернет. Устройством её сделать нельзя: "
+            "сначала снимите «Шлюз выхода в интернет» - вместе с ним снимется "
+            "принудительный выход у зависимых нод.",
+        )
     if eff_force and eff_force not in exitvia.gateways(meta_now):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -259,6 +274,19 @@ async def set_meta(
         eff_via = list(base)
         if eff_force and eff_force not in eff_via:
             eff_via.append(eff_force)
+        # Выход разрешаем только через ноду, помеченную шлюзом. Раньше список
+        # не сверялся ни с чем: запрос с несуществующим id отвечал 200, связь
+        # показывалась в карточке, а в политику не попадала - то есть панель
+        # уверенно врала о том, как ходит трафик.
+        if body.exit_via is not None:
+            known = exitvia.gateways(meta_now)
+            unknown = [g for g in eff_via if g not in known]
+            if unknown:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Выход возможен только через сервер, помеченный «Шлюзом выхода "
+                    f"в интернет»: {', '.join(unknown)} таким не является.",
+                )
     await settings_store.set_node_meta(
         session, node_id, body.description, body.kind, body.admin,
         body.group, body.subgroup, body.muted, body.hidden, body.exit_gateway,
@@ -302,7 +330,7 @@ async def set_meta(
     meta = await settings_store.get_node_meta(session)
     # hinfo обязателен и здесь: интерфейс перерисовывает карточку ЭТИМ ответом,
     # и без него у ноды пропадали ОС, адрес и флаг страны до обновления списка.
-    hinfo = hostinfo.read_all(settings.headscale_db_path)
+    hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 
@@ -340,7 +368,7 @@ async def set_exit_clients(
     meta = await settings_store.get_node_meta(session)
     # hinfo обязателен и здесь: интерфейс перерисовывает карточку ЭТИМ ответом,
     # и без него у ноды пропадали ОС, адрес и флаг страны до обновления списка.
-    hinfo = hostinfo.read_all(settings.headscale_db_path)
+    hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 
@@ -501,7 +529,7 @@ async def rename_node(
     node = await hs_call(client.rename_node(node_id, body.name))
     await audit.record(session, user.username, "node_rename", node_id, body.name)
     meta = await settings_store.get_node_meta(session)
-    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    hinfo = await hostinfo.read_all_async(get_settings().headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 
@@ -546,7 +574,7 @@ async def set_tags(
     node = await hs_call(client.set_node_tags(node_id, want))
     await audit.record(session, user.username, "node_tags", node_id, ", ".join(tags))
     meta = await settings_store.get_node_meta(session)
-    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    hinfo = await hostinfo.read_all_async(get_settings().headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 
@@ -563,10 +591,35 @@ async def set_routes(
     require_hs(settings)
     client = get_client(settings)
     routes = [r.strip() for r in body.routes if r.strip()]
+    # Снятая галка должна означать «маршрута больше нет», а не «нет до
+    # следующего цикла»: коллектор заново одобряет всё, что панель держит в
+    # конфиге агента или выводит из направлений. Раньше запрос отвечал 200, в
+    # интерфейсе маршрут исчезал, а через минуту возвращался в сеть.
+    async with settings_store.write_lock():
+        all_cfg = await settings_store.get_agent_all(session)
+        cfg = all_cfg.get(node_id) or {}
+        derived = routing.routes_by_node(await settings_store.get_routing(session))
+        dropped = (set(cfg.get("routes") or []) | set(derived.get(node_id, []))) - set(routes)
+        from_directions = dropped & set(derived.get(node_id, []))
+        if from_directions:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Маршрут{'ы' if len(from_directions) > 1 else ''} "
+                f"{', '.join(sorted(from_directions))} задан"
+                f"{'ы' if len(from_directions) > 1 else ''} направлением в разделе "
+                "«Маршрутизация» - снимите там, иначе панель одобрит их снова.",
+            )
+        if dropped and cfg:
+            cfg["routes"] = [r for r in (cfg.get("routes") or []) if r not in dropped]
+            cfg["panel_approved"] = [
+                r for r in (cfg.get("panel_approved") or []) if r not in dropped
+            ]
+            all_cfg[node_id] = cfg
+            await settings_store.set_agent_all(session, all_cfg)
     node = await hs_call(client.approve_routes(node_id, routes))
     await audit.record(session, user.username, "node_routes", node_id, ", ".join(routes))
     meta = await settings_store.get_node_meta(session)
-    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    hinfo = await hostinfo.read_all_async(get_settings().headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 
@@ -580,7 +633,7 @@ async def expire_node(
     node = await hs_call(client.expire_node(node_id))
     await audit.record(session, user.username, "node_expire", node_id)
     meta = await settings_store.get_node_meta(session)
-    hinfo = hostinfo.read_all(get_settings().headscale_db_path)
+    hinfo = await hostinfo.read_all_async(get_settings().headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 

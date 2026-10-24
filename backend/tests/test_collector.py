@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app import collector
+from sqlalchemy import select
+
 from app.config import Settings
 from app.hs_client import HeadscaleError
 
@@ -211,3 +213,50 @@ async def _false():
 
 async def _none(*a, **k):
     return False
+
+
+async def test_empty_node_list_does_not_wipe_the_network(session_factory, monkeypatch):
+    """Пустой ответ control-сервера при непустой сети - сбой, а не «нод нет».
+
+    Пройти такой цикл до конца значило бы запушить пустую политику (в Tailscale
+    это «запрещено всё»), стереть имена внутри сети и всю историю статусов, и
+    всё это молча: удаление статуса переходом не считается, алертов не будет.
+    """
+    from app.models import NodeMetricSample, NodeStatus
+
+    pushed: list = []
+    synced: list = []
+
+    class _Client:
+        def __init__(self, nodes):
+            self._nodes = nodes
+
+        async def get_nodes(self):
+            return self._nodes
+
+        async def list_preauthkeys(self):
+            return []
+
+    async def _sync(session, settings, raw):
+        synced.append(raw)
+        return False
+
+    monkeypatch.setattr(collector.dnsrecords, "sync", _sync)
+    monkeypatch.setattr(collector.policy_apply, "reconcile_policy", _none)
+
+    node = {"id": "7", "name": "srv", "givenName": "srv", "online": True}
+    monkeypatch.setattr(collector, "get_client", lambda _s: _Client([node]))
+    assert await collector.collect_once(session_factory, Settings(headscale_api_key="k")) == 1
+
+    # теперь control-сервер отвечает пустым списком
+    monkeypatch.setattr(collector, "get_client", lambda _s: _Client([]))
+    before = len(synced)
+    assert await collector.collect_once(session_factory, Settings(headscale_api_key="k")) == 0
+    assert len(synced) == before, "файл имён внутри сети трогать нельзя"
+
+    async with session_factory() as s:
+        # статусы нод на месте, нулевой снимок метрики не записан
+        assert (await s.scalars(select(NodeStatus))).all()
+        totals = [m.total for m in (await s.scalars(select(NodeMetricSample))).all()]
+        assert totals == [1]
+    assert pushed == []
