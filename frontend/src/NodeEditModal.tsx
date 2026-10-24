@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   getAgent,
@@ -11,6 +11,7 @@ import {
 import { roleList } from './aclui'
 import { useI18n } from './i18n'
 import { useModalDismiss } from './useModalDismiss'
+import { NODE_NAME_RE, suggestNodeName } from './nodename'
 
 type Props = {
   node: Node
@@ -128,13 +129,23 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
     }
   }
 
+  // имя, которое уже успели применить в этом сеансе окна
+  const renamedTo = useRef<string | null>(null)
+  const suggestion = suggestNodeName(name)
+  const nameOk = name.trim() === '' || NODE_NAME_RE.test(name.trim().toLowerCase())
+
   async function save() {
     setBusy(true)
     setError(null)
     try {
       const newName = name.trim()
-      if (newName && newName !== node.name) {
+      // Переименование не повторяем: сохранение идёт в три шага (имя, мета,
+      // теги), и падение на втором оставляло имя уже применённым - повторное
+      // «Сохранить» слало переименование ещё раз, теперь уже с 409 про занятое
+      // имя, хотя занято оно самой этой нодой.
+      if (newName && newName !== node.name && newName !== renamedTo.current) {
         await renameNode(node.id, newName)
+        renamedTo.current = newName
       }
       const effAdmin = kind === 'device' && admin
       // exit-поля осмысленны только для своего типа: сервер — шлюз, устройство —
@@ -223,6 +234,25 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
         <label className="field">
           <span>{t('Имя')}</span>
           <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          {/* Те же правила и та же подсказка, что в мастере добавления: иначе
+              негодное имя ловилось только отказом сервера после «Сохранить». */}
+          {!nameOk && (
+            <span className="muted small">
+              {t('Это имя машины в сети: латинские буквы, цифры и дефис, без пробелов и точек. Человеческое название впишите потом в описание ноды.')}
+              {suggestion && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="ghost small"
+                    onClick={() => setName(suggestion)}
+                  >
+                    {t('Назвать «{name}»', { name: suggestion })}
+                  </button>
+                </>
+              )}
+            </span>
+          )}
         </label>
 
         <label className="field">
@@ -486,7 +516,8 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
           <button className="ghost" onClick={onClose}>
             {t('Отмена')}
           </button>
-          <button onClick={save} disabled={busy}>
+          {/* негодное имя не отправляем: ошибка приходила бы с сервера */}
+          <button onClick={save} disabled={busy || !nameOk}>
             {busy ? t('Сохранение…') : t('Сохранить')}
           </button>
         </div>

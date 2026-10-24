@@ -24,9 +24,6 @@ export function ReconnectModal({ node, onClose, onDone, onUnauthorized }: Props)
   const { t } = useI18n()
   const dismiss = useModalDismiss(onClose)
   const [os, setOs] = useState<NodeOs>('linux')
-  // По умолчанию - как у этой ноды записано в панели. Переподключение зовёт
-  // `tailscale up --reset`, то есть стирает настройки клиента: не передать флаг
-  // заново значит молча вернуть ноде перехват DNS.
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EnrollResult | null>(null)

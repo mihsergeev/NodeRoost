@@ -358,24 +358,13 @@ input:focus {
   font-size: 0.95rem;
 }
 
-/* Карточка-предупреждение: нода, у которой меш, скорее всего, забрал весь DNS.
-   Поломка тихая (сервис жив, не резолвятся только внутренние имена), поэтому
-   она обязана быть заметной в карточке, а не лежать в документации. */
-.dns-warn {
-  border: 1px solid var(--warn, #d19a2f);
-}
-
-.dns-warn h3 {
-  margin-top: 0;
-}
-
 .ca-missing {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  border: 1px solid var(--warn, #d19a2f);
+  border: 1px solid var(--warn);
   border-radius: 8px;
   padding: 0.6rem 0.9rem;
   margin: 0.8rem 0 0;
@@ -1044,6 +1033,7 @@ body {
 }
 
 .node-name {
+  overflow-wrap: anywhere;
   font-size: 1.02rem;
   font-weight: 600;
 }
@@ -1073,6 +1063,7 @@ body {
 }
 
 .pill-warn {
+  white-space: nowrap;
   display: inline-block;
   background: rgba(255, 107, 94, 0.15);
   color: var(--danger);
@@ -1263,9 +1254,6 @@ body {
   font-weight: 500;
 }
 
-.route-pending {
-  cursor: default;
-}
 
 /* --- редактор политики (ACL) --- */
 .policy-editor {
@@ -1395,6 +1383,7 @@ body {
 }
 
 .node-desc {
+  overflow-wrap: anywhere;
   font-size: 0.85rem;
   color: var(--text);
   opacity: 0.85;
@@ -2300,7 +2289,7 @@ button.node-group-head {
 
 /* Предупреждение в карточке exit-ноды: без гранта «Интернет» ничего не заработает */
 .exit-warn {
-  border-left: 2px solid var(--warn, #d98b2b);
+  border-left: 2px solid var(--warn);
   padding-left: 0.6rem;
 }
 
@@ -2563,7 +2552,7 @@ button.node-group-head {
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.4);
   background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
+  color: var(--pill-muted);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -2624,8 +2613,11 @@ button.node-group-head {
 /* Оффлайновая нода. Раньше её выдавали только серая точка и строчка «видели
    17 мин назад» - на экране с десятком карточек это не читалось. Теперь у
    карточки своя кромка и приглушённый фон, а рядом с именем красная плашка. */
-.node-card.node-off {
-  border-color: rgba(255, 107, 94, 0.45);
+.node-card.node-off,
+.node-card.node-off.node-clickable:hover {
+  /* и на наведении тоже: правило ховера перебивало рамку по специфичности, и
+     от подсветки оставалась одна полоска слева */
+  border-color: var(--danger);
   box-shadow: inset 3px 0 0 0 var(--danger);
 }
 
