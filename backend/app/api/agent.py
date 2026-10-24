@@ -251,7 +251,11 @@ async def agent_applied(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     node_id, _ = found
     await settings_store.mark_agent_applied(
-        session, token, (h or "")[:64], (s or "")[:16], max(0, min(r, 10**6))
+        # Номер релиза нода сообщает о себе сама, поэтому сверху ограничиваем
+        # тем, что вообще выпущено: иначе отчёт с заведомо большим числом снимал
+        # заказ на обновление, и кнопка «обновить агента» переставала работать
+        # незаметно для глаза.
+        session, token, (h or "")[:64], (s or "")[:16], max(0, min(r, agent.release()))
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

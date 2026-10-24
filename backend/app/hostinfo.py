@@ -7,9 +7,11 @@
 Ни одна операция панели от этих данных не зависит.
 """
 
+import asyncio
 import ipaddress
 import json
 import logging
+import os
 import sqlite3
 
 log = logging.getLogger("noderoost.hostinfo")
@@ -64,6 +66,37 @@ def _parse(hi_raw: str | None, eps_raw: str | None) -> dict:
         # WorkingUDP=false → прямое соединение не поднимется, трафик пойдёт через DERP
         "direct_ok": bool(net.get("WorkingUDP", False)) if net else False,
     }
+
+
+# Кэш последнего чтения: (путь, mtime, размер) -> разобранные строки. База
+# headscale читается на КАЖДЫЙ запрос списка нод, включая самый частый, а это
+# полный скан таблицы с разбором JSON в цикле событий: залоченная база давала
+# до двух секунд полного простоя панели.
+_cache: tuple[tuple[str, float, int], dict[str, dict]] | None = None
+
+
+def _stamp(db_path: str) -> tuple[str, float, int]:
+    try:
+        st = os.stat(db_path)
+    except OSError:
+        return (db_path, 0.0, 0)
+    return (db_path, st.st_mtime, st.st_size)
+
+
+async def read_all_async(db_path: str) -> dict[str, dict]:
+    """То же, что read_all, но не блокирует цикл событий.
+
+    Чтение уходит в поток, а неизменившийся файл берётся из кэша: у sqlite
+    меняются mtime и размер при любой записи, так что устаревшие данные жить
+    тут не будут дольше одного обновления базы.
+    """
+    global _cache
+    stamp = _stamp(db_path)
+    if _cache is not None and _cache[0] == stamp:
+        return _cache[1]
+    data = await asyncio.to_thread(read_all, db_path)
+    _cache = (stamp, data)
+    return data
 
 
 def read_all(db_path: str) -> dict[str, dict]:

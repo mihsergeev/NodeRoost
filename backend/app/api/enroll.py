@@ -3,13 +3,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app import audit, ca, enroll, settings_store
+from app import audit, ca, enroll, hostinfo, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, PublicRateLimit, SessionDep
 from app.api.nodes import _map_node
 from app.hs_client import get_client
 from app.hs_util import hs_call, require_hs
-from app.schemas import EnrollIn, EnrollOut, EnrollStatusOut
+from app.schemas import EnrollIn, EnrollOut, EnrollStatusOut, normalize_node_name
 
 router = APIRouter(prefix="/enroll", tags=["enroll"])
 # Скрипт подключения по ссылке — публично, на домене control-сервера: машину как
@@ -111,12 +111,21 @@ async def enroll_node(
 
 @router.get("/status", response_model=EnrollStatusOut)
 async def enroll_status(
-    key_id: str, hostname: str, _: CurrentUser
+    key_id: str, hostname: str, _: CurrentUser, session: SessionDep
 ) -> EnrollStatusOut:
     """Поллинг: появилась ли нода, зарегистрированная выданным ключом."""
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
+    # Имя приходит параметром запроса и дальше уходит в переименование, поэтому
+    # проверяем его так же, как везде: иначе мимо нормализации проезжало
+    # «WEB-FRA» рядом с «web-fra» - headscale их различает, MagicDNS нет, и
+    # обращение по имени молча уходило на чужую машину.
+    if hostname:
+        try:
+            hostname = normalize_node_name(hostname)
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
     nodes = await hs_call(client.get_nodes())
 
     # ТОЛЬКО точное совпадение по выданному pre-auth-ключу: ключ — единственная
@@ -145,11 +154,27 @@ async def enroll_status(
         was = str(n.get("givenName") or "")
         reused = None
         if hostname and was and was != hostname:
+            taken = any(
+                str(o.get("givenName") or "").lower() == hostname
+                and str(o.get("id", "")) != str(n.get("id", ""))
+                for o in nodes
+            )
+            if taken:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, "Имя уже занято другой нодой"
+                )
             renamed = await hs_call(client.rename_node(str(n.get("id", "")), hostname))
             reused = was
             if renamed:
                 n = renamed.get("node") or renamed
-        return EnrollStatusOut(connected=True, node=_map_node(n), reused_from=reused)
+        # Мету и сведения о хосте передаём как в остальных ручках: интерфейс
+        # перерисовывает карточку ЭТИМ ответом, и без них у ноды пропадали тип,
+        # описание, группа, ОС и флаг страны - выглядело как потеря настроек.
+        meta = await settings_store.get_node_meta(session)
+        hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
+        return EnrollStatusOut(
+            connected=True, node=_map_node(n, meta, hinfo), reused_from=reused
+        )
     return EnrollStatusOut(connected=False)
 
 # --- Сертификат CA: поставить одной командой ---

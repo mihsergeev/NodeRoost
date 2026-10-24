@@ -33,10 +33,35 @@ async def test_health_separates_a_rejected_key_from_a_dead_headscale(client, mon
         async def ping(self):
             raise RuntimeError(self.msg)
 
+    # Проба кэшируется на несколько секунд (ручка публичная), поэтому между
+    # проверками состояние кэша сбрасываем - в жизни эти состояния разделены
+    # минутами, а не миллисекундами.
+    monkeypatch.setattr(api_health, "_hs_cached", (0.0, ""))
     monkeypatch.setattr(api_health, "HeadscaleClient",
                         lambda *a, **k: _HS("headscale 401: Unauthorized"))
     assert (await client.get("/api/health")).json()["headscale"] == "unauthorized"
 
+    monkeypatch.setattr(api_health, "_hs_cached", (0.0, ""))
     monkeypatch.setattr(api_health, "HeadscaleClient",
                         lambda *a, **k: _HS("headscale недоступен: connect refused"))
     assert (await client.get("/api/health")).json()["headscale"] == "down"
+
+
+async def test_health_caches_the_control_server_probe(client, monkeypatch):
+    """Публичную ручку нельзя превращать в усилитель запросов к control-серверу."""
+    from app.api import health as api_health
+    from app.config import Settings
+
+    calls = []
+    st = Settings(headscale_api_key="hskey-test", headscale_url="http://hs:8080")
+    monkeypatch.setattr(api_health, "get_settings", lambda: st)
+    monkeypatch.setattr(api_health, "_hs_cached", (0.0, ""))
+
+    class _HS:
+        async def ping(self):
+            calls.append(1)
+
+    monkeypatch.setattr(api_health, "HeadscaleClient", lambda *a, **k: _HS())
+    for _ in range(5):
+        assert (await client.get("/api/health")).json()["headscale"] == "ok"
+    assert len(calls) == 1
