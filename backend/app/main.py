@@ -4,7 +4,8 @@ import secrets
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
 
 from app.api import (
     agent as agent_api,
@@ -20,6 +21,7 @@ from app.api import (
     routing as routing_api,
     settings as settings_api,
 )
+from app import geoip
 from app.autobackup import backup_loop
 from app.bootstrap import ensure_admin
 from app.collector import collector_loop
@@ -30,6 +32,8 @@ from app.routing import routing_loop
 
 
 log = logging.getLogger("noderoost.main")
+
+_MAX_BODY = 2 * 1024 * 1024  # байт
 
 _WEAK_SECRETS = {"", "changeme", "dev-insecure-change-me"}
 _WEAK_PASSWORDS = {"", "changeme", "admin"}
@@ -78,11 +82,14 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _enforce_secrets(settings)
         await ensure_admin(session_factory, settings)
+        # геобаза: греем в потоке, чтобы первый же список нод не ждал разбора
+        warm_task = asyncio.create_task(asyncio.to_thread(geoip.preload))
         hb_task = asyncio.create_task(heartbeat_loop(session_factory, settings))
         collector_task = asyncio.create_task(collector_loop(session_factory, settings))
         backup_task = asyncio.create_task(backup_loop(session_factory, settings))
         routing_task = asyncio.create_task(routing_loop(session_factory, settings))
         yield
+        warm_task.cancel()
         hb_task.cancel()
         collector_task.cancel()
         backup_task.cancel()
@@ -101,6 +108,25 @@ def create_app() -> FastAPI:
     )
     app.state.engine = engine
     app.state.session_factory = session_factory
+
+    @app.middleware("http")
+    async def limit_body_size(request, call_next):
+        """Потолок на размер тела запроса.
+
+        Тело читается РАНЬШЕ, чем проверяется токен, поэтому запрос без всякой
+        авторизации мог буферизоваться в память целиком. Загрузок через API у
+        панели нет, самый большой запрос - политика (ограничена миллионом
+        символов), так что двух мегабайт хватает с запасом. Запрос, где длина
+        не указана, не отвергаем: поток разбирает уже конкретный обработчик
+        (запрос сертификата читает с потолком в 16 КБ).
+        """
+        raw = request.headers.get("content-length")
+        if raw and raw.isdigit() and int(raw) > _MAX_BODY:
+            return JSONResponse(
+                {"detail": "Запрос слишком большой"},
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        return await call_next(request)
 
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")

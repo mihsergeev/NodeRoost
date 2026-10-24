@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import text
 
@@ -7,6 +9,12 @@ from app.hs_client import HeadscaleClient
 from app.schemas import ConfigOut
 
 router = APIRouter(tags=["system"])
+
+# Проба control-сервера кэшируется: /health открыт без токена (его дёргает
+# healthcheck контейнера и любой, кто знает адрес панели), а каждый вызов
+# означал новое исходящее соединение к control-серверу и запись из пула БД.
+_HS_CACHE_S = 5
+_hs_cached: tuple[float, str] = (0.0, "")
 
 
 @router.get("/health")
@@ -31,8 +39,12 @@ async def health(request: Request, response: Response) -> dict[str, str]:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
     # headscale-проба с коротким таймаутом, чтобы health не подвисал
+    global _hs_cached
+    fresh_ts, fresh_val = _hs_cached
     if not settings.headscale_api_key:
         headscale = "unconfigured"
+    elif fresh_val and time.monotonic() - fresh_ts < _HS_CACHE_S:
+        headscale = fresh_val
     else:
         client = HeadscaleClient(
             settings.headscale_url, settings.headscale_api_key, timeout=3
@@ -40,6 +52,7 @@ async def health(request: Request, response: Response) -> dict[str, str]:
         try:
             await client.ping()
             headscale = "ok"
+            _hs_cached = (time.monotonic(), headscale)
         except Exception as exc:  # noqa: BLE001 — control-сервер недоступен
             # «Не пускает» и «не отвечает» чинятся по-разному: в первом случае
             # headscale жив, а ключ панели истёк или отозван — нужен новый ключ,
@@ -51,6 +64,7 @@ async def health(request: Request, response: Response) -> dict[str, str]:
                 if "401" in msg or "403" in msg
                 else "down"
             )
+        _hs_cached = (time.monotonic(), headscale)
 
     return {
         "status": "ok" if db != "down" else "degraded",

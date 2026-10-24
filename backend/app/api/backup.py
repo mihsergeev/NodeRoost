@@ -1,6 +1,7 @@
 import logging
 import os
 
+from fastapi.responses import FileResponse
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app import audit, backup, settings_store
@@ -62,12 +63,12 @@ async def download_backup(name: str, _: CurrentUser) -> Response:
     # анти-traversal: итоговый путь обязан лежать внутри каталога бэкапов
     if os.path.dirname(os.path.abspath(path)) != os.path.abspath(d) or not os.path.isfile(path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Файл не найден")
-    with open(path, "rb") as fh:
-        data = fh.read()
-    return Response(
-        content=data,
+    # Отдаём потоком: архив вместе с базой control-сервера бывает в десятки
+    # мегабайт, и читать его целиком в память на каждое скачивание ни к чему.
+    return FileResponse(
+        path,
         media_type="application/gzip",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        filename=name,
     )
 
 

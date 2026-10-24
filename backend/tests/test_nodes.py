@@ -508,3 +508,4 @@ async def test_dropping_gateway_clears_devices_choice(session):
     assert "force_exit" not in meta.get("4", {})
     assert meta["6"]["exit_via"] == ["5"]          # чужие связи не тронуты
     assert unforced == ["4"]                        # агенту сбросить use_exit
+

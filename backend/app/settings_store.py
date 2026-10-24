@@ -1,8 +1,12 @@
 """Хранилище редактируемых настроек панели (в БД, поверх env-дефолтов)."""
 
+import asyncio
 import hmac
 import json
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
+from functools import wraps
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +30,44 @@ ROUTING_KEY = "routing"
 DNS_RECORDS_KEY = "dns_records"
 
 
+# --- Запись настроек по одному в каждый момент ------------------------------
+# Почти все настройки лежат ОДНИМ json-блобом на ключ (node_meta, node_agent,
+# routing, ...), а правка - это «прочитать, изменить в памяти, записать». Между
+# чтением и записью есть await, поэтому две одновременные правки затирали друг
+# друга: обе отвечали 200, а сохранялась одна. Публичная ручка агента, куда
+# ноды ходят из интернета, тем же способом могла откатить правку админа по
+# ДРУГОЙ ноде.
+#
+# Замок реентрантный: часть функций вызывает другие такие же (claim_pending_meta
+# -> _repoint_node_id), и обычный Lock на этом встал бы намертво.
+_write_lock = asyncio.Lock()
+_held: ContextVar[bool] = ContextVar("noderoost_settings_write_lock", default=False)
+
+
+@asynccontextmanager
+async def write_lock():
+    if _held.get():
+        yield
+        return
+    async with _write_lock:
+        token = _held.set(True)
+        try:
+            yield
+        finally:
+            _held.reset(token)
+
+
+def serialized(fn):
+    """Функция правит настройки: выполняем её по одной за раз."""
+
+    @wraps(fn)
+    async def wrapper(*args, **kwargs):
+        async with write_lock():
+            return await fn(*args, **kwargs)
+
+    return wrapper
+
+
 async def get_tailscale_version(session: AsyncSession, settings: Settings) -> str:
     """Эффективная пиновая версия клиента: из БД, иначе — из env-дефолта."""
     raw = await _get_raw(session, TS_VERSION_KEY)
@@ -41,6 +83,7 @@ async def get_node_meta(session: AsyncSession) -> dict:
     return json.loads(raw) if raw else {}
 
 
+@serialized
 async def set_node_meta(
     session: AsyncSession,
     node_id: str,
@@ -111,6 +154,7 @@ async def set_node_meta(
 PENDING_META_KEY = "node_meta_pending"
 
 
+@serialized
 async def stash_node_meta(
     session: AsyncSession, name: str, entry: dict, old_id: str = ""
 ) -> None:
@@ -130,6 +174,7 @@ async def stash_node_meta(
     await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
 
 
+@serialized
 async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     """Вернуть отложенные заметки нодам, которые уже переподключились.
 
@@ -165,6 +210,7 @@ async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     return moved
 
 
+@serialized
 async def forget_node_refs(session: AsyncSession, node_id: str) -> None:
     """Убрать ссылки на УДАЛЁННУЮ ноду: правила, направления, настройки агента.
 
@@ -217,6 +263,7 @@ async def forget_node_refs(session: AsyncSession, node_id: str) -> None:
         await set_dns_records(session, left)
 
 
+@serialized
 async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
     """Перевести всё, что ссылалось на ноду по id, на её новый id.
 
@@ -265,6 +312,7 @@ async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
         await set_dns_records(session, records)
 
 
+@serialized
 async def clear_node_meta(session: AsyncSession, node_id: str) -> None:
     """Убрать заметку о ноде целиком (нода удалена). Отдельно от set_node_meta:
     та теперь СЛИВАЕТ поля, и «передать всё пустым» больше не значит «стереть»."""
@@ -273,6 +321,7 @@ async def clear_node_meta(session: AsyncSession, node_id: str) -> None:
         await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
 
 
+@serialized
 async def drop_gateway(session: AsyncSession, gateway_id: str) -> list[str]:
     """Нода перестала быть шлюзом выхода — убрать её из выбора всех устройств.
 
@@ -315,6 +364,7 @@ async def drop_gateway(session: AsyncSession, gateway_id: str) -> list[str]:
     return unforced
 
 
+@serialized
 async def set_gateway_clients(
     session: AsyncSession,
     gateway_id: str,
@@ -405,6 +455,7 @@ async def get_agent_by_token(session: AsyncSession, token: str) -> tuple[str, di
     return None
 
 
+@serialized
 async def touch_agent_poll(session: AsyncSession, token: str) -> None:
     """Отметка «агент жив»: он ходит сюда раз в минуту. Пишем не чаще 30 с —
     эндпоинт публичный."""
@@ -426,6 +477,7 @@ async def touch_agent_poll(session: AsyncSession, token: str) -> None:
         return
 
 
+@serialized
 async def mark_agent_applied(
     session: AsyncSession,
     token: str,
@@ -495,16 +547,26 @@ async def set_raw(session: AsyncSession, key: str, value: str) -> None:
 
 
 async def get_alert_config(session: AsyncSession, settings: Settings) -> dict:
-    """Эффективная конфигурация алертов: значение из БД, иначе — из env."""
+    """Эффективная конфигурация алертов: значение из БД, иначе — из env.
+
+    Важно различать «ключа в БД нет» и «в БД пусто». Раньше бралось
+    `из БД or из env`, и очистка поля в панели возвращала значение из
+    переменных окружения: администратор стирал вебхук, получал 200, в ответе
+    снова видел старый адрес, а панель продолжала слать туда алерты.
+    """
     raw = await _get_raw(session, ALERTS_KEY)
     data = json.loads(raw) if raw else {}
+
+    def pick(key: str, env_default: str = "") -> str:
+        return data[key] if key in data else env_default
+
     return {
-        "telegram_token": data.get("telegram_token") or settings.alert_telegram_token,
-        "telegram_chat": data.get("telegram_chat") or settings.alert_telegram_chat,
+        "telegram_token": pick("telegram_token", settings.alert_telegram_token),
+        "telegram_chat": pick("telegram_chat", settings.alert_telegram_chat),
         # адрес Telegram Bot API: пусто = дефолт api.telegram.org (см. alerts.py).
         # Можно указать зеркало/прокси для регионов, где телега заблокирована.
-        "telegram_api": data.get("telegram_api") or "",
-        "webhook": data.get("webhook") or settings.alert_webhook,
+        "telegram_api": pick("telegram_api"),
+        "webhook": pick("webhook", settings.alert_webhook),
     }
 
 
@@ -554,6 +616,7 @@ async def set_backup_config(
 JOIN_KEY = "join_scripts"  # {токен: {script, os, expires_at}} — ссылки на подключение
 
 
+@serialized
 async def save_join_script(
     session: AsyncSession, token: str, script: str, os_name: str, expires_at: str
 ) -> None:

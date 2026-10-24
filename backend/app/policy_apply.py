@@ -4,6 +4,8 @@
 периодически из коллектора как самоисцеление (см. reconcile_policy)."""
 
 import asyncio
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,11 +26,26 @@ _last_pushed: str | None = None
 # не тот доступ, который на самом деле работает. Бэкенд — один процесс, поэтому
 # asyncio-замка достаточно.
 _write_lock = asyncio.Lock()
+_held: ContextVar[bool] = ContextVar("noderoost_policy_write_lock", default=False)
 
 
-def write_lock() -> asyncio.Lock:
-    """Взять перед изменением состояния, влияющего на политику, и держать до пуша."""
-    return _write_lock
+@asynccontextmanager
+async def write_lock():
+    """Взять перед изменением состояния, влияющего на политику, и держать до пуша.
+
+    Реентрантный: сборку с пушем берёт под замок и сам apply_policy, а часть
+    обработчиков держит замок шире - от сохранения правил. Обычный Lock на
+    такой вложенности встал бы намертво.
+    """
+    if _held.get():
+        yield
+        return
+    async with _write_lock:
+        token = _held.set(True)
+        try:
+            yield
+        finally:
+            _held.reset(token)
 
 
 async def build_policy(
@@ -177,8 +194,15 @@ async def push_policy(
 async def apply_policy(
     session: AsyncSession, client: HeadscaleClient, settings: Settings
 ) -> None:
-    """Best-effort: не роняет вызвавшую операцию, если headscale недоступен/отверг."""
-    await push_policy(session, client, settings)
+    """Best-effort: не роняет вызвавшую операцию, если headscale недоступен/отверг.
+
+    Собираем и пушим под общим замком. Иначе правка карточки ноды, начатая до
+    отзыва доступа, собирала политику из СТАРЫХ правил и пушила её уже после
+    отзыва: в панели доступ снят, а в сети правило снова действует - до
+    следующего цикла самоисцеления.
+    """
+    async with write_lock():
+        await push_policy(session, client, settings)
 
 
 def _same_policy(a: str, b: str) -> bool:

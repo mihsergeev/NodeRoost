@@ -10,6 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app import alerts, certs, dnsrecords, policy_apply, routing, settings_store
+
 from app.config import Settings
 from app.hs_client import HeadscaleError, get_client
 from app.models import NodeMetricSample, NodeStatus
@@ -41,6 +42,15 @@ def _fields(n: dict) -> dict:
     }
 
 
+async def _had_nodes(session_factory) -> bool:
+    """Были ли ноды в прошлый раз (по последнему снимку метрики)."""
+    async with session_factory() as session:
+        last = await session.scalar(
+            select(NodeMetricSample.total).order_by(NodeMetricSample.ts.desc()).limit(1)
+        )
+    return bool(last)
+
+
 async def collect_once(
     session_factory: async_sessionmaker[AsyncSession], settings: Settings
 ) -> int:
@@ -48,6 +58,15 @@ async def collect_once(
         return 0
     client = get_client(settings)
     raw = await client.get_nodes()
+    if not raw and await _had_nodes(session_factory):
+        # Пустой список при непустой сети - это не «все ноды исчезли», а сбой:
+        # ответ 200 без поля nodes (смена схемы, прокси, наполовину поднятый
+        # control-сервер). Пройти такой цикл до конца значило бы запушить пустую
+        # политику (в Tailscale пустой acls = запрещено всё), стереть файл имён
+        # внутри сети и снести всю историю статусов - молча, без единого алерта,
+        # потому что удаление статуса переходом не считается.
+        log.warning("control-сервер вернул пустой список нод - цикл пропущен")
+        return 0
     nodes = [_fields(n) for n in raw]
     total = len(nodes)
     online = sum(1 for n in nodes if n["online"])

@@ -2,6 +2,7 @@ import os
 import re
 import time
 import shutil
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -150,10 +151,21 @@ def _edit_hs_config(config_path: str, mutate) -> None:
         raise ValueError("config.yaml пуст или не читается")
     mutate(data)
     shutil.copy2(config_path, config_path + ".bak")
-    tmp = config_path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        y.dump(data, f)
-    os.replace(tmp, config_path)
+    # Имя временного файла уникальное, а не config.yaml.tmp: процесс у панели
+    # один, так что сейчас пересечься неоткуда, но файл с предсказуемым именем
+    # рядом с конфигом control-сервера - это та мина, которая взрывается, когда
+    # запись однажды уедет в поток или во второй воркер.
+    fd, tmp = tempfile.mkstemp(
+        dir=os.path.dirname(config_path) or ".", prefix=".config.yaml.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            y.dump(data, f)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, config_path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     Path(_restart_flag_path(config_path)).touch()
 
 
