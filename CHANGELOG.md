@@ -5,6 +5,15 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.20.2] - 2026-10-24
+
+### Fixed
+
+- `ops/data-owner.sh` and `ops/check-consistency.py` landed with mode 644, that
+  is without the executable bit. `ops/install.sh` and `ops/update.sh` call the
+  first one and got "command not found" - on a fresh install that aborted the
+  install entirely.
+
 ## [0.20.1] - 2026-10-24
 
 ### Security
