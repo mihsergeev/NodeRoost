@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getConfig, getToken, setToken, type PanelConfig } from './api'
+import { getConfig, getToken, logoutServer, setToken, type PanelConfig } from './api'
 import { LoginPage } from './LoginPage'
 import { NodesPage } from './NodesPage'
 import { AccessPage } from './AccessPage'
@@ -88,6 +88,9 @@ function App() {
   }, [authed])
 
   function logout() {
+    // Сначала просим сервер отозвать токен, потом забываем его локально.
+    // Сеть может не ответить - выйти из панели это не должно мешать.
+    logoutServer().catch(() => {})
     setToken(null)
     setAuthed(false)
   }

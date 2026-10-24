@@ -5,54 +5,52 @@
 (172.20.0.x), а не адрес пользователя. Из-за этого в журнал/алерты/rate-limit
 попадал внутренний IP прокси, а не реального клиента.
 
-Реальный адрес берём из ``X-Forwarded-For``: идём справа налево и возвращаем
-первый ПУБЛИЧНЫЙ адрес. Внутренние прокси (частные/loopback-сети) пропускаем —
-поэтому подделать заголовок нельзя: свой публичный адрес caddy всегда дописывает
-правее любого спуфа, присланного клиентом в заголовке.
+Берём адрес из ``X-Forwarded-For`` по ЧИСЛУ своих прокси (``trusted_proxy_hops``),
+отсчитывая справа: каждый наш прокси дописывает в хвост адрес того, от кого
+принял запрос, поэтому при штатных двух хопах нужный адрес — предпоследний.
+Всё, что левее, прислал сам клиент.
+
+Раньше здесь искался первый публичный адрес справа. Это держалось только пока
+клиент публичный: из локальной сети (или через прокси, который заголовок не
+дописывает, а пробрасывает) реальный адрес считался хопом, скан проезжал его и
+брал то, что прислал клиент. Меняя заголовок на каждом запросе, такой клиент
+получал чистый ключ лимитера на каждую попытку входа — то есть перебор пароля
+без ограничений, и чужой адрес в журнале.
 """
 
 import ipaddress
 
 from fastapi import Request
 
-# Тайлнет (100.64.0.0/10, shared address space). Для нас это НЕ прокси-хоп, а
-# нормальный адрес клиента: панель может открываться по мешу, и такие клиенты
-# должны различаться — иначе все они делят один ключ лимитера и могут залочить
-# друг друга на входе.
-#
-# Проверка явная, потому что классификация зависит от версии Python: до 3.13
-# этот диапазон считался is_private (и тогда адреса из меша действительно
-# схлопывались), с 3.13 — уже нет. Не полагаемся на версию.
-#
-# Подделать адрес это не позволяет: спуф из заголовка всё равно оказывается
-# ЛЕВЕЕ реального адреса, который дописал прокси, а мы идём справа налево.
-_TAILNET = ipaddress.ip_network("100.64.0.0/10")
+from app.config import get_settings
 
 
-def _is_internal(ip: str) -> bool:
+def _valid(ip: str) -> bool:
     try:
-        addr = ipaddress.ip_address(ip)
+        ipaddress.ip_address(ip)
     except ValueError:
-        return True  # мусор в заголовке — не доверяем
-    if addr.version == 4 and addr in _TAILNET:
         return False
-    return (
-        addr.is_private
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_unspecified
-    )
+    return True
 
 
-def client_ip(request: Request) -> str:
+def client_ip(request: Request, hops: int | None = None) -> str:
     """IP реального клиента с учётом обратного прокси."""
-    xff = getattr(request, "headers", None)
-    raw = xff.get("x-forwarded-for", "") if xff is not None else ""
-    for part in reversed(raw.split(",")):
-        ip = part.strip()
-        if ip and not _is_internal(ip):
-            return ip
-    # заголовка нет или вся цепочка внутренняя (локальный запуск/тесты) —
-    # берём прямого соседа
-    return request.client.host if request.client else "unknown"
+    if hops is None:
+        hops = get_settings().trusted_proxy_hops
+    peer = request.client.host if getattr(request, "client", None) else "unknown"
+    if hops <= 0:
+        return peer
+
+    headers = getattr(request, "headers", None)
+    raw = headers.get("x-forwarded-for", "") if headers is not None else ""
+    chain = [p.strip() for p in raw.split(",") if p.strip()]
+    if not chain:
+        # заголовка нет: прямой запрос к бэкенду (локальный запуск, healthcheck)
+        return peer
+
+    # Хоп номер hops с конца — адрес, который дописал наш самый внешний прокси.
+    # Цепочка короче ожидаемой (запрос пришёл в обход части прокси) — берём
+    # самый левый из того, что дописали мы сами, а не то, что прислал клиент.
+    idx = max(0, len(chain) - hops)
+    ip = chain[idx]
+    return ip if _valid(ip) else peer

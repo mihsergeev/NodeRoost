@@ -37,25 +37,41 @@ NOW=$(date +%s)
 
 val(){ grep -m1 "^$1=" "$HB" 2>/dev/null | cut -d= -f2-; }
 
+# Пульс пишет контейнер панели, а этот скрипт идёт от root на ХОСТЕ: всё, что
+# пришло из файла, считаем недоверенным. Адрес берём только если это http(s), и
+# отдаём curl через --url, иначе значение с дефиса разбирается как опция (-K
+# читает конфиг curl, то есть даёт произвольные запросы и запись файлов).
+url_or(){ case "$1" in https://*|http://*) printf '%s' "$1";; *) printf '%s' "$2";; esac; }
+
 send(){
   local msg="$1" token chat api hook
   token=$(val tg_token); chat=$(val tg_chat); api=$(val tg_api); hook=$(val webhook)
-  [ -z "$api" ] && api="https://api.telegram.org"
+  api=$(url_or "$api" "https://api.telegram.org")
+  hook=$(url_or "$hook" "")
+  # В токене бота бывают только эти символы; остальное - мусор или попытка
+  # дописать к адресу лишнее.
+  case "$token" in *[!A-Za-z0-9:_-]*) token="";; esac
   if [ -n "$token" ] && [ -n "$chat" ]; then
-    curl -s --max-time 15 "$api/bot$token/sendMessage" \
+    curl -s --max-time 15 --url "$api/bot$token/sendMessage" \
       --data-urlencode "chat_id=$chat" --data-urlencode "text=$msg" \
       --data-urlencode "disable_web_page_preview=true" >/dev/null 2>&1
   fi
   [ -n "$hook" ] && curl -s --max-time 15 -H 'Content-Type: application/json' \
-    --data "{\"text\": \"$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}" "$hook" >/dev/null 2>&1
+    --data "{\"text\": \"$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}" \
+    --url "$hook" >/dev/null 2>&1
 }
 
 problem=""
 if [ ! -f "$HB" ]; then
   problem="файл пульса отсутствует — панель не пишет heartbeat (не запущена?)"
 else
-  ts=$(val ts); ok=$(val alerts_ok); age=$(( NOW - ${ts:-0} ))
-  if [ "${ts:-0}" -eq 0 ] || [ "$age" -gt "$MAX_AGE" ]; then
+  ts=$(val ts); ok=$(val alerts_ok)
+  # Арифметика bash раскрывает индекс массива, и подстановка команд внутри него
+  # ВЫПОЛНЯЕТСЯ: ts=y[$(...)] выполнило бы команду от root на хосте. Пульс пишет
+  # контейнер, поэтому пускаем в $(( )) только цифры.
+  case "$ts" in ''|*[!0-9]*) ts=0;; esac
+  age=$(( NOW - ts ))
+  if [ "$ts" -eq 0 ] || [ "$age" -gt "$MAX_AGE" ]; then
     problem="панель молчит ${age}с (>${MAX_AGE}с) — контейнер/БД мертвы или зависли"
   elif [ "$ok" = "0" ]; then
     problem="панель жива, но канал алертов сломан (Telegram недоступен/токен невалиден)"

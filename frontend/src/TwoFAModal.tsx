@@ -22,6 +22,8 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
   const [setup, setSetup] = useState<TwoFASetup | null>(null)
   const [qr, setQr] = useState<string | null>(null)
   const [otp, setOtp] = useState('')
+  // Включение и выключение второго фактора подтверждается паролем: токена мало.
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,7 +51,7 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
     setBusy(true)
     setError(null)
     try {
-      setSetup(await setup2FA())
+      setSetup(await setup2FA(password))
       setOtp('')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Ошибка'))
@@ -62,10 +64,11 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const s = await enable2FA(otp.trim())
+      const s = await enable2FA(otp.trim(), password)
       setEnabled(s.enabled)
       setSetup(null)
       setOtp('')
+      setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Неверный код'))
     } finally {
@@ -77,9 +80,10 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const s = await disable2FA(otp.trim())
+      const s = await disable2FA(otp.trim(), password)
       setEnabled(s.enabled)
       setOtp('')
+      setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Неверный код'))
     } finally {
@@ -105,8 +109,17 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
               {t('2FA включена. Вход требует код из приложения.')}
             </p>
             <p className="muted small">
-              {t('Чтобы отключить, введите текущий код из приложения-аутентификатора.')}
+              {t('Чтобы отключить, введите текущий пароль и код из приложения-аутентификатора.')}
             </p>
+            <label className="field">
+              <span>{t('Текущий пароль')}</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
             <label className="field">
               <span>{t('Код из приложения (2FA)')}</span>
               <input
@@ -121,7 +134,7 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
               <button
                 className="danger-solid"
                 onClick={turnOff}
-                disabled={busy || !otp.trim()}
+                disabled={busy || !otp.trim() || !password}
               >
                 {busy ? '…' : t('Отключить 2FA')}
               </button>
@@ -171,9 +184,18 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
                 'Добавьте второй фактор к входу в панель — одноразовый код из приложения-аутентификатора (TOTP).',
               )}
             </p>
+            <label className="field">
+              <span>{t('Текущий пароль')}</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
             {error && <p className="form-error">{error}</p>}
             <div className="modal-actions">
-              <button onClick={startSetup} disabled={busy}>
+              <button onClick={startSetup} disabled={busy || !password}>
                 {busy ? '…' : t('Включить 2FA')}
               </button>
             </div>

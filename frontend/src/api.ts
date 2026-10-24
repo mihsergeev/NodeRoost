@@ -695,20 +695,31 @@ export function get2FA(): Promise<TwoFAStatus> {
   return api<TwoFAStatus>('/api/auth/2fa')
 }
 
-export function setup2FA(): Promise<TwoFASetup> {
-  return api<TwoFASetup>('/api/auth/2fa/setup', { method: 'POST' })
+// Пароль здесь обязателен: одного токена мало, иначе угнанная сессия привязывает
+// свой второй фактор и запирает владельца панели.
+export function setup2FA(password: string): Promise<TwoFASetup> {
+  return api<TwoFASetup>('/api/auth/2fa/setup', {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  })
 }
 
-export function enable2FA(otp: string): Promise<TwoFAStatus> {
+export function enable2FA(otp: string, password: string): Promise<TwoFAStatus> {
   return api<TwoFAStatus>('/api/auth/2fa/enable', {
     method: 'POST',
-    body: JSON.stringify({ otp }),
+    body: JSON.stringify({ otp, password }),
   })
 }
 
-export function disable2FA(otp: string): Promise<TwoFAStatus> {
+export function disable2FA(otp: string, password: string): Promise<TwoFAStatus> {
   return api<TwoFAStatus>('/api/auth/2fa/disable', {
     method: 'POST',
-    body: JSON.stringify({ otp }),
+    body: JSON.stringify({ otp, password }),
   })
+}
+
+// Выход на сервере: поднимает версию токенов, то есть снятая раньше копия
+// токена перестаёт работать сразу, а не через 12 часов.
+export function logoutServer(): Promise<void> {
+  return api<void>('/api/auth/logout', { method: 'POST' })
 }
