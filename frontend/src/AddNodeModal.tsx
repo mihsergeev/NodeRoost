@@ -11,38 +11,13 @@ import {
 } from './api'
 import { useI18n } from './i18n'
 import { useModalDismiss } from './useModalDismiss'
+import { NODE_NAME_RE, suggestNodeName } from './nodename'
 
 type Props = {
   kind: 'server' | 'device'
   onClose: () => void
   onEnrolled: () => void
   onUnauthorized: () => void
-}
-
-const NODE_NAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
-
-const RU: Record<string, string> = {
-  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
-  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
-  с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch',
-  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
-}
-
-// Из того, что человек написал, делаем имя, которое примет сеть: нижний регистр,
-// кириллица транслитом, всё прочее - дефис. Пустую строку не предлагаем.
-function suggestNodeName(raw: string): string {
-  const out = raw
-    .trim()
-    .toLowerCase()
-    .split('')
-    .map((ch) => (ch in RU ? RU[ch] : ch))
-    .join('')
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63)
-    .replace(/-+$/g, '')
-  return NODE_NAME_RE.test(out) ? out : ''
 }
 
 export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Props) {
@@ -83,7 +58,11 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
           // уезжает в «Устройства» по авто-определению.
           if (s.node) {
             try {
-              await setNodeMeta(s.node.id, { description: '', kind })
+              // Шлём ТОЛЬКО тип. Пустое описание тут было командой «стереть», и
+              // при повторном подключении уже известной машины (headscale
+              // переиспользует её запись) оно сносило описание, а заодно группу
+              // с подгруппой - при том, что окно обещает сохранить настройки.
+              await setNodeMeta(s.node.id, { kind })
             } catch {
               /* тип проставится вручную — не мешаем показать «подключена» */
             }

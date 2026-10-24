@@ -31,12 +31,21 @@ function errorText(body: unknown, status: number): string {
   if (Array.isArray(detail)) {
     const msgs = detail
       .map((e) => {
+        // элементом бывает и готовая строка, а не только запись pydantic
+        if (typeof e === 'string') return e
         const m = (e as { msg?: unknown })?.msg
         // pydantic приписывает «Value error, » к тексту нашего валидатора
         return typeof m === 'string' ? m.replace(/^(Value|Type) error,\s*/, '') : ''
       })
       .filter(Boolean)
     if (msgs.length) return [...new Set(msgs)].join('; ')
+  }
+  // detail объектом: так выглядит HTTPException(detail={...})
+  if (detail && typeof detail === 'object') {
+    const d = detail as { msg?: unknown; detail?: unknown; message?: unknown }
+    for (const v of [d.msg, d.detail, d.message]) {
+      if (typeof v === 'string' && v.trim()) return v
+    }
   }
   return `Ошибка HTTP ${status}`
 }
@@ -457,7 +466,9 @@ export async function downloadCa(): Promise<void> {
   const res = await fetch('/api/ca', {
     headers: { Authorization: `Bearer ${getToken() ?? ''}` },
   })
-  if (!res.ok) throw new ApiError(await res.text(), res.status)
+  // не текст ответа: при 500/502 от прокси в интерфейс вылезала целая
+  // HTML-страница ошибки вместо сообщения
+  if (!res.ok) throw new ApiError(`Ошибка HTTP ${res.status}`, res.status)
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')
   a.href = url

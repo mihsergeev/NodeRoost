@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   addDirection,
@@ -49,6 +49,7 @@ export function RoutingPage({ onUnauthorized }: Props) {
   // команда установки агента для конкретной ноды — показываем по клику на бейдж
   const [fix, setFix] = useState<{ node: string; cmd: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const loadSeq = useRef(0)
 
   const handle = useCallback(
     (err: unknown) => {
@@ -59,11 +60,17 @@ export function RoutingPage({ onUnauthorized }: Props) {
   )
 
   const load = useCallback(async () => {
+    // Поколение запроса: таймер тикает каждые 20 секунд, и ответ, который
+    // стартовал ДО удаления направления, приходил после него и возвращал
+    // удалённую строку на экран до следующего тика.
+    const seq = ++loadSeq.current
     try {
       const [d, n] = await Promise.all([getDirections(), listNodes()])
+      if (seq !== loadSeq.current) return
       setDirs(d.directions)
       setNodes(n)
     } catch (err) {
+      if (seq !== loadSeq.current) return
       handle(err)
     } finally {
       setLoading(false)
@@ -152,7 +159,10 @@ export function RoutingPage({ onUnauthorized }: Props) {
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id: string, label: string) {
+    // Спрашиваем: одно нажатие забирает доступ у всех устройств направления, а
+    // восстановить его можно только заведя направление заново.
+    if (!window.confirm(t('Убрать направление {name}?', { name: label }))) return
     setBusy(true)
     setError(null)
     try {
@@ -430,7 +440,7 @@ export function RoutingPage({ onUnauthorized }: Props) {
                             <button
                               className="ghost small"
                               disabled={busy}
-                              onClick={() => remove(d.id)}
+                              onClick={() => remove(d.id, d.full ? t('весь трафик (устарело)') : d.dst)}
                             >
                               {t('Убрать')}
                             </button>

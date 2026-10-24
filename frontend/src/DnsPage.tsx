@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   downloadCa,
@@ -67,6 +67,16 @@ export function DnsPage({ onUnauthorized }: Props) {
   const [override, setOverride] = useState(false)
   const [domain, setDomain] = useState('')
   const [servers, setServers] = useState('')
+  // Отложенная перепроверка после перезапуска control-сервера: держим
+  // таймер, чтобы снять его при уходе со страницы - иначе он срабатывал
+  // уже на размонтированном экране.
+  const recheck = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (recheck.current !== null) window.clearTimeout(recheck.current)
+    },
+    [],
+  )
   const [srvLocked, setSrvLocked] = useState(true)
   const [srvBusy, setSrvBusy] = useState(false)
   const [srvMsg, setSrvMsg] = useState<string | null>(null)
@@ -232,7 +242,7 @@ export function DnsPage({ onUnauthorized }: Props) {
       seed(updated)
       setSrvLocked(true)
       setSrvMsg(t('Сохранено. headscale перезапускается…'))
-      window.setTimeout(() => {
+      recheck.current = window.setTimeout(() => {
         getHsInfo()
           .then((i) => {
             setInfo(i)

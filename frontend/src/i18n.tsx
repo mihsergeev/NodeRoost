@@ -1,6 +1,7 @@
 import {
   createContext,
   useCallback,
+  useEffect,
   useContext,
   useState,
   type ReactNode,
@@ -13,7 +14,6 @@ export type Lang = 'ru' | 'en'
 const EN: Record<string, string> = {
   // --- шапка / навигация ---
   'Ноды': 'Nodes',
-  'Пользователи': 'Users',
   'Выйти': 'Log out',
   'На главную': 'Home',
   'Тема': 'Theme',
@@ -34,18 +34,9 @@ const EN: Record<string, string> = {
   'Неверный код 2FA': 'Invalid 2FA code',
 
   // --- заглушки разделов ---
-  'Скоро': 'Coming soon',
-  'Управление нодами': 'Node management',
-  'Список нод, теги, маршруты, exit-node, сроки ключей — появятся на этапе 2.':
-    'Node list, tags, routes, exit nodes and key expiry — arriving in stage 2.',
-  'Управление пользователями и pre-auth-ключами появится на этапе 3.':
-    'User and pre-auth key management arrives in stage 3.',
-  'Подключение control-сервера': 'Control server connection',
   'headscale доступен': 'headscale reachable',
   'headscale недоступен': 'headscale unreachable',
   'API-ключ headscale не задан': 'headscale API key not set',
-  'Адрес для подключения нод:': 'Login server for nodes:',
-  'Команда подключения ноды:': 'Node join command:',
   'загрузка…': 'loading…',
 
   // --- ноды ---
@@ -53,23 +44,17 @@ const EN: Record<string, string> = {
   'Всего': 'Total',
   'Онлайн': 'Online',
   'Оффлайн': 'Offline',
-  'Поиск по имени, IP, тегу…': 'Search by name, IP, tag…',
   'Поиск: имя, IP, тег…': 'Search: name, IP, tag…',
-  'Нод пока нет': 'No nodes yet',
-  'Подключите первую ноду командой ниже — она появится здесь.':
-    'Connect your first node with the command below — it will appear here.',
   'Ничего не найдено': 'Nothing found',
   'Не удалось загрузить ноды': 'Failed to load nodes',
   'Изменить': 'Edit',
   'Отозвать ключ': 'Revoke key',
   'онлайн': 'online',
   'оффлайн': 'offline',
-  'видели {ago}': 'seen {ago}',
   'только что': 'just now',
   '{n} мин назад': '{n} min ago',
   '{n} ч назад': '{n} h ago',
   '{n} дн назад': '{n} d ago',
-  'Владелец': 'Owner',
   'Теги': 'Tags',
   'Ключ истёк': 'Key expired',
   'без имени': 'unnamed',
@@ -84,9 +69,6 @@ const EN: Record<string, string> = {
   'Перетащите в другую группу': 'Drag to another group',
   'без подгруппы': 'no subgroup',
   'Имя': 'Name',
-  'Теги (через запятую, префикс tag: необязателен)':
-    'Tags (comma-separated, tag: prefix optional)',
-  'Владелец (пользователь)': 'Owner (user)',
   'Сохранить': 'Save',
   'Сохранение…': 'Saving…',
   'Отозвать ключ ноды «{name}»? Она отключится и не подключится обратно, пока её не переподключить заново.':
@@ -94,14 +76,8 @@ const EN: Record<string, string> = {
   'Удалить ноду «{name}»? Она будет удалена из тайлнета.':
     'Delete node “{name}”? It will be removed from the tailnet.',
   'Удалить': 'Delete',
-  'control-сервер:': 'control server:',
-  'Нажмите «+ Добавить ноду», чтобы подключить первую машину.':
-    'Click “+ Add node” to connect your first machine.',
 
   // --- добавление ноды (enroll) ---
-  '+ Добавить ноду': '+ Add node',
-  'Добавить ноду': 'Add node',
-  'Нода добавлена': 'Node added',
   'Скрипт подключения готов': 'Enrollment script ready',
   'Пока создан только одноразовый ключ. Нода появится в списке, когда подключится.':
     'So far only a one-time key was issued. The node will appear in the list once it connects.',
@@ -109,8 +85,6 @@ const EN: Record<string, string> = {
     'This is the machine name inside the network: latin letters, digits and hyphens, no spaces or dots. Put the human-readable title in the node description later.',
   'Назвать «{name}»': 'Name it "{name}"',
   'Имя ноды': 'Node name',
-  'Меш закрыт: укажите публичный IP ноды — он откроется на фаерволе control-сервера. Без IP нода подключится только с уже разрешённого адреса.':
-    'The mesh is closed: enter the node’s public IP — it will be opened on the control-server firewall. Without an IP the node can only connect from an already-allowed address.',
   'Операционная система': 'Operating system',
   'Создать': 'Create',
   'Создание…': 'Creating…',
@@ -130,8 +104,6 @@ const EN: Record<string, string> = {
   'PowerShell должен быть запущен ОТ АДМИНИСТРАТОРА: команда ставит клиент Tailscale на машину. Если установка не пройдёт, скрипт назовёт код ошибки и путь к подробному логу.':
     'PowerShell has to be running AS ADMINISTRATOR: the command installs the Tailscale client on the machine. If the install fails, the script names the error code and the path to a verbose log.',
   'Скопировано ✓': 'Copied ✓',
-  'IP добавлен в вайтлист — фаервол откроется в течение ~минуты.':
-    'IP added to the allow-list — the firewall opens within ~a minute.',
   'Ждём подключения ноды — статус обновится сам…':
     'Waiting for the node to connect — this updates automatically…',
   'Нода подключена ✓': 'Node connected ✓',
@@ -164,17 +136,12 @@ const EN: Record<string, string> = {
   // --- маршруты / exit-node ---
   'Маршруты': 'Routes',
   'Маршруты · {name}': 'Routes · {name}',
-  'Нода ничего не анонсирует. Выполните на ней: tailscale set --advertise-routes=10.0.0.0/24 или --advertise-exit-node.':
-    'The node advertises nothing. Run on it: tailscale set --advertise-routes=10.0.0.0/24 or --advertise-exit-node.',
   'Exit-node': 'Exit node',
   'ВСЁ или НИЧЕГО: клиент, выбравший эту ноду, гонит через неё весь свой трафик. «Только определённые сайты через VPN» так не делается — для этого маршрут ниже.':
     'ALL or NOTHING: a client that picks this node sends all of its traffic through it. “Only certain sites over the VPN” is not done this way — use the route below.',
-  'Subnet-маршруты': 'Subnet routes',
   'активен': 'active',
   'маршруты ожидают': 'routes pending',
   'Одобрить маршруты': 'Approve routes',
-  'Пустить через эту ноду только конкретный адрес или подсеть (а не весь трафик, как exit):':
-    'Route only a specific address or subnet through this node (not all traffic, as an exit node does):',
   'Чтобы управлять маршрутами прямо отсюда, поставьте на ноду агента — он раз в минуту забирает настройки из панели и применяет их сам. Выполните на ноде под root один раз:':
     'To manage routes from here, install the agent on the node — once a minute it pulls the settings from the panel and applies them itself. Run once on the node as root:',
   'Статус обновится сам, как только агент отзовётся.':
@@ -190,11 +157,7 @@ const EN: Record<string, string> = {
   'Снять агента с ноды': 'Remove the agent from the node',
   'Нода анонсирует сама (не из панели) — одобрить:':
     'Advertised by the node itself (not from the panel) — approve:',
-  'Собрать команду': 'Build command',
-  'Выполните на самой ноде, затем обновите — маршрут появится здесь для одобрения:':
-    'Run this on the node itself, then refresh — the route will show up here for approval:',
   'не удалось определить адрес': 'could not resolve an address',
-  'Есть неодобренные маршруты': 'There are unapproved routes',
   'Система': 'System',
   'Клиент Tailscale': 'Tailscale client',
   'Виден с адреса': 'Seen from',
@@ -208,41 +171,12 @@ const EN: Record<string, string> = {
   'Скопировать IP': 'Copy IP',
   'Скопировать «имя (IP)»': 'Copy “name (IP)”',
   'имя + IP': 'name + IP',
-  'Exit-нода': 'Exit node',
-  'клиенты смогут выходить в интернет через неё; скрипт включит и закрепит ip_forward. Одобрить exit в «Маршрутах» после подключения.':
-    'clients can reach the internet through it; the script enables and persists ip_forward. Approve the exit route in “Routes” after it connects.',
-  'Затем одобри exit-маршрут в «Маршрутах».': 'Then approve the exit route in “Routes”.',
-  'Чтобы сделать ноду exit-нодой, выполни на самой ноде (Linux, под sudo), затем обнови список:':
-    'To make this an exit node, run on the node itself (Linux, with sudo), then refresh:',
-  'Для subnet-маршрутов на ноде: tailscale set --advertise-routes=10.0.0.0/24.':
-    'For subnet routes, run on the node: tailscale set --advertise-routes=10.0.0.0/24.',
 
   // --- политика (ACL) ---
-  'Политика': 'Policy',
-  'Политика доступа': 'Access policy',
   'Отменить': 'Discard',
-  'Правила доступа тайлнета в формате HuJSON (JSON с комментариями). Проверяется headscale при сохранении.':
-    'Tailnet access rules in HuJSON (JSON with comments). Validated by headscale on save.',
-  'Политика ещё не задана — сохраните шаблон, чтобы инициализировать.':
-    'No policy set yet — save the template to initialize it.',
-  'Политика сохранена.': 'Policy saved.',
-  'Обновлена:': 'Updated:',
-  'По умолчанию весь трафик между нодами ЗАПРЕЩЁН. Разрешайте нужное правилами: Источник → Назначение по указанным портам. Правила направленные — обратный доступ нужно разрешать отдельно.':
-    'By default all traffic between nodes is DENIED. Allow what you need with rules: Source → Destination on the given ports. Rules are directional — the reverse direction must be allowed separately.',
-  'Правил нет — всё запрещено. Добавьте первое правило ниже.':
-    'No rules — everything is denied. Add the first rule below.',
-  'Любой (*)': 'Any (*)',
   'Любой': 'Any',
   'любой порт': 'any port',
-  'порт(ы) {p}': 'port(s) {p}',
-  'Источник': 'Source',
-  'Назначение': 'Destination',
-  'Порт / сервис': 'Port / service',
   'Свой…': 'Custom…',
-  'Порт(ы)': 'Port(s)',
-  '+ Добавить правило': '+ Add rule',
-  'Показать сгенерированный HuJSON': 'Show generated HuJSON',
-  'Скрыть HuJSON': 'Hide HuJSON',
   // --- деталь ноды (read-only сводка доступа) ---
   'Открыть': 'Open',
   'Доступ': 'Access',
@@ -264,8 +198,6 @@ const EN: Record<string, string> = {
   'Устройство': 'Device',
   'админ': 'admin',
   'Админ — полный доступ ко всем серверам': 'Admin — full access to all servers',
-  'Админ-устройство: полный доступ ко всем серверам. К нему самому — никто.':
-    'Admin device: full access to all servers. Nothing can reach it.',
   'Админ-устройство: полный доступ ко всем серверам. Подключиться к нему нельзя.':
     'Admin device: full access to all servers. It cannot be connected to.',
   'никто — к устройствам подключаться нельзя, они не видят друг друга':
@@ -327,11 +259,6 @@ const EN: Record<string, string> = {
   'Бэкап': 'Backup',
   'Добавить сервер': 'Add server',
   'Добавить устройство': 'Add device',
-  '— выберите —': '— select —',
-  '＋ Новый пользователь…': '＋ New user…',
-  'Имя нового пользователя': 'New user name',
-  'Устройство привяжется к этому человеку — доступ ему выдаётся сразу на все его устройства.':
-    'The device will belong to this person — access is granted to them for all their devices at once.',
 
   // --- доступ внутри ноды (редактируется) ---
   'Кто может подключаться сюда': 'Who can connect here',
@@ -351,23 +278,12 @@ const EN: Record<string, string> = {
     'For this exit node to appear on the client, mark it an “exit gateway” on this server and allow the devices you want (in “Edit node” — here or on the device card). Otherwise the client sees “No exit node available”.',
   'Linux / macOS (в терминале)': 'Linux / macOS (in a terminal)',
   'Скопировать команду установки': 'Copy install command',
-  'Windows / Android / iOS: в приложении Tailscale → меню → Exit Node → «{name}»; выключить — пункт «None».':
-    'Windows / Android / iOS: in the Tailscale app → menu → Exit Node → “{name}”; to disable, choose “None”.',
   'Маршрутизация': 'Routing',
   'весь трафик': 'all traffic',
-  'Полный туннель — весь трафик устройства через эту ноду': 'Full tunnel — all of the device’s traffic through this node',
-  'Как exit-нода, но привязано к устройству: только выбранные ходят через эту ноду, остальные — нет. Трафик к другим нодам меша остаётся прямым.':
-    'Like an exit node, but bound to the device: only the chosen ones go through this node, others do not. Traffic to other mesh nodes stays direct.',
-  'Весь интернет-трафик выбранных уходит через эту ноду, включая ОБРАТНЫЙ путь — поэтому доступ к источнику по его ПУБЛИЧНОМУ IP (например SSH к серверу) оборвётся. По тайнет-адресу (100.x) доступ остаётся: он мешевый и не туннелируется. Годится для клиентских устройств (ноутбук/телефон), а не для сервера, которым вы управляете по внешнему IP.':
-    'All internet traffic of the chosen ones goes through this node, including the RETURN path — so reaching the source over its PUBLIC IP (e.g. SSH to a server) will drop. Access over the tailnet address (100.x) stays: it is mesh traffic and is not tunnelled. Best for client devices (laptop/phone), not a server you administer over its public IP.',
   'ходят на': 'go to',
   '1 · Кто ходит': '1 · Who goes',
   '2 · Куда ходят': '2 · Where to',
   '3 · Через какую ноду': '3 · Through which node',
-  'На конкретный адрес': 'To a specific address',
-  'Весь трафик (полный туннель)': 'All traffic (full tunnel)',
-  'Как exit-нода, но привязано к устройству: только выбранные ходят через эту ноду, остальные — нет. Мешевый трафик (в т.ч. SSH к самой ноде) и её собственный интернет остаются прямыми — доступ к ней не пропадёт.':
-    'Like an exit node, but bound to the device: only the chosen ones go through this node, others do not. Mesh traffic (including SSH to the node itself) and its own internet stay direct — you won’t lose access to it.',
   'выберите сервер…': 'pick a server…',
   'порт': 'port',
   'весь трафик (устарело)': 'all traffic (deprecated)',
@@ -377,9 +293,6 @@ const EN: Record<string, string> = {
     'Routing a server’s whole traffic through another node is not a direction but an exit node: mark the node an “exit gateway”, allow the source, then on the source run tailscale set --exit-node. That way traffic does not leak to other nodes. While active, manage the server over its tailnet address (100.x).',
   'Отметьте кто, куда и через какую ноду — здесь появится итог':
     'Tick who, where and through which node — the result appears here',
-  'Кто ходит: все устройства': 'Who goes there: all devices',
-  'Кто ходит: все серверы': 'Who goes there: all servers',
-  'Кто ходит: отмечено {n}': 'Who goes there: {n} selected',
   'поиск ноды…': 'search a node…',
   'сервер': 'server',
   'устройство': 'device',
@@ -392,6 +305,13 @@ const EN: Record<string, string> = {
   'Скрыть: пока не нужна': 'Hide: not needed for now',
   'Вернуть в список': 'Bring back to the list',
   'Скрытые': 'Hidden',
+  'Сохранённый токен показывается хвостом. Оставьте как есть - останется прежний, очистите - канал выключится.':
+    'A saved token is shown by its tail only. Leave it as is to keep it, clear it to turn the channel off.',
+  'Сохранённый адрес показывается хвостом. Оставьте как есть - останется прежний, очистите - вебхук выключится.':
+    'A saved address is shown by its tail only. Leave it as is to keep it, clear it to turn the webhook off.',
+
+  'Убрать направление {name}?': 'Remove the direction {name}?',
+  'Все ноды в разделе «Скрытые» ниже': 'Every node is in the "Hidden" section below',
   'не в счётчиках и без алертов, пока не вернёте': 'out of the counters and silent until you bring them back',
   'Нода уедет в раздел «Скрытые» под списком: её не будет в счётчиках и по ней не придут алерты. Связь и доступы при этом работают как работали.':
     'The node moves to the "Hidden" section below the list: it leaves the counters and stops sending alerts. Connectivity and access keep working as before.',
@@ -451,16 +371,10 @@ const EN: Record<string, string> = {
   '1 · Кому': '1 · To whom',
   '2 · Куда': '2 · Where',
   '3 · По порту': '3 · On port',
-  '…или отдельные серверы': '…or individual servers',
-  '…или внешний адрес': '…or an external address',
-  'Внешний адрес: 8.8.8.8, целая сеть 10.0.0.0/8 или сайт — панель сама превратит имя в адрес. Чтобы трафик шёл к нему через конкретную ноду, заведите направление в «Маршрутизации».':
-    'An external address: 8.8.8.8, a whole network 10.0.0.0/8, or a site — the panel resolves the name for you. To send traffic there through a particular node, add a direction under Routing.',
   'Отметьте, кому и куда — здесь появится итог': 'Tick who and where — the result appears here',
   'любой': 'anyone',
   'интернет': 'the internet',
-  'выбрать ноды…': 'pick nodes…',
   'все устройства': 'all devices',
-  'Кто ходит — отметьте ноды:': 'Who goes there — tick the nodes:',
   'отметить все': 'select all',
   'снять все': 'clear',
   '{n} нод': '{n} nodes',
@@ -488,8 +402,6 @@ const EN: Record<string, string> = {
   'Проверить адреса': 'Re-check addresses',
   'Заставляет выбранное устройство ходить на конкретный адрес через конкретную ноду. Остальной трафик устройства идёт напрямую — это не exit-нода, через которую уходит всё.':
     'Makes the chosen device reach a specific address through a specific node. The rest of the device traffic goes direct — this is not an exit node that takes everything.',
-  'кто…': 'who…',
-  'ноду…': 'node…',
   'домен, IP или подсеть': 'domain, IP or subnet',
   'через': 'via',
   'Направить': 'Route it',
@@ -498,27 +410,18 @@ const EN: Record<string, string> = {
   'Статус': 'Status',
   'адрес не проверить': 'address unresolved',
   'нет агента': 'no agent',
-  'Без агента нода не применит маршрут — поставьте его в «Маршрутах» этой ноды.':
-    'Without the agent the node will not apply the route — install it from that node’s Routes.',
   'работает': 'working',
   'применяется…': 'applying…',
   'Адрес домена панель перепроверяет сама и обновляет маршрут, если сайт переехал.':
     'The panel re-checks the domain itself and updates the route if the site moves.',
   'Важно: на устройстве-источнике должно быть включено принятие маршрутов, иначе направление молча не сработает (панель покажет «работает» — это про сторону ноды-выхода). Новые ноды NodeRoost включают его сами; уже подключённой достаточно один раз выполнить:':
     'Important: the source device must accept routes, otherwise the direction silently does nothing (the panel will still show “works” — that reflects the exit-node side). New NodeRoost nodes enable it themselves; on an already-connected one run once:',
-  'Куда (сервера / интернет / IP)': 'Where (servers / internet / IP)',
   '🌐 интернет': '🌐 internet',
-  '🌐 Интернет (через exit-node)': '🌐 Internet (via exit node)',
   '…или IP / подсеть / сайт': '…or IP / subnet / site',
-  'Сайт резолвится в IP (ACL умеет только IP, не URL). IP может смениться — тогда правило пересоздайте.':
-    'A site is resolved to an IP (ACL matches IPs, not URLs). The IP may change — re-create the rule if so.',
   'IP/подсеть — прямой доступ к этим адресам в тайлнете (напр. subnet-маршрут, конкретный хост). Сайт резолвится в IP. Обычный выход в интернет так НЕ настраивается — для него в «Изменить ноду» есть «Выход в интернет через».':
     'IP/subnet — direct access to these addresses over the tailnet (e.g. a subnet route, a specific host). A site is resolved to an IP. Ordinary internet exit is not configured here — for that, use “Internet exit via” in “Edit node”.',
-  'IP/подсеть — прямой доступ (subnet-маршрут, хост). Для выхода в интернет — «🌐 Интернет» (+ exit-node на ноде); скоуп по порту да, по сайту — нет.':
-    'IP/subnet — direct access (subnet route, host). For internet egress use “🌐 Internet” (+ an exit node on the device); scoping by port yes, by site no.',
   'Не удалось разрешить адрес': 'Could not resolve the address',
   'Любой (кто угодно)': 'Any (anyone)',
-  'Любой (куда угодно)': 'Any (anywhere)',
   'По порту': 'On port',
   'порт {p} — обычно {name}': 'port {p} — usually {name}',
   'порт {p} — нестандартный': 'port {p} — non-standard',
@@ -530,8 +433,6 @@ const EN: Record<string, string> = {
   'Доступы': 'Access',
   'По кому': 'By principal',
   'По серверам': 'By server',
-  'Массовая выдача — кнопкой выше. Точечно — внутри ноды: Ноды → нода → Доступ.':
-    'Bulk grant with the button above. Pinpoint edits inside a node: Nodes → node → Access.',
   'Доступов пока нет': 'No access granted yet',
   'Всё запрещено. Нажмите «Выдать доступ», чтобы разрешить первую связь.':
     'Everything is denied. Click “Grant access” to allow the first connection.',
@@ -539,10 +440,6 @@ const EN: Record<string, string> = {
   'Выдать доступ': 'Grant access',
   'Выдать': 'Grant',
   'Кому': 'To whom',
-  'Любой (все сервера)': 'Any (all servers)',
-  '…уточните поиск': '…refine search',
-  'Кому разрешить, по какому порту и на какие сервера. Можно отметить несколько.':
-    'Whom to allow, on which port, and to which servers. You can select several.',
   'пользователь': 'user',
   'нода': 'node',
   'все': 'all',
@@ -573,7 +470,6 @@ const EN: Record<string, string> = {
   'выкл': 'off',
   'Базовый домен': 'Base domain',
   'DNS-серверы': 'DNS servers',
-  'Search-домены': 'Search domains',
   'Пока здесь что-то задано, все ноды отдают в меш весь свой DNS, а не только имена сети. Имена внутри сети работают и с пустым полем.':
     'While anything is set here, every node hands its whole DNS to the mesh, not just the network names. Names inside the network work with this field empty.',
   'Свои DNS-серверы заберут у ВСЕХ нод весь DNS: сервер со своим резолвером (корпоративный, облачный, локальный) перестанет видеть внутренние имена, а там, где эти серверы из его сети недоступны, потеряет резолв целиком. Имена внутри сети работают и без этого поля. Всё равно задать?':
@@ -623,14 +519,6 @@ const EN: Record<string, string> = {
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
-  'Нода резолвит имена сети. Если в разделе DNS заданы свои резолверы, туда уйдёт весь её DNS - сервер со своим резолвером перестанет видеть внутренние имена.':
-    'The node resolves network names. With resolvers set in the DNS section, all of its DNS goes there - a server with its own resolver stops seeing internal names.',
-  'машина будет резолвить имена сети, но при настройке «использовать только эти серверы» весь её DNS уйдёт в меш - свой резолвер она перестанет спрашивать':
-    'the machine will resolve network names, but with "use only these servers" its entire DNS goes to the mesh and it stops asking its own resolver',
-  'машина оставит свой DNS (корпоративный, облачный, локальный) и не будет резолвить имена сети - для сервера это обычно то, что нужно':
-    'the machine keeps its own DNS (corporate, cloud, local) and will not resolve network names - usually what a server wants',
-  'Выполните на ноде под root:': 'Run on the node as root:',
-  'Уже сделано - не напоминать': 'Already done - stop reminding',
   'Эти серверы нужны, только если вы хотите навязать нодам свой резолвер. Имена внутри сети работают и без них: панель прописывает маршрут их зоны в меш, поэтому нода спрашивает у меша ровно свои имена, а остальное - у своего резолвера. А вот заданные здесь серверы клиент Tailscale берёт как основные для ВСЕХ имён, и сервер со своим резолвером (корпоративный со split-horizon, облачный, локальный) тихо перестаёт видеть внутренние имена; если эти серверы из его сети недоступны, он теряет резолв целиком. Поэтому лучше оставить поле пустым.':
     'These servers are only needed if you want to force your own resolver onto the nodes. Names inside the network work without them: the panel routes their zone to the mesh, so a node asks the mesh about exactly its own names and its own resolver about everything else. Servers set here, on the other hand, are taken by the Tailscale client as the primary ones for EVERY name, and a server with its own resolver (corporate split-horizon, cloud, local) quietly stops seeing internal names; if those servers are unreachable from its network, it loses resolution altogether. So it is better to leave the field empty.',
   'Ноды панель обслуживает сама. Машину, которую подключали руками, проще всего научить доверять одной командой — она снимет прежний сертификат панели и поставит текущий:':
@@ -664,8 +552,6 @@ const EN: Record<string, string> = {
   'сертификат не выдан: {err}': 'certificate not issued: {err}',
   'сертификат заказан — нода заберёт его в течение минуты':
     'certificate ordered — the node will pick it up within a minute',
-  'СТАРЫЙ КЛЮЧ': 
-    'The panel orders the certificate; the key is generated on the node itself and never leaves it. For this to work you need one DNS record, once and for all: your internal-name mask (say *.int.example.com) as an A record pointing at the panel, plus NODEROOST_CERT_DOMAIN in its .env. Renewal happens on its own a month before the end; the files land on the node in /etc/noderoost/certs, and after a change the agent runs /lib65/noderoost-agent/cert-hook.sh if you put one there.',
   'нода не найдена': 'node not found',
   'Добавить имя': 'Add a name',
   'Сеть меша (IP-диапазон)': 'Mesh network (IP range)',
@@ -704,17 +590,6 @@ const EN: Record<string, string> = {
   'Мирор обновлён: {n} файлов': 'Mirror updated: {n} files',
   'Не скачались: {n}': 'Failed to download: {n}',
   'нет': 'missing',
-  'Доступ к control-серверу (вайтлист IP)': 'Control-server access (IP allow-list)',
-  'Меш закрыт: 443 headscale открыт только этим IP. Панель добавляет их при подключении ноды и сама убирает орфанов (нода не подключилась или удалена). Внешние записи — только вручную.':
-    'The mesh is closed: headscale 443 is open only to these IPs. The panel adds them when a node is enrolled and auto-removes orphans (node never connected or was deleted). External entries are removed manually only.',
-  'Список пуст.': 'The list is empty.',
-  'нода: {n}': 'node: {n}',
-  'ожидает подключения': 'awaiting connection',
-  'орфан — уберётся автоматически': 'orphan — auto-removed',
-  'внешний (вручную)': 'external (manual)',
-  'Убрать из вайтлиста': 'Remove from allow-list',
-  'Убрать {ip} из вайтлиста? Фаервол закроет для него 443 в течение ~минуты.':
-    'Remove {ip} from the allow-list? The firewall will close 443 for it within ~a minute.',
   'IPv4-диапазон (внутри 100.64.0.0/10)': 'IPv4 range (within 100.64.0.0/10)',
   'Распределение адресов': 'Address allocation',
   'последовательно (.1, .2, .3…)': 'sequential (.1, .2, .3…)',
@@ -723,15 +598,10 @@ const EN: Record<string, string> = {
     'Change the mesh range? headscale will restart (~10–15 s). Existing nodes keep their old IPs — the new range is for new nodes only. Best done on an empty/new network.',
   'IPv4 — только внутри 100.64.0.0/10 (Tailscale CGNAT). Существующие ноды сохранят старые IP; смена применяется с перезапуском headscale.':
     'IPv4 only within 100.64.0.0/10 (Tailscale CGNAT). Existing nodes keep old IPs; applied by restarting headscale.',
-  'Настраивается в config.yaml headscale (API для правки нет).':
-    'Configured in headscale config.yaml (no edit API).',
   'Встроенный DERP': 'Embedded DERP',
-  'Карта релеев': 'Relay map',
-  'Автообновление': 'Auto-update',
 
   // --- метрики + алерты ---
   'Алерты': 'Alerts',
-  'Нод онлайн (24 ч)': 'Nodes online (24h)',
   'пока мало данных для графика': 'not enough data for the chart yet',
   'Панель следит за нодами и шлёт уведомление, когда нода уходит в офлайн или возвращается, а также когда ключ ноды скоро истекает.':
     'The panel watches nodes and notifies you when a node goes offline or comes back, and when a node key is about to expire.',
@@ -771,35 +641,10 @@ const EN: Record<string, string> = {
     'Restoring headscale is manual: extract the archive into data/headscale and restart the stack (docker compose up -d).',
 
   // --- пользователи + pre-auth-ключи ---
-  '+ Добавить пользователя': '+ Add user',
-  'Имя пользователя': 'Username',
-  'Пользователей нет': 'No users',
-  'Пользователи — владельцы нод тайлнета. Добавьте первого и выдайте ему ключ подключения.':
-    'Users own the tailnet nodes. Add the first one and issue a connection key.',
   'создан': 'created',
   'Ещё': 'More',
-  'Ключи подключения': 'Connection keys',
-  'Переименовать': 'Rename',
-  'Новое имя пользователя': 'New username',
-  'Удалить пользователя «{name}»?': 'Delete user “{name}”?',
-  'У него {n} нод — удаление может их затронуть.':
-    'It owns {n} nodes — deleting may affect them.',
-  'Ключи подключения · {name}': 'Connection keys · {name}',
-  'Pre-auth-ключи для подключения нод под этим пользователем (tailscale up --authkey). Многоразовый — можно подключить несколько нод.':
-    'Pre-auth keys to connect nodes as this user (tailscale up --authkey). Reusable lets you connect several nodes.',
-  'Многоразовый': 'Reusable',
-  'Эфемерный (нода исчезнет при отключении)':
-    'Ephemeral (node disappears on disconnect)',
-  'Теги (необязательно)': 'Tags (optional)',
-  'Ключ создан. Команда для подключения ноды:':
-    'Key created. Node connection command:',
   'Скопировать команду': 'Copy command',
-  'Существующие ключи': 'Existing keys',
-  'многоразовый': 'reusable',
-  'эфемерный': 'ephemeral',
   'использован': 'used',
-  'Истечь этот ключ? Он перестанет работать.':
-    'Expire this key? It will stop working.',
 
   // --- 2FA ---
   'Двухфакторная аутентификация': 'Two-factor authentication',
@@ -835,7 +680,6 @@ const EN: Record<string, string> = {
   'Отмена': 'Cancel',
   'Готово': 'Done',
   'Ошибка': 'Error',
-  'неизвестно': 'unknown',
 }
 
 type Ctx = {
@@ -865,6 +709,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('noderoost_lang', l)
     setLangState(l)
   }, [])
+  // Язык документа: по нему скринридер читает страницу, а названия стран в
+  // подсказках к флагам берутся именно отсюда - в английском режиме они всё
+  // равно оставались русскими.
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
   const t = useCallback(
     (s: string, params?: Record<string, string | number>) =>
       fill(lang === 'en' ? EN[s] ?? s : s, params),

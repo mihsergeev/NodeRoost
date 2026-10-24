@@ -95,6 +95,13 @@ export function AlertsModal({ onClose, onUnauthorized }: Props) {
               <label className="field">
                 <span>{t('Токен бота')}</span>
                 <input value={token} onChange={(e) => setToken(e.target.value)} placeholder="123456:ABC-DEF…" />
+                {/* Панель отдаёт сохранённый токен только хвостом: целиком его
+                    не покажет никто, включая эту форму. Оставите как есть -
+                    сохранится прежний; впишете новый - заменится; очистите -
+                    канал выключится. */}
+                <span className="muted small">
+                  {t('Сохранённый токен показывается хвостом. Оставьте как есть - останется прежний, очистите - канал выключится.')}
+                </span>
               </label>
               <label className="field">
                 <span>Chat ID</span>
@@ -119,6 +126,9 @@ export function AlertsModal({ onClose, onUnauthorized }: Props) {
               <label className="field">
                 <span>URL</span>
                 <input value={webhook} onChange={(e) => setWebhook(e.target.value)} placeholder="https://…" />
+                <span className="muted small">
+                  {t('Сохранённый адрес показывается хвостом. Оставьте как есть - останется прежний, очистите - вебхук выключится.')}
+                </span>
               </label>
             </div>
 

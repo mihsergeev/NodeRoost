@@ -51,4 +51,18 @@ if (missing.length) {
 } else {
   console.log('i18n: все используемые ключи имеют EN-перевод.')
 }
+
+// Обратная проверка: ключ есть в словаре, но нигде не используется. Это остатки
+// выпиленного - их накопилось 122 из 631, то есть каждый пятый, и при правке
+// текста легко отредактировать мёртвую строку, гадая, почему ничего не меняется.
+// Ищем вхождение ПОДСТРОКОЙ во всём коде: ключ может собираться не через t('…').
+const allCode = walk(SRC)
+  .filter((f) => !f.endsWith('i18n.tsx'))
+  .map((f) => readFileSync(f, 'utf8'))
+  .join('\n')
+const unused = enList.filter((k) => !allCode.includes(k))
+if (unused.length) {
+  console.warn(`i18n: ${unused.length} ключей не используется (остатки выпиленного):`)
+  for (const k of unused) console.warn('  •', k.length > 80 ? k.slice(0, 77) + '...' : k)
+}
 process.exit(0)
