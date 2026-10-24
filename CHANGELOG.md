@@ -5,6 +5,16 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.20.1] - 2026-10-24
+
+### Security
+
+- Dependencies with known vulnerabilities: certifi 2026.7.22 -> 2026.10.19
+  (PYSEC-2026-4320) and the build-time vite 8.1.5 -> 8.3.5 (five advisories,
+  among them command execution through launch-editor and serving files outside
+  `server.fs.allow`). vite does not ship - it is a build tool - but it runs on
+  developer machines.
+
 ## [0.20.0] - 2026-10-24
 
 A sweep for vulnerabilities and loose ends: five independent passes over the
