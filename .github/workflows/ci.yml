@@ -23,6 +23,11 @@ jobs:
       - run: pip install pytest pytest-asyncio aiosqlite
       - run: pytest -q
         working-directory: backend
+      # The version lives in four files and the agent script is signed separately
+      # from the code that serves it. Both drift silently and both are only noticed
+      # in production: a missing image tag, or an update button that never appears.
+      - name: Version in sync, agent release signed
+        run: python ops/check-consistency.py
 
   frontend:
     runs-on: ubuntu-latest

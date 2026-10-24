@@ -5,6 +5,113 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.20.0] - 2026-10-24
+
+A sweep for vulnerabilities and loose ends: five independent passes over the
+code, the scripts, the front end and the housekeeping. What came out of it:
+
+### Security
+
+- **Two paths from the panel container to root on the host.** The watchdog runs
+  from cron as root and reads the heartbeat file the backend container writes.
+  Its timestamp went straight into bash arithmetic, where an array index expands
+  command substitution, so a crafted value ran commands as root outside the
+  container. The alert settings were four free-form strings, and a newline in one
+  of them added a second `key=value` line above the real one, redirecting where
+  the host watchdog posts alerts - together with the bot token. A value starting
+  with a dash was parsed by curl as an option. The timestamp is now digits only,
+  alert settings reject control characters and are capped, the heartbeat is
+  written as a single line, and the watchdog takes an address only when it looks
+  like http(s) and passes it via `--url`.
+- **The agent token sat in a file readable by everyone on the node** - and that
+  token requests a certificate for the node's internal names from the panel CA.
+  The agent directory and script are now `0700`, every temp file lives in a
+  private `mktemp -d`, and the unit has `PrivateTmp`.
+- **tailscaled was installed from an archive with no checksum at all**, while the
+  package mirror happily published files whose `.sha256` was missing. The
+  installer verifies the archive against the checksum from the same source and
+  refuses without one; the mirror rejects a package with no checksum.
+- **The installer no longer defaults to opening the panel to the internet.**
+  Either `--allow-ips` or an explicit `--open-to-world` has to be spelled out.
+- **Password guessing was counted per `X-Forwarded-For` address**, so a header
+  got around it. The address is taken by the number of trusted proxies
+  (`NODEROOST_TRUSTED_PROXY_HOPS`, 2 by default), right to left.
+- **Enabling and disabling the second factor did not ask for the password** - a
+  stolen session could move 2FA to itself. The password is now required, with its
+  own attempt counter.
+- **Logging out did not revoke the token**: it kept working until it expired.
+- **The backend no longer runs as root in its container**, all kernel
+  capabilities are dropped (`cap_drop: ALL`), and the Docker socket is mounted
+  read-only in the caddy overlay.
+- **headscale's gRPC listened on `0.0.0.0`** inside the same Docker network as
+  the reverse proxy. The example config binds the loopback only.
+- **Restore refuses symlinked paths inside an archive** and copies with `-P`;
+  the offsite backup refuses a credentials file writable beyond root.
+- Node ids are escaped into control-server paths, request bodies are capped,
+  passwords longer than 72 bytes are no longer truncated in silence, and the
+  audit-log username is capped.
+
+### Fixed
+
+- **Concurrent settings edits silently kept one of the two.** Settings live as
+  one json blob per key, and every edit was read-modify-write with an await in
+  the middle. Writes are serialized with a reentrant lock.
+- **An empty node list from the control server pushed an empty policy** - deny
+  all in Tailscale - wiped the in-network names file and the whole status
+  history, without a single alert. A collector pass that sees no nodes while the
+  last sample had some is skipped with a warning.
+- **A revoke could be undone for a minute**: policy pushes from node handlers
+  skipped the lock that pairs "save rules" with "push".
+- **The Windows command did not work**: the backslashes in the path to
+  `tailscale.exe` were eaten by a template literal, so people copied a path that
+  does not exist.
+- **Re-adding a machine the control server already knew wiped the description,
+  group and subgroup** - while the dialog promised the settings were kept.
+- **The Hidden section ignored search and the filter tiles**, and hiding all
+  servers left the page saying there were no nodes at all. Search and filters now
+  run through one funnel for both lists, and the empty state counts hidden nodes.
+- **The offline highlight sat at 2.4:1 contrast in light theme** - worse than what
+  it replaced. Light theme has its own danger and muted colors.
+- Unapproving a route drops it from the agent config too; `exit_via` only accepts
+  real gateways; a node that is already an exit gateway cannot be turned into a
+  device; an agent cannot claim a release number that does not exist; clearing an
+  alert channel in the UI no longer falls back to the env value.
+- Self-update overwrote the running script while the shell was still reading it;
+  forwarding was pinned in `sysctl.d` and never removed when the node stops
+  routing; the panel root is only trusted on a node when it actually carries name
+  constraints.
+- The enrollment poll normalizes and checks the hostname before renaming; a slow
+  poll cannot overwrite a fresher answer; removing a direction asks first; long
+  names wrap; the edit dialog validates the name the way the add wizard does.
+- 122 unused translation keys are gone (one in five), and the checker reports
+  them from now on.
+
+### Changed
+
+- **The data directories move to an unprivileged user.** `ops/install.sh` and
+  `ops/update.sh` call the new `ops/data-owner.sh`, which sets the owner of
+  `data`, `data/backups`, `data/tailscale-pkgs` and `data/headscale/config` and
+  leaves `data/postgres`, `data/caddy` and `data/headscale/lib` alone - those
+  have their own uids inside their images. The backend says so plainly at startup
+  when it cannot write to `/data`.
+- **The installer checks out a release tag** instead of the tip of `main`, which
+  carries commits between releases that have no images in the registry. It no
+  longer wipes local changes in the install directory in silence - it stops and
+  names them.
+- **The offsite backup installs itself** when `/lib65/noderoost/offsite.env` is
+  present, and reports a failed upload to the same channel as the panel's alerts
+  (and once more when it works again). The failure used to be invisible: archives
+  keep piling up on the server, the panel shows a fresh backup, everything looks
+  fine.
+- Slow IO is off the event loop: host info, the geo database and backups are read
+  in threads, and the control-server probe for `/health` is cached.
+- The node list refreshes on a timer like every other page.
+- The guide for your own reverse proxy lists `/join/*` and `/ca/*` - without them
+  nodes cannot join and the root certificate cannot be installed.
+- `disable_check_updates: true` in the headscale example config, the landing
+  image is pinned by digest, and CI now checks the version across four files and
+  the agent release signature (`ops/check-consistency.py`).
+
 ## [0.19.0] - 2026-10-20
 
 ### Added

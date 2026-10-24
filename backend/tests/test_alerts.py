@@ -8,14 +8,14 @@ from tests.conftest import ADMIN_PASSWORD
 def test_err_text_hides_telegram_token():
     """httpx кладёт полный URL (с токеном бота) в текст HTTPStatusError, а он
     уходил в ответ /api/alerts/test, в audit_log и в логи. Токена быть не должно."""
-    token = "123456:AAHsecretTOKENvalue"
+    token = "123456:fake-token-example"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     req = httpx.Request("POST", url)
     resp = httpx.Response(400, text='{"description":"chat not found"}', request=req)
     exc = httpx.HTTPStatusError(f"Client error for url '{url}'", request=req, response=resp)
 
     out = alerts._err_text(exc, token, url)
-    assert token not in out and "AAHsecret" not in out
+    assert token not in out and "fake-token" not in out
     assert "400" in out and "chat not found" in out  # диагностика сохранена
 
 

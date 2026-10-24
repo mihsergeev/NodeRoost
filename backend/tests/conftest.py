@@ -10,7 +10,7 @@ os.close(_db_fd)
 os.environ["NODEROOST_DB_URL"] = f"sqlite+aiosqlite:///{_db_path}"
 os.environ["NODEROOST_JWT_SECRET"] = "x" * 40
 os.environ["NODEROOST_ADMIN_USER"] = "admin"
-os.environ["NODEROOST_ADMIN_PASSWORD"] = "test-password-123"
+os.environ["NODEROOST_ADMIN_PASSWORD"] = "fakepass-conftest"
 os.environ["NODEROOST_HEADSCALE_API_KEY"] = ""
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
@@ -21,7 +21,7 @@ from app.config import get_settings  # noqa: E402
 from app.db import Base  # noqa: E402
 from app.main import create_app  # noqa: E402
 
-ADMIN_PASSWORD = "test-password-123"
+ADMIN_PASSWORD = "fakepass-conftest"
 
 
 @pytest_asyncio.fixture

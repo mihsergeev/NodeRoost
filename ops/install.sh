@@ -123,22 +123,39 @@ fi
 # ── 2. Исходники ──────────────────────────────────────────────────────────
 if [ -d "$DIR/.git" ]; then
     say "Updating $DIR"
-    git -C "$DIR" fetch --depth 1 origin main -q </dev/null && git -C "$DIR" reset --hard origin/main -q </dev/null
+    # reset --hard затирал локальные правки без вопросов, а там может лежать
+    # свой Caddyfile или патч. Останавливаемся и говорим прямо - как update.sh.
+    git -C "$DIR" diff --quiet HEAD </dev/null 2>/dev/null \
+        || die "uncommitted changes in $DIR - check 'git status', keep or drop them, then run again"
+    git -C "$DIR" fetch --tags --force -q origin main </dev/null \
+        || die "could not fetch from $REPO_URL"
 else
     say "Fetching NodeRoost into $DIR"
     command -v git >/dev/null 2>&1 || { apt-get update -qq </dev/null; apt-get install -y -qq git </dev/null; }
     git clone --depth 1 "$REPO_URL" "$DIR" -q </dev/null
+    git -C "$DIR" fetch --tags --force -q --depth 1 origin </dev/null || true
 fi
 cd "$DIR"
 
 if [ -z "$VERSION" ]; then
-    # Версия берётся из .env.example склонированного репозитория: там она и есть
-    # источник правды для тегов образов. На GitHub Releases не ориентируемся —
-    # выпуск помечается тегом, объект Release при этом не создаётся, и запрос
+    # Самый свежий тег релиза. На GitHub Releases не ориентируемся: выпуск
+    # помечается тегом, объект Release при этом не создаётся, и запрос
     # к releases/latest молча возвращал пусто, отправляя установку в долгую
     # сборку из исходников на однопроцессорной машине.
-    VERSION="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env.example | head -1)"
-    [ -n "$VERSION" ] || { VERSION="0.0.0-local"; BUILD=1; warn "no version found — building from source"; }
+    VERSION="$(git tag -l 'v[0-9]*' | sed 's/^v//' | sort -V | tail -1)"
+    [ -n "$VERSION" ] || VERSION="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env.example | head -1)"
+    [ -n "$VERSION" ] || { VERSION="0.0.0-local"; BUILD=1; warn "no version found - building from source"; }
+fi
+
+# Работаем с ТЕГА релиза, а не с вершины main: на main лежат коммиты
+# между релизами, образов для них в реестре нет, а compose.yml и скрипты
+# оказывались новее того, что выкатывалось образом.
+if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null 2>&1; then
+    git -c advice.detachedHead=false checkout -q "v$VERSION" </dev/null \
+        || die "could not check out v$VERSION"
+    ok "sources at v$VERSION"
+else
+    warn "tag v$VERSION not found - using the current checkout"
 fi
 
 # ── 3. Конфигурация ───────────────────────────────────────────────────────
@@ -206,6 +223,10 @@ if [ ! -f data/headscale/config/config.yaml ]; then
     ok "server_url = https://$HS_DOMAIN, DERP on $PUBLIC_IP"
 fi
 
+# Бэкенд в контейнере работает не от root, а каталоги выше созданы здесь от
+# root - без смены владельца панель не сможет писать бэкапы и конфиг headscale.
+ops/data-owner.sh >/dev/null || die "could not set the owner of ./data"
+
 # ── 4. Запуск ─────────────────────────────────────────────────────────────
 say "Starting the containers"
 COMPOSE=(docker compose --env-file .env)
@@ -259,6 +280,20 @@ chmod 755 /lib65/noderoost/panel-watchdog.sh
 echo '*/5 * * * * root /lib65/noderoost/panel-watchdog.sh' \
     > /etc/cron.d/noderoost-watchdog
 chmod 644 /etc/cron.d/noderoost-watchdog
+# Выгрузка бекапов наружу - только если реквизиты уже лежат рядом.
+# Раньше скрипт надо было ставить и прописывать в cron руками по комментарию
+# в его же шапке, и после переустановки выгрузка тихо пропадала.
+if [ -r /lib65/noderoost/offsite.env ]; then
+    sed "s|^APP_ROOT=.*|APP_ROOT=\"\${NODEROOST_APP:-$DIR}\"|" \
+        ops/backup-offsite.sh > /lib65/noderoost/backup-offsite.sh
+    chmod 755 /lib65/noderoost/backup-offsite.sh
+    if [ ! -f /etc/cron.d/noderoost-offsite ]; then
+        echo '30 3 * * * root /lib65/noderoost/backup-offsite.sh' \
+            > /etc/cron.d/noderoost-offsite
+        chmod 644 /etc/cron.d/noderoost-offsite
+    fi
+    ok "offsite backup enabled (nightly at 03:30)"
+fi
 for u in noderoost-hs-apply noderoost-hs-logs; do
     for ext in path service; do
         sed "s|/app/noderoost|$DIR|g" "ops/$u.$ext" > "/etc/systemd/system/$u.$ext"

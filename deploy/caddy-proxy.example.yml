@@ -15,7 +15,11 @@ services:
       - "443:443"
     volumes:
       - ./data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Только на чтение: прокси смотрит в интернет портами 80 и 443, а доступ
+      # к сокету на запись - это root на хосте, где лежат .env с секретом
+      # подписи токенов, база панели и приватные ключи control-сервера.
+      # Сам caddy-docker-proxy из сокета только читает метки контейнеров.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - caddy
       - noderoost-edge
