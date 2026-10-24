@@ -43,6 +43,12 @@ if ! docker compose pull --quiet </dev/null 2>/dev/null; then
     docker compose build </dev/null
 fi
 
+# Каталоги под ./data на установках до 0.20 созданы от root, а бэкенд теперь
+# работает от uid 10001. Без этого шага панель поднимется, но писать бэкапы и
+# править конфиг headscale не сможет - и скажет об этом только в логе.
+echo ">> проверяю владельца каталогов данных…"
+ops/data-owner.sh
+
 echo ">> поднимаю стек…"
 docker compose up -d </dev/null
 
@@ -66,6 +72,19 @@ if mkdir -p /lib65/noderoost 2>/dev/null; then
         echo '*/5 * * * * root /lib65/noderoost/panel-watchdog.sh' \
             > /etc/cron.d/noderoost-watchdog
         chmod 644 /etc/cron.d/noderoost-watchdog
+    fi
+    # Выгрузка бекапов наружу: ставим только тем, у кого уже есть
+    # реквизиты. Сам скрипт обновляем всегда: в нем правки релиза, а живет
+    # он вне каталога панели и сам не обновится.
+    if [ -r /lib65/noderoost/offsite.env ]; then
+        sed "s|^APP_ROOT=.*|APP_ROOT=\"\${NODEROOST_APP:-$APP}\"|" \
+            ops/backup-offsite.sh > /lib65/noderoost/backup-offsite.sh
+        chmod 755 /lib65/noderoost/backup-offsite.sh
+        if [ ! -f /etc/cron.d/noderoost-offsite ]; then
+            echo '30 3 * * * root /lib65/noderoost/backup-offsite.sh' \
+                > /etc/cron.d/noderoost-offsite
+            chmod 644 /etc/cron.d/noderoost-offsite
+        fi
     fi
     # systemd-юниты помощников: могли поменяться вместе с релизом, а на старых
     # установках их просто нет — тогда ставим впервые

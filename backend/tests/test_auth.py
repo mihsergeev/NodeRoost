@@ -102,7 +102,7 @@ async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
     from app.security import hash_password, verify_password
     from sqlalchemy import select
 
-    st = Settings(admin_user="admin", admin_password="FromEnvPass123",
+    st = Settings(admin_user="admin", admin_password="fakepass-from-env",
                   admin_password_reset=True)
 
     user = await session.scalar(select(User).where(User.username == "admin"))
@@ -133,7 +133,7 @@ async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
     await ensure_admin(_Factory(), st)
 
     await session.refresh(user)
-    assert verify_password("FromEnvPass123", user.password_hash)
+    assert verify_password("fakepass-from-env", user.password_hash)
     assert user.totp_enabled is False and user.totp_secret == ""
     assert user.token_version == before + 1      # старые сессии больше не годятся
 

@@ -75,6 +75,10 @@ services:
     logging: *default-logging
     security_opt:
       - no-new-privileges:true
+    # Бэкенд работает не от root (см. backend/Dockerfile) и слушает 8000, то
+    # есть ни одна из возможностей ядра ему не нужна.
+    cap_drop:
+      - ALL
     environment:
       NODEROOST_DB_URL: postgresql+asyncpg://noderoost:${NODEROOST_DB_PASSWORD}@db:5432/noderoost
       NODEROOST_JWT_SECRET: ${NODEROOST_JWT_SECRET}
@@ -122,6 +126,15 @@ services:
     logging: *default-logging
     security_opt:
       - no-new-privileges:true
+    # nginx внутри контейнера слушает 80, поэтому оставляем ровно одну
+    # возможность - привязку к привилегированному порту.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
     depends_on:
       backend:
         condition: service_healthy
@@ -131,6 +144,8 @@ services:
       - ./data/tailscale-pkgs:/usr/share/nginx/html/pkgs:ro
     # Панель на хосте по NODEROOST_BIND (по умолчанию 127.0.0.1:8080).
     # Впереди должен стоять обратный прокси с HTTPS, либо используйте compose.caddy.yml.
+    # ВАЖНО: значение БЕЗ адреса слева («8080» или «0.0.0.0:8080») публикует
+    # панель на все интерфейсы - мимо IP-вайтлиста и без TLS.
     ports:
       - "${NODEROOST_BIND:-127.0.0.1:8080}:80"
     networks:
