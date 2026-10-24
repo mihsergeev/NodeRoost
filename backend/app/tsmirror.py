@@ -38,20 +38,30 @@ async def _download_one(client: httpx.AsyncClient, name: str, dest_dir: str) -> 
                     f.write(chunk)
                     h.update(chunk)
                     size += len(chunk)
-        note = ""
+        # Контрольная сумма обязательна. Раньше при недоступном .sha256 файл
+        # всё равно публиковался с пометкой «без sha256» - то есть проверка
+        # открывалась при сбое, а раздаётся этот файл нодам, которые ставят из
+        # него tailscaled под root.
         try:
             rs = await client.get(url + ".sha256")
-            if rs.status_code == 200:
-                want = rs.text.strip().split()[0].lower()
-                if want and want != h.hexdigest():
-                    os.remove(tmp)
-                    return {"name": name, "ok": False, "size": size, "note": "sha256 mismatch"}
-            else:
-                note = "без sha256"
-        except Exception:  # noqa: BLE001
-            note = "без sha256"
+        except Exception as e:  # noqa: BLE001
+            os.remove(tmp)
+            return {"name": name, "ok": False, "size": size, "note": f"нет sha256: {e}"[:100]}
+        if rs.status_code != 200:
+            os.remove(tmp)
+            return {
+                "name": name, "ok": False, "size": size,
+                "note": f"нет sha256 (HTTP {rs.status_code})",
+            }
+        want = rs.text.strip().split()[0].lower()
+        if not want or want != h.hexdigest():
+            os.remove(tmp)
+            return {"name": name, "ok": False, "size": size, "note": "sha256 mismatch"}
+        # Кладём сумму рядом: по ней сверяется нода при установке клиента.
+        with open(os.path.join(dest_dir, name + ".sha256"), "w", encoding="utf-8") as f:
+            f.write(f"{want}  {name}\n")
         os.replace(tmp, os.path.join(dest_dir, name))
-        return {"name": name, "ok": True, "size": size, "note": note}
+        return {"name": name, "ok": True, "size": size, "note": ""}
     except Exception as e:  # noqa: BLE001
         try:
             os.path.exists(tmp) and os.remove(tmp)

@@ -32,6 +32,11 @@ VER="@@VER@@"
 LOGIN="@@LOGIN@@"
 KEY="@@KEY@@"
 NAME="@@NAME@@"
+# Свой каталог вместо фиксированных имён в общем /tmp: скрипт идёт под root, а
+# на машине, которую подключают, могут быть и другие пользователи. Симлинк,
+# подложенный заранее под предсказуемое имя, увёл бы запись root по чужому пути.
+NRTMP=$(mktemp -d)
+trap 'rm -rf "$NRTMP"' EXIT INT TERM
 
 ARCH=$(uname -m)
 case "$ARCH" in
@@ -45,8 +50,30 @@ if ! command -v tailscale >/dev/null 2>&1; then
   echo "NodeRoost: ставлю Tailscale $VER ($A)…"
   TMP=$(mktemp -d)
   # сначала наш мирор, при неудаче — официальный pkgs.tailscale.com
-  curl -fsSL "@@PKGBASE@@/tailscale_${VER}_${A}.tgz" -o "$TMP/ts.tgz" \
-    || curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${VER}_${A}.tgz" -o "$TMP/ts.tgz"
+  PKG="tailscale_${VER}_${A}.tgz"
+  SRC="@@PKGBASE@@"
+  if ! curl -fsSL "$SRC/$PKG" -o "$TMP/ts.tgz"; then
+    SRC="https://pkgs.tailscale.com/stable"
+    curl -fsSL "$SRC/$PKG" -o "$TMP/ts.tgz"
+  fi
+  # Сверяем контрольную сумму с тем же источником, откуда пришёл архив. Из него
+  # ставится tailscaled, который работает под root, а каталог зеркала панели
+  # лежит в данных контейнера - без проверки подменённый там архив давал бы
+  # root на каждой машине, подключённой после подмены. Обновление агента ровно
+  # от этого и защищено подписью, установка оставалась без эквивалента.
+  if curl -fsSL "$SRC/$PKG.sha256" -o "$TMP/ts.sha256" 2>/dev/null; then
+    WANT=$(cut -d' ' -f1 < "$TMP/ts.sha256" | tr -d '\n\r')
+    GOT=$(sha256sum "$TMP/ts.tgz" 2>/dev/null | cut -d' ' -f1)
+    if [ -n "$WANT" ] && [ -n "$GOT" ] && [ "$WANT" != "$GOT" ]; then
+      echo "NodeRoost: контрольная сумма Tailscale не сошлась - установка остановлена." >&2
+      echo "  ожидалось $WANT, получено $GOT ($SRC/$PKG)" >&2
+      rm -rf "$TMP"; exit 1
+    fi
+  else
+    echo "NodeRoost: контрольной суммы для $PKG нет - установка остановлена." >&2
+    echo "  источник: $SRC. Обновите зеркало в панели (Настройки -> клиент Tailscale)." >&2
+    rm -rf "$TMP"; exit 1
+  fi
   tar -xzf "$TMP/ts.tgz" -C "$TMP"
   D="$TMP/tailscale_${VER}_${A}"
   install -m755 "$D/tailscale" /usr/bin/tailscale
@@ -72,17 +99,17 @@ fi
 # или из чужого тайлнета). Tailscale в этом случае отказывается менять сервер и
 # просит --force-reauth — раньше скрипт просто падал с его английской строкой.
 # Пробуем как обычно, а на этом отказе переспрашиваем с force-reauth, сказав почему.
-if ! tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@ 2>/tmp/nr-up.err; then
-    if grep -q "force-reauth" /tmp/nr-up.err; then
+if ! tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@ 2>"$NRTMP/nr-up.err"; then
+    if grep -q "force-reauth" "$NRTMP/nr-up.err"; then
         echo "NodeRoost: машина была подключена к другому control-серверу — переключаю."
         tailscale up --reset --force-reauth --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
     else
-        cat /tmp/nr-up.err >&2
-        rm -f /tmp/nr-up.err
+        cat "$NRTMP/nr-up.err" >&2
+        rm -f "$NRTMP/nr-up.err"
         exit 1
     fi
 fi
-rm -f /tmp/nr-up.err
+rm -f "$NRTMP/nr-up.err"
 # Докладываем то, ЧТО ЕСТЬ, а не то, что просили. На машине, уже подключённой к
 # этой сети, `tailscale up` возвращает 0 при любом ключе — ключ ей не нужен, и
 # скрипт с просроченным ключом бодро писал «нода подключена», хотя в панели не
@@ -250,6 +277,10 @@ set -e
 LOGIN="@@LOGIN@@"
 KEY="@@KEY@@"
 NAME="@@NAME@@"
+# Свой каталог вместо фиксированных имён в общем /tmp: часть команд ниже идёт
+# под sudo, а предсказуемое имя в общем каталоге можно подменить симлинком.
+NRTMP=$(mktemp -d)
+trap 'rm -rf "$NRTMP"' EXIT INT TERM
 
 if ! command -v tailscale >/dev/null 2>&1; then
   if ! command -v brew >/dev/null 2>&1; then
@@ -272,17 +303,17 @@ fi
 # или из чужого тайлнета). Tailscale в этом случае отказывается менять сервер и
 # просит --force-reauth — раньше скрипт просто падал с его английской строкой.
 # Пробуем как обычно, а на этом отказе переспрашиваем с force-reauth, сказав почему.
-if ! tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@ 2>/tmp/nr-up.err; then
-    if grep -q "force-reauth" /tmp/nr-up.err; then
+if ! tailscale up --reset --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@ 2>"$NRTMP/nr-up.err"; then
+    if grep -q "force-reauth" "$NRTMP/nr-up.err"; then
         echo "NodeRoost: машина была подключена к другому control-серверу — переключаю."
         tailscale up --reset --force-reauth --login-server="$LOGIN" --authkey="$KEY" --hostname="$NAME" @@EXTRA@@
     else
-        cat /tmp/nr-up.err >&2
-        rm -f /tmp/nr-up.err
+        cat "$NRTMP/nr-up.err" >&2
+        rm -f "$NRTMP/nr-up.err"
         exit 1
     fi
 fi
-rm -f /tmp/nr-up.err
+rm -f "$NRTMP/nr-up.err"
 # Докладываем то, ЧТО ЕСТЬ, а не то, что просили. На машине, уже подключённой к
 # этой сети, `tailscale up` возвращает 0 при любом ключе — ключ ей не нужен, и
 # скрипт с просроченным ключом бодро писал «нода подключена», хотя в панели не
@@ -341,25 +372,26 @@ _ANDROID_INSTRUCTIONS = r"""NodeRoost — подключение Android к та
 _CA_LINUX = """
 # NodeRoost: сертификат CA панели в доверенные — чтобы имена внутри сети
 # открывались без ругани. Убрать: rm .../noderoost-ca.crt + update-ca-*
-cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
+cat > "$NRTMP/noderoost-ca.crt" <<'NRCAEOF'
 @@CAPEM@@NRCAEOF
 if [ "$(uname -s)" = "Darwin" ]; then
   # прежний сертификат панели убираем — иначе в связке копятся мёртвые
   security delete-certificate -c "NodeRoost internal CA" \\
     /Library/Keychains/System.keychain 2>/dev/null || true
   security add-trusted-cert -d -r trustRoot \\
-    -k /Library/Keychains/System.keychain /tmp/noderoost-ca.crt \\
+    -k /Library/Keychains/System.keychain "$NRTMP/noderoost-ca.crt" \\
     && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 elif [ -d /usr/local/share/ca-certificates ]; then
-  install -m644 /tmp/noderoost-ca.crt /usr/local/share/ca-certificates/noderoost-ca.crt
+  install -m644 "$NRTMP/noderoost-ca.crt" /usr/local/share/ca-certificates/noderoost-ca.crt
   update-ca-certificates >/dev/null 2>&1 && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 elif [ -d /etc/pki/ca-trust/source/anchors ]; then
-  install -m644 /tmp/noderoost-ca.crt /etc/pki/ca-trust/source/anchors/noderoost-ca.crt
+  install -m644 "$NRTMP/noderoost-ca.crt" /etc/pki/ca-trust/source/anchors/noderoost-ca.crt
   update-ca-trust extract >/dev/null 2>&1 && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 else
-  echo "NodeRoost: не нашёл хранилище доверенных — поставьте /tmp/noderoost-ca.crt сами." >&2
+  cp "$NRTMP/noderoost-ca.crt" ./noderoost-ca.crt 2>/dev/null || true
+  echo "NodeRoost: не нашёл хранилище доверенных - сертификат лежит в ./noderoost-ca.crt, поставьте сами." >&2
 fi
-rm -f /tmp/noderoost-ca.crt
+rm -f "$NRTMP/noderoost-ca.crt"
 """
 
 _CA_WINDOWS = """
@@ -389,15 +421,15 @@ Remove-Item $caFile -ErrorAction SilentlyContinue
 _CA_MACOS = """
 # NodeRoost: корень панели в доверенные — чтобы имена внутри сети открывались
 # без ругани на сертификат. Понадобится пароль: связка ключей системная.
-cat > /tmp/noderoost-ca.crt <<'NRCAEOF'
+cat > "$NRTMP/noderoost-ca.crt" <<'NRCAEOF'
 @@CAPEM@@NRCAEOF
 # прежний корень панели убираем — иначе в связке копятся мёртвые
 sudo security delete-certificate -c "NodeRoost internal CA" \\
   /Library/Keychains/System.keychain 2>/dev/null || true
 sudo security add-trusted-cert -d -r trustRoot \\
-  -k /Library/Keychains/System.keychain /tmp/noderoost-ca.crt \\
+  -k /Library/Keychains/System.keychain "$NRTMP/noderoost-ca.crt" \\
   && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
-rm -f /tmp/noderoost-ca.crt
+rm -f "$NRTMP/noderoost-ca.crt"
 """
 
 _CA_ANDROID = """

@@ -33,10 +33,28 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"; rm -f "$APP/data/_restore_panel.json"' EXIT INT TERM
 # Распаковываем ДО остановки контейнеров: битый файл не должен ронять живую
 # панель. Своё сообщение — вместо «gzip: stdin: not in gzip format».
-if ! tar -xzf "$ARCHIVE" -C "$TMP" 2>/dev/null; then
+if ! tar -xzf "$ARCHIVE" --no-same-owner -C "$TMP" 2>/dev/null; then
     echo "не читается как архив бэкапа: $ARCHIVE (повреждён или это не .tar.gz)" >&2
     exit 1
 fi
+
+# Архив пишет контейнер панели, а разворачиваем мы его под root и копируем из
+# него в каталоги, которые панель потом читает. Обычный cp идёт ПО симлинку в
+# источнике: подложенный в архив симлинк на /root/.ssh/id_rsa или /etc/shadow
+# скопировал бы содержимое этих файлов туда, откуда их видит контейнер.
+# Поэтому: каждый нужный путь обязан быть обычным файлом, и копируем с -P.
+check_plain() {
+    [ -e "$1" ] || return 0
+    if [ -L "$1" ] || [ ! -f "$1" ]; then
+        echo "в архиве подменён путь (симлинк или не файл): ${1#$TMP/}" >&2
+        exit 1
+    fi
+}
+check_plain "$TMP/panel.json"
+check_plain "$TMP/headscale/db.sqlite"
+check_plain "$TMP/headscale/config.yaml"
+check_plain "$TMP/headscale/extra-records.json"
+for _k in "$TMP"/headscale/lib/*.key; do check_plain "$_k"; done
 
 # минимальная комплектность
 [ -f "$TMP/panel.json" ] || { echo "в архиве нет panel.json" >&2; exit 1; }
@@ -54,11 +72,11 @@ install -d "$APP/data/headscale/lib" "$APP/data/headscale/config"
 rm -f "$APP/data/headscale/lib/db.sqlite" \
       "$APP/data/headscale/lib/db.sqlite-wal" \
       "$APP/data/headscale/lib/db.sqlite-shm"
-cp "$TMP/headscale/db.sqlite" "$APP/data/headscale/lib/db.sqlite"
+cp -P "$TMP/headscale/db.sqlite" "$APP/data/headscale/lib/db.sqlite"
 [ -f "$TMP/headscale/config.yaml" ] && \
-  cp "$TMP/headscale/config.yaml" "$APP/data/headscale/config/config.yaml" || true
+  cp -P "$TMP/headscale/config.yaml" "$APP/data/headscale/config/config.yaml" || true
 [ -f "$TMP/headscale/extra-records.json" ] && \
-  cp "$TMP/headscale/extra-records.json" "$APP/data/headscale/config/extra-records.json" || true
+  cp -P "$TMP/headscale/extra-records.json" "$APP/data/headscale/config/extra-records.json" || true
 # С extra_records_path в конфиге headscale не стартует, если файла нет: архив мог
 # быть снят до появления имён внутри сети, а конфиг в нём — уже с путём.
 if grep -q '^ *extra_records_path:' "$APP/data/headscale/config/config.yaml" 2>/dev/null \
@@ -67,11 +85,11 @@ if grep -q '^ *extra_records_path:' "$APP/data/headscale/config/config.yaml" 2>/
     echo '[]' > "$APP/data/headscale/config/extra-records.json"
 fi
 for k in "$TMP"/headscale/lib/*.key; do
-  [ -f "$k" ] && cp "$k" "$APP/data/headscale/lib/" || true
+  [ -f "$k" ] && cp -P "$k" "$APP/data/headscale/lib/" || true
 done
 
 echo ">> прогоняю миграции (на случай пустой БД) + импортирую panel.json в Postgres…"
-cp "$TMP/panel.json" "$APP/data/_restore_panel.json"
+cp -P "$TMP/panel.json" "$APP/data/_restore_panel.json"
 chmod 600 "$APP/data/_restore_panel.json"   # учётки/TOTP — не под umask 0644
 docker compose run --rm --no-deps backend alembic upgrade head
 docker compose run --rm --no-deps backend python -m app.restore_panel /data/_restore_panel.json
