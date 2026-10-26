@@ -600,6 +600,55 @@ input:focus {
   margin-top: 0.3rem;
 }
 
+.trusted-box {
+  border-top: 1px solid var(--line);
+  padding-top: 0.8rem;
+  margin-top: 0.4rem;
+}
+
+.trusted-box h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.trusted-days {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.trusted-days input {
+  width: 6rem;
+}
+
+.trusted-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.trusted-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.trusted-label {
+  font-weight: 600;
+}
+
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
 /* --- заголовок страницы --- */
 .page-head {
   display: flex;

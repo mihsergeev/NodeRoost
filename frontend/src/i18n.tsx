@@ -655,6 +655,21 @@ const EN: Record<string, string> = {
   'использован': 'used',
 
   // --- 2FA ---
+  'Не спрашивать код на этом устройстве {days} дней':
+    'Do not ask for a code on this device for {days} days',
+  'Запомненные устройства': 'Remembered devices',
+  'Забыть все': 'Forget all',
+  'Забыть': 'Forget',
+  'это устройство': 'this device',
+  'до {date}': 'until {date}',
+  'Помнить устройство, дней (0 - спрашивать всегда)':
+    'Remember a device for, days (0 - always ask)',
+  'На запомненном устройстве код не спрашивают, пароль - всегда. С чужой машины вход по-прежнему требует код.':
+    'A remembered device is not asked for the code; the password always is. Signing in from someone else\'s machine still needs the code.',
+  'Код 2FA будут спрашивать на всех устройствах, включая это. Продолжить?':
+    'The 2FA code will be asked on every device, including this one. Continue?',
+  'Пока ни одного - отметьте галку при следующем входе.':
+    'None yet - tick the box next time you sign in.',
   'Двухфакторная аутентификация': 'Two-factor authentication',
   'Неверный код': 'Invalid code',
   '2FA включена. Вход требует код из приложения.':

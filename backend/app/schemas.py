@@ -1,5 +1,6 @@
 import ipaddress
 import re
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -33,6 +34,9 @@ class LoginRequest(RequestModel):
     username: str = Field(max_length=64)
     password: str = Field(max_length=128)
     otp: str | None = Field(None, max_length=16)
+    # «не спрашивать код на этом устройстве»: учитывается только вместе с верным
+    # кодом, то есть запомнить машину можно лишь пройдя 2FA целиком
+    remember: bool = False
 
 
 class TwoFAStatusOut(BaseModel):
@@ -69,6 +73,33 @@ class PasswordChangeRequest(RequestModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class LoginOptionsOut(BaseModel):
+    """Что показать на форме входа до того, как человек вошёл."""
+
+    trust_days: int
+
+
+class TrustedDeviceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    label: str
+    ip: str
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+
+
+class TrustedDevicesOut(BaseModel):
+    trust_days: int
+    current_id: int | None = None
+    devices: list[TrustedDeviceOut] = []
+
+
+class TrustDaysIn(RequestModel):
+    days: int = Field(ge=0, le=365)
 
 
 class UserOut(BaseModel):

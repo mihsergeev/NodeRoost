@@ -5,6 +5,29 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.22.0] - 2026-10-26
+
+### Added
+
+- **Remembered devices: on your own machine the 2FA code is asked once every 30
+  days instead of every single sign-in.** Typing a code ten times a day is the
+  surest way to turn the second factor off altogether, which leaves the panel on
+  a password alone. Sign-in with a code now offers a "do not ask for a code on
+  this device" box, and after that the login and password are enough. The
+  password is always required: a device only drops the second factor, so a
+  stolen cookie without the password gets nobody in, and signing in from someone
+  else's machine still needs the code.
+
+  The period is set in the 2FA window, 30 days by default; zero restores the old
+  behaviour and forgets every device at once. The same window lists them: which
+  browser, from which address, until when, with "Forget" and "Forget all" for a
+  lost laptop. The period does not extend itself - otherwise "once a month" would
+  become "never". Changing the password or turning 2FA off also clears the list:
+  a password is changed precisely when one suspects it is known.
+
+  The browser keeps an HttpOnly cookie with a random value; the database holds
+  only its sha256. Granting and revoking trust are written to the audit log.
+
 ## [0.21.0] - 2026-10-24
 
 ### Changed

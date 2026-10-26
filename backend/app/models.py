@@ -31,6 +31,31 @@ class User(Base):
     )
 
 
+class TrustedDevice(Base):
+    """Устройство, которому разрешено входить без кода 2FA.
+
+    Пароль спрашивается всегда: запомненное устройство снимает только второй
+    фактор и только на этой машине. Поэтому в браузере лежит не вход в панель,
+    а право не вводить код - угнанная кука без пароля бесполезна.
+    """
+
+    __tablename__ = "trusted_devices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    # sha256 от секрета из куки: сам секрет не хранится нигде на сервере
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(128), default="")
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AuditLog(Base):
     """Журнал действий: кто/когда/что сделал (вход, смена пароля, операции)."""
 
