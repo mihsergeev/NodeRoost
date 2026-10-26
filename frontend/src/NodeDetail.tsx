@@ -3,10 +3,13 @@ import {
   ApiError,
   deleteNode,
   expireNode,
+  getAgent,
   getPolicyRules,
   putPolicyRules,
+  updateAgent,
   type AclRule,
   type AclSelector,
+  type AgentCfg,
   type Node,
 } from './api'
 import { groupGrants, portLabel, selLabel, toggleRule } from './aclui'
@@ -52,6 +55,38 @@ export function NodeDetail({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  // Состояние агента показываем прямо здесь: раньше оно жило только в окне
+  // «Маршруты», и на вопрос «обновлён ли агент» приходилось искать его там.
+  const [agent, setAgentCfg] = useState<AgentCfg | null>(null)
+  const [agentBusy, setAgentBusy] = useState(false)
+  const [agentMsg, setAgentMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    getAgent(node.id)
+      .then((a) => alive && setAgentCfg(a))
+      .catch(() => alive && setAgentCfg(null))
+    return () => {
+      alive = false
+    }
+  }, [node.id, routesOpen])
+
+  async function upgradeAgent() {
+    setAgentBusy(true)
+    setAgentMsg(null)
+    try {
+      setAgentCfg(await updateAgent(node.id))
+      setAgentMsg(t('Обновление заказано — нода поставит его в течение минуты.'))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setAgentMsg(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setAgentBusy(false)
+    }
+  }
 
 
   // «имя (IP)» — удобно вставлять в тикеты/конфиги; берём IPv4 ноды
@@ -322,6 +357,42 @@ export function NodeDetail({
             <div className="spec-cell">
               <span className="spec-label">{t('Была в сети')}</span>
               <span className="spec-value">{fmt(node.last_seen)}</span>
+            </div>
+          )}
+
+          {agent && (
+            <div className="spec-cell spec-wide">
+              <span className="spec-label">{t('Агент')}</span>
+              <span className="spec-value agent-line">
+                {!agent.installed ? (
+                  <>
+                    <span className="spec-note">
+                      {agent.polling_only
+                        ? t('ходит по токену, но настройки не применяет')
+                        : t('не установлен')}
+                    </span>
+                    <button className="ghost small" onClick={() => setRoutesOpen(true)}>
+                      {t('Поставить')}
+                    </button>
+                  </>
+                ) : agent.script_current ? (
+                  <span className="spec-note">
+                    {t('работает, настройки применяются')}
+                  </span>
+                ) : (
+                  <>
+                    <span className="spec-note">{t('от прошлого релиза')}</span>
+                    <button
+                      className="ghost small"
+                      onClick={upgradeAgent}
+                      disabled={agentBusy}
+                    >
+                      {agentBusy ? t('Отправляем…') : t('Обновить агента')}
+                    </button>
+                  </>
+                )}
+                {agentMsg && <span className="muted small">{agentMsg}</span>}
+              </span>
             </div>
           )}
 

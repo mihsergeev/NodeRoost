@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   getDirections,
+  getOutdatedAgents,
   deleteNode,
   expireNode,
   listNodes,
   setNodeMeta,
+  updateOutdatedAgents,
   type Node,
 } from './api'
 import { AddNodeModal } from './AddNodeModal'
@@ -66,6 +68,10 @@ export function NodesPage({
       }
       return !v
     })
+  // Сколько нод сидит на агенте прошлого релиза. Пока этого не было видно,
+  // обновление делалось по одной карточке и до конца не доходило.
+  const [outdated, setOutdated] = useState(0)
+  const [upgBusy, setUpgBusy] = useState(false)
   const [editNode, setEditNode] = useState<Node | null>(null)
   const [routesNode, setRoutesNode] = useState<Node | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -135,6 +141,44 @@ export function NodesPage({
       setNodes([])
     }
   }, [onUnauthorized, t])
+
+  const loadOutdated = useCallback(async () => {
+    try {
+      const o = await getOutdatedAgents()
+      setOutdated(o.signed ? o.count : 0)
+    } catch {
+      setOutdated(0) // не смогли узнать - просто не показываем кнопку
+    }
+  }, [])
+
+  async function upgradeAll() {
+    if (
+      !window.confirm(
+        t('Ноды с агентом прошлого релиза обновятся в течение минуты. Всего нод: {count}. Продолжить?', {
+          count: outdated,
+        }),
+      )
+    ) {
+      return
+    }
+    setUpgBusy(true)
+    try {
+      await updateOutdatedAgents()
+      await loadOutdated()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setError(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setUpgBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    loadOutdated()
+  }, [loadOutdated, detailNodeId])
 
   useEffect(() => {
     load()
@@ -485,6 +529,15 @@ export function NodesPage({
       <div className="page-head">
         <h2>{kind === 'server' ? t('Серверы') : t('Устройства')}</h2>
         <div className="page-head-actions">
+          {/* Ноды с агентом прошлого релиза: по карточке на ноду - занятие,
+              которое не доделывают, и часть сети остаётся на старом скрипте. */}
+          {outdated > 0 && (
+            <button className="ghost" onClick={upgradeAll} disabled={upgBusy}>
+              {upgBusy
+                ? t('Отправляем…')
+                : t('Обновить агентов ({count})', { count: outdated })}
+            </button>
+          )}
           <button className="ghost" onClick={load}>
             {t('Обновить')}
           </button>

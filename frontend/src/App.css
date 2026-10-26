@@ -600,6 +600,13 @@ input:focus {
   margin-top: 0.3rem;
 }
 
+.agent-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .trusted-box {
   border-top: 1px solid var(--line);
   padding-top: 0.8rem;

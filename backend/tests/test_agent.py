@@ -393,3 +393,69 @@ def test_nothing_in_apply_runs_while_setup_writes_it():
     body = body.split("\nEOF\n", 1)[0]
     assert "`" not in body, "обратные кавычки в heredoc исполняются"
     assert not re.findall(r"(?<!\\)\$\(", body), "подстановка $(...) без \\ исполняется"
+
+
+async def test_update_all_touches_only_the_nodes_that_lag_behind(client):
+    """Обход карточек по одной при десятке нод - занятие, которое просто не
+    доделывают, и часть нод остается на старом скрипте. Кнопка «обновить все»
+    обязана при этом не трогать ни свежие ноды, ни те, где агента нет."""
+    from datetime import datetime, timezone
+
+    from app import agent as agent_mod
+    from app import settings_store
+    from tests.conftest import ADMIN_PASSWORD
+
+    app = client._transport.app
+    now = datetime.now(timezone.utc).isoformat()
+    async with app.state.session_factory() as s:
+        await settings_store.set_agent_all(
+            s,
+            {
+                "old1": {"token": "t1", "last_poll": now, "last_applied": now,
+                         "script": "deadbeef"},
+                "old2": {"token": "t2", "last_poll": now, "last_applied": now,
+                         "script": "0badf00d"},
+                "fresh": {"token": "t3", "last_poll": now, "last_applied": now,
+                          "script": agent_mod.SCRIPT_VERSION},
+                "noagent": {"token": "t4"},  # токен выдан, агента никогда не было
+            },
+        )
+    tok = (await client.post(
+        "/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD}
+    )).json()["access_token"]
+    h = {"Authorization": f"Bearer {tok}"}
+
+    seen = (await client.get("/api/agent/outdated", headers=h)).json()
+    assert seen["count"] == 2 and seen["nodes"] == ["old1", "old2"]
+
+    done = (await client.post("/api/agent/update-outdated", headers=h)).json()
+    assert done["count"] == 2
+
+    async with app.state.session_factory() as s:
+        cfg = await settings_store.get_agent_all(s)
+    assert cfg["old1"]["update"] == agent_mod.release()
+    assert cfg["old2"]["update"] == agent_mod.release()
+    assert "update" not in cfg["fresh"]
+    assert "update" not in cfg["noagent"]
+
+    # заказ снят, когда ноды отчитались новой версией - второй раз обновлять нечего
+    async with app.state.session_factory() as s:
+        for nid in ("old1", "old2"):
+            cfg[nid]["script"] = agent_mod.SCRIPT_VERSION
+            cfg[nid].pop("update", None)
+        await settings_store.set_agent_all(s, cfg)
+    assert (await client.get("/api/agent/outdated", headers=h)).json()["count"] == 0
+
+
+async def test_outdated_is_not_a_node_name(client):
+    """«outdated» - путь, а не имя ноды: объявленный после /{node_id} он уехал бы
+    в карточку несуществующей ноды и ответил 404."""
+    from tests.conftest import ADMIN_PASSWORD
+
+    tok = (await client.post(
+        "/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD}
+    )).json()["access_token"]
+    r = await client.get(
+        "/api/agent/outdated", headers={"Authorization": f"Bearer {tok}"}
+    )
+    assert r.status_code == 200 and "count" in r.json()

@@ -297,6 +297,17 @@ export function updateAgent(nodeId: string): Promise<AgentCfg> {
   return api<AgentCfg>(`/api/agent/${nodeId}/update`, { method: 'POST' })
 }
 
+export type OutdatedAgents = { count: number; nodes: string[]; signed: boolean }
+// Сколько нод сидит на агенте прошлого релиза (и подписан ли нынешний скрипт).
+export function getOutdatedAgents(): Promise<OutdatedAgents> {
+  return api<OutdatedAgents>('/api/agent/outdated')
+}
+// Заказать обновление всем таким нодам сразу: по карточке на ноду - занятие,
+// которое просто не доделывают.
+export function updateOutdatedAgents(): Promise<OutdatedAgents> {
+  return api<OutdatedAgents>('/api/agent/update-outdated', { method: 'POST' })
+}
+
 export function setAgent(
   nodeId: string,
   routes: string[],

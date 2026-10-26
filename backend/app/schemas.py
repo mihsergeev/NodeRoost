@@ -75,6 +75,14 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class OutdatedAgentsOut(BaseModel):
+    """Сколько нод с агентом прошлого релиза и какие это ноды."""
+
+    count: int
+    nodes: list[str] = []
+    signed: bool = True
+
+
 class LoginOptionsOut(BaseModel):
     """Что показать на форме входа до того, как человек вошёл."""
 

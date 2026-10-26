@@ -507,6 +507,18 @@ const EN: Record<string, string> = {
   'На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Обновление ставится только с подписью: нода проверит её ключом, вшитым при установке, и чужой скрипт не примет.':
     'The node runs an agent from an earlier release — it does not understand the panel’s newer abilities. An update installs only when signed: the node checks it against the key baked in at install time and refuses anything else.',
   'Обновить агента': 'Update the agent',
+  'Агент': 'Agent',
+  'не установлен': 'not installed',
+  'ходит по токену, но настройки не применяет':
+    'polls with the token but applies nothing',
+  'работает, настройки применяются': 'running, settings are applied',
+  'от прошлого релиза': 'from the previous release',
+  'Поставить': 'Install',
+  'Обновление заказано — нода поставит его в течение минуты.':
+    'Update requested - the node will install it within a minute.',
+  'Обновить агентов ({count})': 'Update agents ({count})',
+  'Ноды с агентом прошлого релиза обновятся в течение минуты. Всего нод: {count}. Продолжить?':
+    'Nodes running the previous agent release will update within a minute. Nodes: {count}. Continue?',
   'Перевыпустить': 'Re-issue',
   'Выпускаем…': 'Issuing…',
   'Токен агента выдан {date}': 'Agent token issued on {date}',
