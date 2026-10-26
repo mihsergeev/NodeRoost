@@ -66,6 +66,40 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return body as T
 }
 
+export type TrustedDevice = {
+  id: number
+  label: string
+  ip: string
+  created_at: string
+  last_used_at: string
+  expires_at: string
+}
+export type TrustedDevices = {
+  trust_days: number
+  current_id: number | null
+  devices: TrustedDevice[]
+}
+// Сколько дней панель помнит устройство (0 - код спрашивается каждый раз).
+// Нужно форме входа ДО входа, поэтому ручка открытая и отдаёт одно число.
+export function loginOptions(): Promise<{ trust_days: number }> {
+  return api<{ trust_days: number }>('/api/auth/login-options')
+}
+export function getTrustedDevices(): Promise<TrustedDevices> {
+  return api<TrustedDevices>('/api/auth/devices')
+}
+export function setTrustDays(days: number): Promise<TrustedDevices> {
+  return api<TrustedDevices>('/api/auth/devices/days', {
+    method: 'POST',
+    body: JSON.stringify({ days }),
+  })
+}
+export function forgetDevice(id: number): Promise<void> {
+  return api<void>(`/api/auth/devices/${id}`, { method: 'DELETE' })
+}
+export function forgetAllDevices(): Promise<void> {
+  return api<void>('/api/auth/devices/forget-all', { method: 'POST' })
+}
+
 // Смена пароля: возвращает новый токен (старые инвалидируются на бэкенде).
 export async function changePassword(
   current_password: string,

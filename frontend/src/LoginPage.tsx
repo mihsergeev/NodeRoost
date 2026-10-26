@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { api, ApiError, setToken } from './api'
+import { useEffect, useState, type FormEvent } from 'react'
+import { api, ApiError, loginOptions, setToken } from './api'
 import { BrandLockup } from './Logo'
 import { useI18n } from './i18n'
 
@@ -13,8 +13,19 @@ export function LoginPage({ onLogin }: Props) {
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [needOtp, setNeedOtp] = useState(false)
+  // «не спрашивать код на этом устройстве»: сколько дней помнить, решает
+  // панель, и ноль означает, что галку показывать незачем
+  const [remember, setRemember] = useState(false)
+  const [trustDays, setTrustDays] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!needOtp) return
+    loginOptions()
+      .then((o) => setTrustDays(o.trust_days))
+      .catch(() => setTrustDays(0))
+  }, [needOtp])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -29,6 +40,7 @@ export function LoginPage({ onLogin }: Props) {
             username,
             password,
             otp: otp.trim() || null,
+            remember,
           }),
         },
       )
@@ -91,6 +103,21 @@ export function LoginPage({ onLogin }: Props) {
               autoFocus
               required
             />
+          </label>
+        )}
+        {needOtp && trustDays > 0 && (
+          <label className="login-remember">
+            <input
+              type="checkbox"
+              className="field-checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            <span>
+              {t('Не спрашивать код на этом устройстве {days} дней', {
+                days: trustDays,
+              })}
+            </span>
           </label>
         )}
         {error && <p className="form-error">{error}</p>}

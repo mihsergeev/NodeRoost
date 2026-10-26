@@ -1,18 +1,21 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
-from app import alerts, audit, ratelimit, totp
+from app import alerts, audit, devices, ratelimit, totp
 from app.clientip import client_ip
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.models import User
 from app.schemas import (
+    LoginOptionsOut,
     LoginRequest,
     PasswordChangeRequest,
     TokenResponse,
     TwoFASetupOut,
     TwoFASetupRequest,
     TwoFAStatusOut,
+    TrustDaysIn,
+    TrustedDevicesOut,
     TwoFAVerifyRequest,
     UserOut,
 )
@@ -68,9 +71,39 @@ async def _record_failure(session, settings, key: str, username: str, action: st
         )
 
 
+def _secure_request(request: Request) -> bool:
+    """Пришёл ли запрос по https (панель может стоять и за своим прокси).
+
+    Флаг Secure на куке за http браузер молча игнорирует, и устройство тогда не
+    запоминается вовсе - поэтому ставим его по факту, а не всегда.
+    """
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    return (proto or request.url.scheme) == "https"
+
+
+def _set_device_cookie(
+    request: Request, response: Response, secret: str, max_age: int
+) -> None:
+    response.set_cookie(
+        devices.COOKIE_NAME,
+        secret,
+        max_age=max_age,
+        path=devices.COOKIE_PATH,  # кука нужна только на входе
+        httponly=True,  # недоступна скриптам на странице
+        samesite="lax",
+        secure=_secure_request(request),
+    )
+
+
+@router.get("/login-options", response_model=LoginOptionsOut)
+async def login_options(session: SessionDep) -> LoginOptionsOut:
+    """Срок доверия устройству - чтобы форма входа знала, предлагать ли галку."""
+    return LoginOptionsOut(trust_days=await devices.trust_days(session))
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
-    body: LoginRequest, request: Request, session: SessionDep
+    body: LoginRequest, request: Request, response: Response, session: SessionDep
 ) -> TokenResponse:
     settings = get_settings()
     key = _client_key(request)
@@ -89,23 +122,51 @@ async def login(
     if user is None or not password_ok:
         await _record_failure(session, settings, key, body.username, "login_fail")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
+    device_token = request.cookies.get(devices.COOKIE_NAME)
+    trusted = False
     if user.totp_enabled:
-        # detail — машиночитаемый маркер для фронта (показать поле кода)
-        if not body.otp:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "2fa_required")
-        counter = totp.matched_counter(user.totp_secret, body.otp)
-        # отвергаем неверный код И уже использованный (защита от replay)
-        if counter is None or counter <= user.totp_last_counter:
-            await _record_failure(session, settings, key, body.username, "login_2fa_fail")
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "2fa_invalid")
-        user.totp_last_counter = counter
-        await session.commit()  # фиксируем счётчик ДО audit (у audit свой rollback)
+        # Запомненное устройство снимает ВТОРОЙ фактор, а не первый: сюда
+        # попадают только с верным паролем, поэтому украденная кука без пароля
+        # ничего не даёт.
+        trusted = await devices.check(session, user.username, device_token)
+        if not trusted:
+            # detail — машиночитаемый маркер для фронта (показать поле кода)
+            if not body.otp:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "2fa_required")
+            counter = totp.matched_counter(user.totp_secret, body.otp)
+            # отвергаем неверный код И уже использованный (защита от replay)
+            if counter is None or counter <= user.totp_last_counter:
+                await _record_failure(
+                    session, settings, key, body.username, "login_2fa_fail"
+                )
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "2fa_invalid")
+            user.totp_last_counter = counter
+            await session.commit()  # фиксируем счётчик ДО audit (у audit свой rollback)
     ratelimit.clear(key)
     token = create_access_token(
         user.username, settings.jwt_secret, settings.jwt_ttl_minutes,
         user.token_version,
     )
-    await audit.record(session, user.username, "login_ok", key)
+    # Просьбу запомнить устройство выполняем только после пройденной 2FA: иначе
+    # доверие выдавалось бы тем же знанием пароля, которое оно и подстраховывает.
+    if body.remember and user.totp_enabled and not trusted:
+        made = await devices.remember(
+            session,
+            user.username,
+            request.headers.get("user-agent", ""),
+            key,
+        )
+        if made is not None:
+            secret, max_age = made
+            _set_device_cookie(request, response, secret, max_age)
+            await audit.record(
+                session, user.username, "device_trusted", key,
+                devices.label_from_agent(request.headers.get("user-agent", "")),
+            )
+    await audit.record(
+        session, user.username, "login_ok", key,
+        "без кода, устройство запомнено" if trusted else "",
+    )
     return TokenResponse(access_token=token)
 
 
@@ -118,6 +179,10 @@ async def change_password(
     user.password_hash = hash_password(body.new_password)
     user.token_version += 1  # все ранее выданные токены становятся недействительны
     await session.commit()
+    # Пароль меняют в том числе когда подозревают, что его узнали. Оставить при
+    # этом устройства, которым код 2FA не нужен, - значит оставить дверь, ради
+    # закрытия которой всё и затевалось.
+    await devices.forget_all(session, user.username)
     await audit.record(session, user.username, "password_change", user.username)
     settings = get_settings()
     await alerts.security_alert(
@@ -143,6 +208,54 @@ async def logout(request: Request, user: CurrentUser, session: SessionDep) -> No
     user.token_version += 1
     await session.commit()
     await audit.record(session, user.username, "logout", user.username, _client_key(request))
+
+
+@router.get("/devices", response_model=TrustedDevicesOut)
+async def trusted_devices(
+    request: Request, user: CurrentUser, session: SessionDep
+) -> TrustedDevicesOut:
+    rows = await devices.listing(session, user.username)
+    return TrustedDevicesOut(
+        trust_days=await devices.trust_days(session),
+        current_id=devices.current_id(rows, request.cookies.get(devices.COOKIE_NAME)),
+        devices=rows,
+    )
+
+
+@router.post("/devices/days", response_model=TrustedDevicesOut)
+async def set_trust_days(
+    body: TrustDaysIn, request: Request, user: CurrentUser, session: SessionDep
+) -> TrustedDevicesOut:
+    days = await devices.set_trust_days(session, body.days)
+    await audit.record(
+        session, user.username, "trusted_days", user.username,
+        f"{days} дней" if days else "выключено, устройства забыты",
+    )
+    rows = await devices.listing(session, user.username)
+    return TrustedDevicesOut(
+        trust_days=days,
+        current_id=devices.current_id(rows, request.cookies.get(devices.COOKIE_NAME)),
+        devices=rows,
+    )
+
+
+@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def forget_device(
+    device_id: int, user: CurrentUser, session: SessionDep
+) -> None:
+    if not await devices.forget(session, user.username, device_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Устройство не найдено")
+    await audit.record(session, user.username, "device_forget", str(device_id))
+
+
+@router.post("/devices/forget-all", status_code=status.HTTP_204_NO_CONTENT)
+async def forget_all_devices(user: CurrentUser, session: SessionDep) -> None:
+    """Забыть все устройства - то, что нажимают с чужого компьютера или после
+    потери ноутбука: со следующего входа код спросят везде."""
+    count = await devices.forget_all(session, user.username)
+    await audit.record(
+        session, user.username, "device_forget_all", user.username, f"{count}"
+    )
 
 
 @router.get("/me", response_model=UserOut)
@@ -213,5 +326,8 @@ async def twofa_disable(
     user.totp_enabled = False
     user.totp_secret = ""
     await session.commit()
+    # Без 2FA доверять устройству нечему: записи стали бы тихо ждать включения
+    # и пропустили бы вход без кода сразу после него.
+    await devices.forget_all(session, user.username)
     await audit.record(session, user.username, "2fa_disable", user.username)
     return TwoFAStatusOut(enabled=False)

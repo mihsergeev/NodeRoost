@@ -3,8 +3,13 @@ import QRCode from 'qrcode'
 import {
   disable2FA,
   enable2FA,
+  forgetAllDevices,
+  forgetDevice,
   get2FA,
+  getTrustedDevices,
+  setTrustDays,
   setup2FA,
+  type TrustedDevices,
   type TwoFASetup,
 } from './api'
 import { useI18n } from './i18n'
@@ -26,12 +31,69 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Запомненные устройства: вводить код по десять раз в день на своей машине -
+  // верный способ выключить 2FA совсем, поэтому срок настраивается здесь же.
+  const [trusted, setTrusted] = useState<TrustedDevices | null>(null)
+  const [daysInput, setDaysInput] = useState('')
+  const [devBusy, setDevBusy] = useState(false)
 
   useEffect(() => {
     get2FA()
       .then((s) => setEnabled(s.enabled))
       .catch(() => onUnauthorized())
   }, [onUnauthorized])
+
+  useEffect(() => {
+    if (!enabled) return
+    getTrustedDevices()
+      .then((d) => {
+        setTrusted(d)
+        setDaysInput(String(d.trust_days))
+      })
+      .catch(() => setTrusted(null))
+  }, [enabled])
+
+  async function applyDays() {
+    const days = Number(daysInput)
+    if (!Number.isInteger(days) || days < 0 || days > 365) return
+    setDevBusy(true)
+    try {
+      const d = await setTrustDays(days)
+      setTrusted(d)
+      setDaysInput(String(d.trust_days))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setDevBusy(false)
+    }
+  }
+
+  async function dropDevice(id: number) {
+    setDevBusy(true)
+    try {
+      await forgetDevice(id)
+      setTrusted(await getTrustedDevices())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setDevBusy(false)
+    }
+  }
+
+  async function dropAll() {
+    if (!window.confirm(t('Код 2FA будут спрашивать на всех устройствах, включая это. Продолжить?'))) {
+      return
+    }
+    setDevBusy(true)
+    try {
+      await forgetAllDevices()
+      setTrusted(await getTrustedDevices())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('Ошибка'))
+    } finally {
+      setDevBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!setup) {
@@ -108,6 +170,70 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
             <p className="form-ok">
               {t('2FA включена. Вход требует код из приложения.')}
             </p>
+            <div className="trusted-box">
+              <div className="clients-head">
+                <h4>{t('Запомненные устройства')}</h4>
+                {trusted && trusted.devices.length > 0 && (
+                  <button className="ghost small" onClick={dropAll} disabled={devBusy}>
+                    {t('Забыть все')}
+                  </button>
+                )}
+              </div>
+              <p className="muted small">
+                {t('На запомненном устройстве код не спрашивают, пароль - всегда. С чужой машины вход по-прежнему требует код.')}
+              </p>
+              <label className="field">
+                <span>{t('Помнить устройство, дней (0 - спрашивать всегда)')}</span>
+                <div className="trusted-days">
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={daysInput}
+                    onChange={(e) => setDaysInput(e.target.value)}
+                  />
+                  <button
+                    onClick={applyDays}
+                    disabled={devBusy || daysInput === String(trusted?.trust_days ?? '')}
+                  >
+                    {t('Сохранить')}
+                  </button>
+                </div>
+              </label>
+              {trusted && trusted.devices.length > 0 ? (
+                <ul className="trusted-list">
+                  {trusted.devices.map((d) => (
+                    <li key={d.id}>
+                      <div>
+                        <span className="trusted-label">{d.label}</span>
+                        {d.id === trusted.current_id && (
+                          <>
+                            {' '}
+                            <span className="tag">{t('это устройство')}</span>
+                          </>
+                        )}
+                        <span className="muted small">
+                          {' '}
+                          {d.ip} - {t('до {date}', {
+                            date: new Date(d.expires_at).toLocaleDateString(),
+                          })}
+                        </span>
+                      </div>
+                      <button
+                        className="ghost small"
+                        onClick={() => dropDevice(d.id)}
+                        disabled={devBusy}
+                      >
+                        {t('Забыть')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted small">{t('Пока ни одного - отметьте галку при следующем входе.')}</p>
+              )}
+            </div>
+
             <p className="muted small">
               {t('Чтобы отключить, введите текущий пароль и код из приложения-аутентификатора.')}
             </p>
