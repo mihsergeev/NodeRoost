@@ -89,10 +89,14 @@ TMP="\$TMPD/state"
 systemctl is-active --quiet tailscaled 2>/dev/null || {
   command -v systemctl >/dev/null 2>&1 && exit 0
 }
+# Потолки на размер (--max-filesize) стоят у каждого скачивания: всё, что
+# панель присылает ноде, умещается в десятки килобайт, а без потолка она может
+# залить машине диск одним ответом - и это ещё до того, как содержимое кто-то
+# начнёт проверять.
 # Панель недоступна — молча выходим: это её дело, а не ноды. Но 404 значит другое:
 # такого узла панель больше не знает (его удалили). Тогда сообщаем по-человечески,
 # а не сыплем в журнал сырым «curl: (22) … 404» каждую минуту.
-CODE=\$(curl -sS --max-time 15 -H "\$AUTH" -o "\$TMP" -w '%{http_code}' "\$API" 2>/dev/null || echo 000)
+CODE=\$(curl -sS --max-time 15 --max-filesize 262144 -H "\$AUTH" -o "\$TMP" -w '%{http_code}' "\$API" 2>/dev/null || echo 000)
 if [ "\$CODE" = 404 ]; then
   rm -f "\$TMP"
   echo "NodeRoost: панель больше не знает этот узел — агент можно удалить:" >&2
@@ -122,9 +126,9 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
   echo "\$NOW" > "\$STAMP"; echo "\$WANT_REL" > "$DIR/.update-rel"
   UPD=\$(mktemp -d)
   printf '%s' "\$AGENT_PUB_B64" | base64 -d > "\$UPD/agent.pub" 2>/dev/null
-  curl -fsS --max-time 30 -H "\$AUTH" -o "\$UPD/manifest.json" "\$API/manifest" 2>/dev/null
-  curl -fsS --max-time 30 -H "\$AUTH" -o "\$UPD/manifest.sig" "\$API/manifest.sig" 2>/dev/null
-  curl -fsS --max-time 60 -H "\$AUTH" -o "\$UPD/setup.tmpl" "\$API/setup.tmpl" 2>/dev/null
+  curl -fsS --max-time 30 --max-filesize 65536 -H "\$AUTH" -o "\$UPD/manifest.json" "\$API/manifest" 2>/dev/null
+  curl -fsS --max-time 30 --max-filesize 65536 -H "\$AUTH" -o "\$UPD/manifest.sig" "\$API/manifest.sig" 2>/dev/null
+  curl -fsS --max-time 60 --max-filesize 2097152 -H "\$AUTH" -o "\$UPD/setup.tmpl" "\$API/setup.tmpl" 2>/dev/null
   if ! openssl dgst -sha256 -verify "\$UPD/agent.pub" -signature "\$UPD/manifest.sig" \
        "\$UPD/manifest.json" >/dev/null 2>&1; then
     echo "NodeRoost: ПОДПИСЬ ОБНОВЛЕНИЯ НЕВЕРНА — отказ (панель могла быть подменена)" >&2
@@ -225,21 +229,39 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
     [ -f "\$CA_DST" ] && { rm -f "\$CA_DST"; \$CA_UPD >/dev/null 2>&1; \\
       echo "NodeRoost: сертификат CA панели убран из доверенных" >&2; }
   elif [ "\$WANT_CA" != "\$HAVE" ]; then
-    if curl -fsS --max-time 30 -H "\$AUTH" -o "\$TMPD/ca" "\$API/ca" 2>/dev/null; then
+    if curl -fsS --max-time 30 --max-filesize 1048576 -H "\$AUTH" -o "\$TMPD/ca" "\$API/ca" 2>/dev/null; then
       GOT=\$(openssl x509 -in "\$TMPD/ca" -noout -fingerprint -sha256 2>/dev/null \\
         | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
       # Корень панели ставится в СИСТЕМНОЕ хранилище доверенных, то есть ему
-      # начинает верить вообще всё на машине: apt, pip, curl. Поэтому мало
-      # сверить отпечаток с тем, что назвала сама панель, - требуем ещё, чтобы
-      # в корне были ограничения имён с исключениями (их панель прописывает,
-      # запрещая весь публичный интернет и все адреса). Корень без них - либо
-      # не наш, либо выпущен подменённой панелью, и доверять ему нельзя.
+      # начинает верить вообще всё на машине: apt, pip, curl. Отпечаток тут не
+      # защита: его называет та же панель, что присылает корень. Защита - только
+      # ограничения имён, и проверять их надо по существу. Раньше хватало слова
+      # «Excluded» где-нибудь в расширении: корень, которому запрещён один
+      # выдуманный домен, проходил проверку и дальше годился для ЛЮБОГО сайта -
+      # то есть захваченная панель получала на каждой ноде полный перехват TLS.
+      # Теперь требуем либо белый список имён, либо запрет всего публичного
+      # пространства: обоих диапазонов IP и полутора тысяч доменов верхнего
+      # уровня, которые панель туда и кладёт.
+      NCALL=\$(openssl x509 -in "\$TMPD/ca" -noout -text 2>/dev/null \\
+        | awk '/X509v3 Name Constraints/{f=1;next} f && /X509v3 /{f=0} f')
+      PERM=\$(printf '%s\n' "\$NCALL" | awk '/Permitted:/{p=1;next} /Excluded:/{p=0} p')
+      EXCL=\$(printf '%s\n' "\$NCALL" | awk '/Excluded:/{p=1;next} /Permitted:/{p=0} p')
       NC=0
-      openssl x509 -in "\$TMPD/ca" -noout -text 2>/dev/null \\
-        | grep -A 3 'X509v3 Name Constraints' | grep -q 'Excluded' && NC=1
+      if [ -n "\$PERM" ] && printf '%s\n' "\$PERM" | grep -q 'DNS:[a-z0-9]'; then
+        NC=1   # белый список: такой корень годится только для перечисленных имён
+      else
+        NC=1
+        printf '%s\n' "\$EXCL" | grep -qF 'IP:0.0.0.0/0.0.0.0' || NC=0
+        printf '%s\n' "\$EXCL" | grep -qF 'IP:0:0:0:0:0:0:0:0' || NC=0
+        [ "\$(printf '%s\n' "\$EXCL" | grep -c 'DNS:')" -ge 1000 ] || NC=0
+        for D in com net org ru io dev app cloud online site; do
+          printf '%s\n' "\$EXCL" | grep -q "DNS:\$D\$" || NC=0
+        done
+      fi
       if [ "\$NC" != "1" ]; then
-        echo "NodeRoost: сертификат CA не поставлен - в корне нет ограничений имён" >&2
-        echo "  (корень без ограничений доверялся бы для любых сайтов)" >&2
+        echo "NodeRoost: сертификат CA не поставлен - корень не ограничен именами" >&2
+        echo "  (ему можно было бы верить для посторонних сайтов, а не только" >&2
+        echo "   для имён внутри сети)" >&2
         rm -f "\$TMPD/ca"
       elif [ -n "\$GOT" ] && [ "\$GOT" = "\$WANT_CA" ]; then
         cat "\$TMPD/ca" > "\$CA_DST"; chmod 644 "\$CA_DST"
@@ -294,7 +316,7 @@ if [ -n "\$CERTS" ]; then
       if [ "\$NEED" = "1" ] || [ ! -f "\$KEY" ] || [ ! -f "\$CRT" ]; then
         [ -f "\$KEY" ] || { openssl ecparam -genkey -name prime256v1 -out "\$KEY" 2>/dev/null && chmod 600 "\$KEY"; }
         openssl req -new -key "\$KEY" -subj "/CN=\$NAME" -addext "subjectAltName=DNS:\$NAME" -out "\$TMPD/csr" 2>/dev/null
-        CODE=\$(curl -sS --max-time 120 -X POST --data-binary @"\$TMPD/csr" -o "\$TMPD/crt" \
+        CODE=\$(curl -sS --max-time 120 --max-filesize 262144 -X POST --data-binary @"\$TMPD/csr" -o "\$TMPD/crt" \
           -w '%{http_code}' -H "\$AUTH" "\$API/csr?name=\$NAME" 2>/dev/null || echo 000)
         if [ "\$CODE" = 200 ]; then
           mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
@@ -304,7 +326,7 @@ if [ -n "\$CERTS" ]; then
         fi
         rm -f "\$TMPD/csr" "\$TMPD/crt"
       elif [ -n "\$FP" ] && [ "\$FP" != "\$LOCAL" ]; then
-        CODE=\$(curl -sS --max-time 30 -o "\$TMPD/crt" -w '%{http_code}' \
+        CODE=\$(curl -sS --max-time 30 --max-filesize 262144 -o "\$TMPD/crt" -w '%{http_code}' \
           -H "\$AUTH" "\$API/cert?name=\$NAME" 2>/dev/null || echo 000)
         [ "\$CODE" = 200 ] && {
           mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
