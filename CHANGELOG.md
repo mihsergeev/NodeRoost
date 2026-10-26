@@ -5,6 +5,30 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.23.0] - 2026-10-26
+
+### Changed
+
+- **The agent is now visible on the node card itself, not only in the "Routes"
+  window.** An "Agent" line sits next to the client version and says one of
+  three things: running, installed from the previous release (with an "Update
+  the agent" button right there), or not installed (an "Install" button opens
+  the window with the command). All of this used to live in the routes window,
+  so answering "is the agent up to date?" started with remembering that it hides
+  there.
+
+### Added
+
+- **An "Update agents (N)" button on the server list - for every node that has
+  fallen behind the release at once.** Going through the cards one by one is
+  rarely finished when there are a dozen nodes, and part of the network stays on
+  an old script that does not understand what the panel now offers. The button
+  shows up only when such nodes exist and the script is signed by this version
+  of the panel; nodes with a current agent, and nodes that never had one, are
+  left alone. The request is the same as for a single node: the node checks the
+  signature and the release number itself, so the panel gains no power to run
+  arbitrary code on it. Who updated how many nodes goes into the audit log.
+
 ## [0.22.0] - 2026-10-26
 
 ### Added

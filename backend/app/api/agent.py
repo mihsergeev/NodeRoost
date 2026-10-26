@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.deps import CurrentUser, PublicRateLimit, SessionDep
 from app.hs_client import get_client
 from app.hs_util import hs_call, require_hs
-from app.schemas import AgentIn, AgentOut
+from app.schemas import AgentIn, AgentOut, OutdatedAgentsOut
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 # публичные роуты — под лимитом на источник (см. deps.public_rate_limit)
@@ -127,6 +127,60 @@ async def _require_node(node_id: str) -> None:
     require_hs(settings)
     if not await hs_call(get_client(settings).get_node(node_id)):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
+
+
+def _outdated(all_cfg: dict) -> list[str]:
+    """Ноды, где стоит агент от прошлого релиза.
+
+    Пустой `script` - это нода, с которой агент ни разу не отчитывался: там его
+    либо нет, либо он не доехал, и обновлять нечего.
+    """
+    return sorted(
+        node_id
+        for node_id, cfg in all_cfg.items()
+        if cfg.get("token")
+        and cfg.get("script")
+        and cfg.get("script") != agent.SCRIPT_VERSION
+    )
+
+
+# Объявлено ДО "/{node_id}": иначе этот путь уедет туда как имя ноды.
+@router.get("/outdated", response_model=OutdatedAgentsOut)
+async def outdated_agents(_: CurrentUser, session: SessionDep) -> OutdatedAgentsOut:
+    nodes = _outdated(await settings_store.get_agent_all(session))
+    return OutdatedAgentsOut(
+        count=len(nodes), nodes=nodes, signed=agent.signed_and_current()
+    )
+
+
+@router.post("/update-outdated", response_model=OutdatedAgentsOut)
+async def update_outdated_agents(
+    user: CurrentUser, session: SessionDep
+) -> OutdatedAgentsOut:
+    """Заказать обновление всем нодам, где агент от прошлого релиза.
+
+    Обходить карточки по одной при десятке нод - занятие на полчаса, и ровно
+    поэтому часть нод так и остаётся на старом скрипте. Заказ всё тот же: нода
+    сама проверит подпись и номер релиза, так что кнопка не даёт панели права
+    выполнить на ноде произвольный код.
+    """
+    if not agent.signed_and_current():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Скрипт агента не подписан этой версией панели: ноды отвергнут "
+            "обновление. Подпишите релиз (agent-signing/release.py) и выкатите панель.",
+        )
+    all_cfg = await settings_store.get_agent_all(session)
+    nodes = _outdated(all_cfg)
+    for node_id in nodes:
+        all_cfg[node_id]["update"] = agent.release()
+    if nodes:
+        await settings_store.set_agent_all(session, all_cfg)
+        await audit.record(
+            session, user.username, "agent_update_all", ",".join(nodes),
+            f"релиз {agent.release()}, нод: {len(nodes)}",
+        )
+    return OutdatedAgentsOut(count=len(nodes), nodes=nodes)
 
 
 @router.get("/{node_id}", response_model=AgentOut)
