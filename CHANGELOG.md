@@ -5,6 +5,31 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.23.1] - 2026-10-26
+
+### Security
+
+- **A node would accept a CA root that was limited in name only.** The panel's
+  root goes into the system trust store, where everything on the machine starts
+  trusting it - apt, pip, curl, the browser. The fingerprint from the state
+  proves nothing here: it is named by the same panel that sends the root, so the
+  only real protection is the name constraints inside the root itself. The agent
+  treated them as sufficient whenever the word "Excluded" appeared anywhere in
+  the extension: a root with a single made-up exclusion passed the check and was
+  then good for any site at all. A compromised panel - or whoever gained rights
+  in it - could have planted a TLS-intercepting root on every node this way.
+
+  The agent now checks what the constraints actually say: either a permitted
+  list of names, or an exclusion covering the whole public space - both IP
+  ranges and the fifteen hundred top-level domains the panel puts there. A test
+  runs that very code against four roots, the forgery among them.
+- **Size caps on everything the panel sends a node.** The state, the manifest,
+  the signature, the template, the root and the certificates all fit in tens of
+  kilobytes; without a cap a single response could fill a node's disk before
+  anything had a chance to inspect it.
+- Agent release 10 is published. Nodes on release 9 pick it up with the usual
+  update button - the update mechanism itself has not changed.
+
 ## [0.23.0] - 2026-10-26
 
 ### Changed
