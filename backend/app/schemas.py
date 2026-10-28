@@ -373,11 +373,20 @@ class TsMirrorFile(BaseModel):
     ok: bool = False
     size: int = 0
     note: str = ""
+    # ход текущей загрузки этого файла
+    loading: bool = False
+    done: int = 0
+    total: int = 0
 
 
 class TsMirrorOut(BaseModel):
     version: str = ""
     files: list[TsMirrorFile] = []
+    # загрузка идёт прямо сейчас; done/total - байты по всем файлам,
+    # total=0 означает, что размер неизвестен (сервер не назвал длину)
+    running: bool = False
+    done: int = 0
+    total: int = 0
 
 
 class EnrollStatusOut(BaseModel):

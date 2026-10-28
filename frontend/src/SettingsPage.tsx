@@ -53,6 +53,12 @@ const CIDR_EXAMPLES = ['100.64.0.0/10', '100.80.0.0/12', '100.100.0.0/16', '100.
 const HELPER_MISSING =
   'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.'
 
+// Доля в процентах, без дробей и без выхода за 100: длина ответа иногда врёт.
+function pct(done: number, total: number): number {
+  if (!total) return 0
+  return Math.min(100, Math.round((done / total) * 100))
+}
+
 export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   const { t } = useI18n()
   const [keys, setKeys] = useState<ApiKey[] | null>(null)
@@ -254,16 +260,42 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
     }
   }
 
+  // Шесть файлов по три десятка мегабайт идут минутами. Бэкенд отвечает сразу и
+  // копит прогресс у себя, а панель спрашивает его раз в секунду - иначе вместо
+  // хода загрузки видна только надпись, по которой не понять, живо ли ещё.
+  async function pollMirror(): Promise<void> {
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1000))
+      let r: TsMirror
+      try {
+        r = await getTsMirror()
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          onUnauthorized()
+          return
+        }
+        continue // сеть моргнула - загрузка на сервере от этого не прекращается
+      }
+      setMirror(r)
+      if (!r.running) {
+        const bad = r.files.filter((f) => !f.ok)
+        if (bad.length) {
+          setTsErr(t('Не скачались: {n}', { n: bad.map((f) => f.name).join(', ') }))
+        } else {
+          setTsMsg(t('Мирор обновлён: {n} файлов', { n: r.files.length }))
+        }
+        return
+      }
+    }
+  }
+
   async function mirrorDownload() {
     setMirrorBusy(true)
     setTsErr(null)
     setTsMsg(null)
     try {
-      const r = await downloadTsMirror()
-      setMirror(r)
-      const bad = r.files.filter((f) => !f.ok)
-      if (bad.length) setTsErr(t('Не скачались: {n}', { n: bad.map((f) => f.name).join(', ') }))
-      else setTsMsg(t('Мирор обновлён: {n} файлов', { n: r.files.length }))
+      setMirror(await downloadTsMirror())
+      await pollMirror()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
       else setTsErr(err instanceof Error ? err.message : t('Ошибка'))
@@ -467,21 +499,42 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
               {t('Локальный мирор бинарей')}
               {mirror ? <> · <code className="code-inline">{mirror.version}</code></> : null}
             </span>
-            <button className="ghost small" onClick={mirrorDownload} disabled={mirrorBusy}>
-              {mirrorBusy ? t('Загрузка…') : t('Загрузить в мирор')}
+            <button className="ghost small" onClick={mirrorDownload} disabled={mirrorBusy || !!mirror?.running}>
+              {mirror?.running || mirrorBusy ? t('Загрузка…') : t('Загрузить в мирор')}
             </button>
           </div>
+          {mirror?.running && (
+            <div className="mirror-progress">
+              <div className="bar">
+                <i
+                  className={mirror.total ? '' : 'unknown'}
+                  style={mirror.total ? { width: `${pct(mirror.done, mirror.total)}%` } : undefined}
+                />
+              </div>
+              <span className="muted small">
+                {mirror.total
+                  ? `${fmtBytes(mirror.done)} / ${fmtBytes(mirror.total)} · ${pct(mirror.done, mirror.total)}%`
+                  : fmtBytes(mirror.done)}
+              </span>
+            </div>
+          )}
           <p className="muted small">
             {t('Enroll-скрипты качают клиент с нашего сервера (hs-домен /pkgs), фолбэк — официальный pkgs.tailscale.com. Скачайте текущую версию в мирор, чтобы не зависеть от tailscale.com.')}
           </p>
           {mirror && (
             <ul className="ts-mirror-list">
               {mirror.files.map((f) => (
-                <li key={f.name} className={f.ok ? 'ok' : 'miss'}>
-                  <span className="dot" aria-hidden>{f.ok ? '●' : '○'}</span>
+                <li key={f.name} className={f.loading ? 'load' : f.ok ? 'ok' : 'miss'}>
+                  <span className="dot" aria-hidden>{f.loading ? '◐' : f.ok ? '●' : '○'}</span>
                   <code>{f.name}</code>
                   <span className="muted small">
-                    {f.ok ? fmtBytes(f.size) : f.note || t('нет')}
+                    {f.loading
+                      ? f.total
+                        ? `${fmtBytes(f.done)} / ${fmtBytes(f.total)}`
+                        : fmtBytes(f.done)
+                      : f.ok
+                        ? fmtBytes(f.size)
+                        : f.note || t('нет')}
                   </span>
                 </li>
               ))}

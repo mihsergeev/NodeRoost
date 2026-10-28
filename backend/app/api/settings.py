@@ -662,26 +662,40 @@ async def ts_check(version: str, _: CurrentUser) -> TsCheckOut:
         return TsCheckOut(ok=False, version=v, url=url, note=f"Ошибка запроса: {e}")
 
 
+def _mirror_out(data_dir: str, version: str) -> TsMirrorOut:
+    prog = tsmirror.progress()
+    return TsMirrorOut(
+        version=version,
+        files=[TsMirrorFile(**f) for f in tsmirror.list_mirror(data_dir, version)],
+        running=bool(prog["running"] and prog["version"] == version),
+        done=prog["done"] if prog["version"] == version else 0,
+        total=prog["total"] if prog["version"] == version else 0,
+    )
+
+
 @router.get("/tailscale-version/mirror", response_model=TsMirrorOut)
 async def ts_mirror_status(_: CurrentUser, session: SessionDep) -> TsMirrorOut:
-    """Что из бинарей текущей пиновой версии лежит в нашем мироре (data/tailscale-pkgs)."""
+    """Что из бинарей текущей пиновой версии лежит в нашем мироре
+    (data/tailscale-pkgs) и сколько уже скачано, если загрузка идёт."""
     settings = get_settings()
     v = await settings_store.get_tailscale_version(session, settings)
-    return TsMirrorOut(
-        version=v,
-        files=[TsMirrorFile(**f) for f in tsmirror.list_mirror(settings.data_dir, v)],
-    )
+    return _mirror_out(settings.data_dir, v)
 
 
 @router.post("/tailscale-version/mirror", response_model=TsMirrorOut)
 async def ts_mirror_download(user: CurrentUser, session: SessionDep) -> TsMirrorOut:
-    """Скачивает бинари текущей пиновой версии (все арх.) с pkgs.tailscale.com в
-    наш мирор (с проверкой sha256). Фронт раздаёт их по <hs-домен>/pkgs."""
+    """Запускает загрузку бинарей текущей пиновой версии (все арх.) с
+    pkgs.tailscale.com в наш мирор, с проверкой sha256.
+
+    Отвечает сразу: шесть файлов по три десятка мегабайт качаются минутами, и
+    ждать их в одном запросе значит упереться в таймаут обратного прокси. Ход
+    загрузки панель забирает этой же ручкой через GET.
+    """
     settings = get_settings()
     v = await settings_store.get_tailscale_version(session, settings)
-    files = await tsmirror.download_mirror(settings.data_dir, v)
-    await audit.record(session, user.username, "ts_mirror", v)
-    return TsMirrorOut(version=v, files=[TsMirrorFile(**f) for f in files])
+    if await tsmirror.start_download(settings.data_dir, v):
+        await audit.record(session, user.username, "ts_mirror", v)
+    return _mirror_out(settings.data_dir, v)
 
 
 @router.get("/hs-info", response_model=HsInfoOut)

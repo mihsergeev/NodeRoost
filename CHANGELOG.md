@@ -5,6 +5,26 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.24.0] - 2026-10-29
+
+### Added
+
+- **A progress bar for the local binary mirror.** Six files of some thirty
+  megabytes each take minutes, and all that time the button said "Loading..."
+  and nothing else - no way to tell whether anything was happening. There is now
+  a bar, the megabytes done and total, a percentage, and which file is being
+  fetched right now. Until the server states a response length the bar does not
+  invent percentages; it just shows that work is going on.
+
+### Fixed
+
+- **The mirror download request no longer hangs until the download ends.** The
+  panel used to answer only once all six files had landed on disk: the request
+  ran into the reverse proxy timeout and the button looked broken, while the
+  download was in fact running. The endpoint now answers at once, the download
+  proceeds in the background, and the panel asks for its progress separately.
+  Clicking again does not start a second download on top of the first.
+
 ## [0.23.1] - 2026-10-26
 
 ### Security

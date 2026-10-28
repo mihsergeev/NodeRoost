@@ -742,8 +742,25 @@ export function tsCheck(version: string): Promise<TsCheck> {
 }
 
 // --- локальный мирор бинарей Tailscale ---
-export type TsMirrorFile = { name: string; ok: boolean; size: number; note: string }
-export type TsMirror = { version: string; files: TsMirrorFile[] }
+export type TsMirrorFile = {
+  name: string
+  ok: boolean
+  size: number
+  note: string
+  // ход текущей загрузки этого файла
+  loading: boolean
+  done: number
+  total: number
+}
+// running - загрузка идёт прямо сейчас; done/total в байтах по всем файлам,
+// total = 0 значит, что размер неизвестен
+export type TsMirror = {
+  version: string
+  files: TsMirrorFile[]
+  running: boolean
+  done: number
+  total: number
+}
 
 export function getTsMirror(): Promise<TsMirror> {
   return api<TsMirror>('/api/tailscale-version/mirror')
