@@ -600,6 +600,46 @@ input:focus {
   margin-top: 0.3rem;
 }
 
+.mirror-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0 0.2rem;
+}
+
+.mirror-progress .bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.mirror-progress .bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+/* длину ответа сервер назвал не всегда: тогда вместо вранья о процентах
+   показываем, что работа идёт */
+.mirror-progress .bar i.unknown {
+  width: 35%;
+  animation: mirror-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes mirror-sweep {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+
+.ts-mirror-list li.load .dot {
+  color: var(--accent);
+}
+
 .agent-line {
   display: flex;
   align-items: center;
