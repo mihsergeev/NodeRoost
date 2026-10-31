@@ -5,6 +5,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.24.1] - 2026-10-31
+
+### Fixed
+
+- Mirror download progress resumes when Settings is reopened or the page is
+  refreshed during a download. The button becomes available when the download
+  finishes. Leaving Settings stops polling and discards pending responses.
+
 ## [0.24.0] - 2026-10-29
 
 ### Added
