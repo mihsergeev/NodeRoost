@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
+  api,
   listNodes,
   type Node,
   createApiKey,
-  downloadTsMirror,
   expireApiKey,
   getHsInfo,
   getTsMirror,
@@ -103,6 +103,10 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
   // локальный мирор бинарей
   const [mirror, setMirror] = useState<TsMirror | null>(null)
   const [mirrorBusy, setMirrorBusy] = useState(false)
+  const [mirrorRefresh, setMirrorRefresh] = useState(0)
+  const mirrorStatus = useRef<AbortController | null>(null)
+  const mirrorPost = useRef<AbortController | null>(null)
+  useEffect(() => () => mirrorPost.current?.abort(), [])
   // форма диапазона меша читается из hs-info
   function seedForms(i: HsInfo) {
     setNetV4(i.ipv4_prefix)
@@ -137,9 +141,6 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
         setTsCur(v.current)
         setTsInput(v.current)
       })
-      .catch(() => {})
-    getTsMirror()
-      .then(setMirror)
       .catch(() => {})
   }, [loadKeys])
 
@@ -260,47 +261,79 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
     }
   }
 
-  // Шесть файлов по три десятка мегабайт идут минутами. Бэкенд отвечает сразу и
-  // копит прогресс у себя, а панель спрашивает его раз в секунду - иначе вместо
-  // хода загрузки видна только надпись, по которой не понять, живо ли ещё.
-  async function pollMirror(): Promise<void> {
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 1000))
-      let r: TsMirror
+  // Опрос продолжается и после повторного открытия страницы во время загрузки.
+  useEffect(() => {
+    if (mirror?.running === false) return
+    const wasRunning = mirror?.running === true
+    let active = true
+    let timer: number | undefined
+    let controller: AbortController | null = null
+
+    async function poll() {
+      controller = new AbortController()
+      mirrorStatus.current = controller
       try {
-        r = await getTsMirror()
+        const r = await api<TsMirror>('/api/tailscale-version/mirror', {
+          signal: controller.signal,
+        })
+        if (!active || controller.signal.aborted) return
+        setMirror(r)
+        if (!r.running) {
+          if (wasRunning) {
+            const bad = r.files.filter((f) => !f.ok)
+            if (bad.length) {
+              setTsErr(t('Не скачались: {n}', { n: bad.map((f) => f.name).join(', ') }))
+            } else {
+              setTsMsg(t('Мирор обновлён: {n} файлов', { n: r.files.length }))
+            }
+          }
+          return
+        }
       } catch (err) {
+        if (!active || controller.signal.aborted) return
         if (err instanceof ApiError && err.status === 401) {
           onUnauthorized()
           return
         }
-        continue // сеть моргнула - загрузка на сервере от этого не прекращается
       }
-      setMirror(r)
-      if (!r.running) {
-        const bad = r.files.filter((f) => !f.ok)
-        if (bad.length) {
-          setTsErr(t('Не скачались: {n}', { n: bad.map((f) => f.name).join(', ') }))
-        } else {
-          setTsMsg(t('Мирор обновлён: {n} файлов', { n: r.files.length }))
-        }
-        return
-      }
+      // После сетевого сбоя пробуем снова, без параллельных запросов.
+      if (active) timer = window.setTimeout(poll, 1000)
     }
-  }
+
+    if (wasRunning) timer = window.setTimeout(poll, 1000)
+    else void poll()
+    return () => {
+      active = false
+      if (timer !== undefined) window.clearTimeout(timer)
+      controller?.abort()
+      if (mirrorStatus.current === controller) mirrorStatus.current = null
+    }
+  }, [mirror?.running, mirrorRefresh, onUnauthorized, t])
 
   async function mirrorDownload() {
+    if (mirrorPost.current) return
+    const controller = new AbortController()
+    mirrorPost.current = controller
     setMirrorBusy(true)
     setTsErr(null)
     setTsMsg(null)
     try {
-      setMirror(await downloadTsMirror())
-      await pollMirror()
+      const r = await api<TsMirror>('/api/tailscale-version/mirror', {
+        method: 'POST',
+        signal: controller.signal,
+      })
+      if (!controller.signal.aborted) {
+        mirrorStatus.current?.abort()
+        setMirror(r)
+        setMirrorRefresh((value) => value + 1)
+      }
     } catch (err) {
+      if (controller.signal.aborted) return
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
       else setTsErr(err instanceof Error ? err.message : t('Ошибка'))
     } finally {
-      setMirrorBusy(false)
+      if (!controller.signal.aborted) setMirrorBusy(false)
+      if (mirrorPost.current === controller) mirrorPost.current = null
     }
   }
 
