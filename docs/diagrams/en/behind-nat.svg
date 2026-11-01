@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="108" viewBox="0 0 324 108" role="img" aria-labelledby="behind-nat-title behind-nat-desc" xml:lang="en">
+  <title id="behind-nat-title">A work machine behind someone else's NAT</title>
+  <desc id="behind-nat-desc">Carrier-grade NAT, a router you don't own, nobody to ask for a port forward. Put a node on that machine and it shows up on the network. You open access to your laptop only, on one port only - no TeamViewer, no reverse tunnel.</desc>
+  <rect width="324" height="108" fill="#101714" />
+  <g transform="translate(12 12)">
+    <rect x="0" y="24" width="96" height="36" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="48.0" y="45.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text>
+    <line x1="150" y1="10" x2="150" y2="74" stroke="#819287" stroke-dasharray="3 4" />
+    <text x="150" y="82" fill="#a5b3aa" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">NAT</text>
+    <rect x="196" y="24" width="104" height="36" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="248.0" y="39.0" fill="#eef3ef" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">work-pc</text>
+    <text x="248.0" y="52.0" fill="#a5b3aa" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:3389</text>
+    <line x1="96" y1="42" x2="196" y2="42" stroke="#9aefb4" stroke-width="2" />
+  </g>
+</svg>

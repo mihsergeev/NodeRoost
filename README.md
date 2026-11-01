@@ -46,6 +46,44 @@ a contractor on one port and nothing else, a laptop leaving for the internet thr
 server whose address a partner allows. **[Reasons, goals and the full set of
 scenarios → docs/why.md](docs/why.md)**
 
+## Use cases
+
+The diagrams use example names and subnets. Select a diagram to open it at full size.
+
+<table>
+<tr>
+<td width="50%"><strong>Two LANs, no public addresses</strong><br><a href="docs/diagrams/en/lan-to-lan.svg"><img src="docs/diagrams/en/lan-to-lan.svg" alt="Office and warehouse networks connected through two nodes" width="420"></a><p>Connect an office and a warehouse through one node on each side. Approve their subnets and decide who may reach them with access rules.</p></td>
+<td width="50%"><strong>A work machine behind someone else's NAT</strong><br><a href="docs/diagrams/en/behind-nat.svg"><img src="docs/diagrams/en/behind-nat.svg" alt="A laptop reaching a work machine behind NAT" width="420"></a><p>Reach a work computer without changing its router or forwarding a port. Grant access to your laptop on the port you need.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Admin panels and databases with no open ports</strong><br><a href="docs/diagrams/en/private-services.svg"><img src="docs/diagrams/en/private-services.svg" alt="A device reaching private database and cluster ports while internet access is blocked" width="420"></a><p>Keep databases, IPMI and cluster APIs on network addresses. Open only the required ports to approved sources.</p></td>
+<td width="50%"><strong>A contractor gets exactly what they need</strong><br><a href="docs/diagrams/en/contractor-access.svg"><img src="docs/diagrams/en/contractor-access.svg" alt="A contractor reaching only the database ports of a server role" width="420"></a><p>Grant a database port to a contractor, including all servers in a role. Delete their device when the work is done.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Internet through a chosen server</strong><br><a href="docs/diagrams/en/device-exit.svg"><img src="docs/diagrams/en/device-exit.svg" alt="A device reaching the internet through an allowed exit gateway" width="420"></a><p>Allow specific exit gateways. People choose among those gateways in their Tailscale client.</p></td>
+<td width="50%"><strong>A server's whole traffic through another server</strong><br><a href="docs/diagrams/en/server-exit.svg"><img src="docs/diagrams/en/server-exit.svg" alt="A server using an exit gateway while keeping its incoming access path" width="420"></a><p>Send a server's outgoing traffic through a chosen node. Replies to incoming connections keep their original path.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>A service that allows one address only</strong><br><a href="docs/diagrams/en/ip-allowlist.svg"><img src="docs/diagrams/en/ip-allowlist.svg" alt="A laptop reaching an IP allowlisted service through a selected gateway" width="420"></a><p>Reach a partner's service through a server whose IP is allowed. Other destinations still use the laptop's direct connection.</p></td>
+<td width="50%"><strong>Home NAS, cameras, Home Assistant</strong><br><a href="docs/diagrams/en/home-network.svg"><img src="docs/diagrams/en/home-network.svg" alt="A phone reaching services in a home network" width="420"></a><p>Reach home services from your phone or laptop without a public address, dynamic DNS or port forwarding.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Server to server</strong><br><a href="docs/diagrams/en/server-to-server.svg"><img src="docs/diagrams/en/server-to-server.svg" alt="Servers at different providers connected by an access rule" width="420"></a><p>Let a runner reach a database, or a backup job reach storage at another provider. Access follows a rule instead of a public IP allowlist.</p></td>
+<td width="50%"><strong>Not everything goes into the tunnel</strong><br><a href="docs/diagrams/en/split-tunnel.svg"><img src="docs/diagrams/en/split-tunnel.svg" alt="Selected destinations using the tunnel while other traffic goes directly to the internet" width="420"></a><p>Route only the subnets, domains or addresses you choose through the network. Keep other internet traffic direct.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>The ISP changed - nothing broke</strong><br><a href="docs/diagrams/en/provider-change.svg"><img src="docs/diagrams/en/provider-change.svg" alt="A node keeping its network identity after its public address changes" width="420"></a><p>A node keeps its network address and name when its provider or location changes. Rules and bookmarks keep working.</p></td>
+<td width="50%"><strong>Instead of mailing out VPN configs</strong><br><a href="docs/diagrams/en/enrollment.svg"><img src="docs/diagrams/en/enrollment.svg" alt="A new device joining the network with a single-use key" width="420"></a><p>Connect a machine with a single-use key and a command for its OS. Revoke access by removing the device.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>SSH closed to the internet</strong><br><a href="docs/diagrams/en/private-ssh.svg"><img src="docs/diagrams/en/private-ssh.svg" alt="SSH reachable through the private network while the public port is closed" width="420"></a><p>Close SSH on the public interface and connect through the network address, with access controlled by a rule.</p></td>
+<td width="50%"><strong>A way in when the usual one is shut</strong><br><a href="docs/diagrams/en/recovery-access.svg"><img src="docs/diagrams/en/recovery-access.svg" alt="An alternate network path to a machine whose public access path is unavailable" width="420"></a><p>A node with outbound connectivity can provide another way in when its public address or usual VPN path is unavailable.</p></td>
+</tr>
+<tr>
+<td colspan="2"><strong>Hardware that takes no client</strong><br><a href="docs/diagrams/en/subnet-router.svg"><img src="docs/diagrams/en/subnet-router.svg" alt="A subnet router providing access to cameras, IPMI and other equipment without a client" width="420"></a><p>Put a node beside cameras, printers, IPMI or an old NAS and approve its subnet. Grant access to that equipment by destination and port.</p></td>
+</tr>
+</table>
+
 ## What it does
 
 **Servers and devices.** Nodes split into servers (things you connect *to*) and
@@ -168,6 +206,11 @@ hands you a one-time key and a ready-made command for Linux, Windows, macOS or
 Android.
 
 ## Architecture
+
+![Control through NodeRoost and headscale, with traffic flowing between nodes](docs/diagrams/en/architecture.svg)
+
+Settings go through the panel. User traffic travels between nodes over WireGuard.
+DERP relays it when a direct connection cannot be established.
 
 ```
             ┌───────── public ──────────┐      ┌──── allow-listed ────┐

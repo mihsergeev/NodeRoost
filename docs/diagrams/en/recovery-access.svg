@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="124" viewBox="0 0 324 124" role="img" aria-labelledby="recovery-access-title recovery-access-desc" xml:lang="en">
+  <title id="recovery-access-title">A way in when the usual one is shut</title>
+  <desc id="recovery-access-desc">The provider blocked the port, the public address is under attack, somebody rewrote the firewall rules, the corporate VPN is down - and you need to get in now. A node needs no more than outbound access to stay in touch, so the machine is still reachable when nothing gets to it from outside. The panel is not part of the connection: even while it is unavailable, the sessions already running carry on.</desc>
+  <rect width="324" height="124" fill="#101714" />
+  <g transform="translate(12 12)">
+    <rect x="0" y="36" width="88" height="32" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="44.0" y="55.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text>
+    <path d="M88 46 C130 46, 152 24, 196 24" fill="none" stroke="#819287" stroke-width="1.5" stroke-dasharray="4 3" />
+    <line x1="136" y1="24" x2="148" y2="36" stroke="#a5b3aa" stroke-width="1.6" />
+    <line x1="148" y1="24" x2="136" y2="36" stroke="#a5b3aa" stroke-width="1.6" />
+    <text x="120" y="16" fill="#a5b3aa" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">public IP</text>
+    <path d="M88 58 C130 58, 152 78, 196 78" fill="none" stroke="#9aefb4" stroke-width="2" />
+    <text x="130" y="94" fill="#9aefb4" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">over the network</text>
+    <rect x="196" y="10" width="104" height="80" rx="7" fill="#1e2a23" stroke="#9aefb4" />
+    <text x="248.0" y="54.5" fill="#9aefb4" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">srv-01</text>
+  </g>
+</svg>

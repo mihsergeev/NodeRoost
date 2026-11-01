@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="116" viewBox="0 0 324 116" role="img" aria-labelledby="home-network-title home-network-desc" xml:lang="ru">
+  <title id="home-network-title">Домашний NAS, камеры, Home Assistant</title>
+  <desc id="home-network-desc">Ни белого IP, ни DDNS, ни проброса портов на роутере. Ставите ноду на домашний сервер и заходите к нему откуда угодно - с телефона, ноутбука, рабочего компьютера - так же, как заходили бы из дома.</desc>
+  <rect width="324" height="116" fill="#101714" />
+  <g transform="translate(12 12)">
+    <rect x="0" y="30" width="84" height="32" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="42.0" y="49.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">телефон</text>
+    <line x1="84" y1="46" x2="112" y2="46" stroke="#9aefb4" stroke-width="2" />
+    <rect x="112" y="4" width="188" height="84" rx="7" fill="#18221d" stroke="#2d3a31" stroke-dasharray="4 3" />
+    <text x="206.0" y="49.5" fill="#eef3ef" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle" />
+    <text x="124" y="20" fill="#a5b3aa" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">дом</text>
+    <rect x="124" y="26" width="164" height="20" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="206.0" y="39.5" fill="#eef3ef" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">nas</text>
+    <rect x="124" y="50" width="78" height="20" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="163.0" y="63.5" fill="#eef3ef" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text>
+    <rect x="210" y="50" width="78" height="20" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="249.0" y="63.5" fill="#eef3ef" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">hass</text>
+  </g>
+</svg>
