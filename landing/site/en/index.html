@@ -13,7 +13,7 @@
   <meta property="og:description" content="Your own network, clear access rules and control from the browser. An open-source panel for headscale.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://noderoost.ru/en/">
-  <meta property="og:image" content="https://noderoost.ru/shots/en/servers@2x.webp?v=0.25.0">
+  <meta property="og:image" content="https://noderoost.ru/shots/en/servers@2x.webp?v=20261101-2">
   <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
@@ -21,8 +21,9 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#101714">
-  <link rel="stylesheet" href="/style.css?v=20261101">
-  <script src="/lb.js?v=20261101" defer></script>
+  <link rel="stylesheet" href="/style.css?v=20261101-2">
+  <link rel="stylesheet" href="/examples.css?v=20261101-2">
+  <script src="/lb.js?v=20261101-2" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -31,6 +32,7 @@
       <a class="brand" href="/en/" aria-label="NodeRoost home"><span class="brand-mark"><img src="/mark.svg" width="32" height="34" alt=""></span><span>NodeRoost</span></a>
       <nav class="main-nav" aria-label="Main navigation">
         <a class="desktop-link" href="#interface">Interface</a>
+        <a class="desktop-link" href="#cases">Use cases</a>
         <a class="desktop-link" href="#capabilities">Features</a>
         <a href="#install">Install</a>
         <a class="nav-github" href="https://github.com/mihsergeev/NodeRoost">GitHub <span aria-hidden="true">↗</span></a>
@@ -61,8 +63,8 @@
         </div>
         <figure class="hero-figure">
           <div class="screen-label"><span><span class="screen-label-line" aria-hidden="true"></span>The whole network in view</span><span class="screen-hint">Select the screen for a closer look</span></div>
-          <a class="screen hero-screen" href="/shots/en/servers@2x.webp?v=0.25.0" data-lb>
-            <img src="/shots/en/servers.webp?v=0.25.0" alt="NodeRoost with the server list on the left and selected node details on the right" width="1211" height="857" fetchpriority="high" decoding="async">
+          <a class="screen hero-screen" href="/shots/en/servers@2x.webp?v=20261101-2" data-lb>
+            <img src="/shots/en/servers.webp?v=20261101-2" srcset="/shots/en/servers.webp?v=20261101-2 1x, /shots/en/servers@2x.webp?v=20261101-2 2x" alt="NodeRoost with the server list on the left and selected node details on the right" width="1280" height="900" fetchpriority="high" decoding="async">
             <span class="screen-zoom" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"></path></svg></span>
           </a>
           <figcaption><span>The list stays on the left. Details open on the right. Your network stays in view.</span><span>EN / RU</span></figcaption>
@@ -88,30 +90,288 @@
           </nav>
           <div class="tour-panel" id="tour-access" data-tour-panel>
             <div class="tour-copy"><h3>Who, where,<br>on which port.</h3><p>Grant access to a device or a group of servers. The panel builds the headscale policy and restores the previous version if the new one is rejected. Personal devices stay isolated from one another.</p></div>
-            <a class="screen" href="/shots/en/access@2x.webp?v=0.25.0" data-lb><img src="/shots/en/access.webp?v=0.25.0" alt="NodeRoost access rules showing sources, servers and allowed ports" width="1226" height="868" loading="lazy" decoding="async"></a>
+            <a class="screen" href="/shots/en/access@2x.webp?v=20261101-2" data-lb><img src="/shots/en/access.webp?v=20261101-2" srcset="/shots/en/access.webp?v=20261101-2 1x, /shots/en/access@2x.webp?v=20261101-2 2x" alt="NodeRoost access rules showing sources, servers and allowed ports" width="1280" height="900" loading="lazy" decoding="async"></a>
           </div>
           <div class="tour-panel" id="tour-routing" data-tour-panel>
             <div class="tour-copy"><h3>The right destination.<br>The right gateway.</h3><p>Choose which nodes reach a domain or subnet through a particular server. When the domain's address changes, the panel updates the route. You also choose the internet exit gateways available to each device.</p></div>
-            <a class="screen" href="/shots/en/routing@2x.webp?v=0.25.0" data-lb><img src="/shots/en/routing.webp?v=0.25.0" alt="NodeRoost routing with source devices, a destination and a gateway node" width="1211" height="857" loading="lazy" decoding="async"></a>
+            <a class="screen" href="/shots/en/routing@2x.webp?v=20261101-2" data-lb><img src="/shots/en/routing.webp?v=20261101-2" srcset="/shots/en/routing.webp?v=20261101-2 1x, /shots/en/routing@2x.webp?v=20261101-2 2x" alt="NodeRoost routing with source devices, a destination and a gateway node" width="1280" height="900" loading="lazy" decoding="async"></a>
           </div>
           <div class="tour-panel" id="tour-dns" data-tour-panel>
             <div class="tour-copy"><h3>Services keep<br>their names.</h3><p>Connect a service name to a node inside the network. If the node reconnects, the record follows its new address. Public DNS stays as it was, and internal names can have their own certificates.</p></div>
-            <a class="screen" href="/shots/en/dns@2x.webp?v=0.25.0" data-lb><img src="/shots/en/dns.webp?v=0.25.0" alt="NodeRoost DNS with internal service names and certificates" width="1211" height="857" loading="lazy" decoding="async"></a>
+            <a class="screen" href="/shots/en/dns@2x.webp?v=20261101-2" data-lb><img src="/shots/en/dns.webp?v=20261101-2" srcset="/shots/en/dns.webp?v=20261101-2 1x, /shots/en/dns@2x.webp?v=20261101-2 2x" alt="NodeRoost DNS with internal service names and certificates" width="1280" height="900" loading="lazy" decoding="async"></a>
           </div>
           <div class="tour-panel" id="tour-node" data-tour-panel>
             <div class="tour-copy"><h3>One node.<br>The full picture.</h3><p>Roles, access, subnets and gateways sit alongside the agent's state. Select a server and work with its details while keeping the other nodes in view.</p></div>
-            <a class="screen" href="/shots/en/node@2x.webp?v=0.25.0" data-lb><img src="/shots/en/node.webp?v=0.25.0" alt="NodeRoost server details with roles, agent state and network settings" width="1211" height="857" loading="lazy" decoding="async"></a>
+            <a class="screen" href="/shots/en/node@2x.webp?v=20261101-2" data-lb><img src="/shots/en/node.webp?v=20261101-2" srcset="/shots/en/node.webp?v=20261101-2 1x, /shots/en/node@2x.webp?v=20261101-2 2x" alt="NodeRoost server details with roles, agent state and network settings" width="1280" height="900" loading="lazy" decoding="async"></a>
           </div>
           <div class="tour-panel" id="tour-settings" data-tour-panel>
             <div class="tour-copy"><h3>Network settings,<br>within reach.</h3><p>The address range, Tailscale client version, local binary mirror and API keys are available in the panel. Settings that affect the network come with explanations of what they change.</p></div>
-            <a class="screen" href="/shots/en/settings@2x.webp?v=0.25.0" data-lb><img src="/shots/en/settings.webp?v=0.25.0" alt="NodeRoost settings for the network, Tailscale version and local binary mirror" width="1211" height="857" loading="lazy" decoding="async"></a>
+            <a class="screen" href="/shots/en/settings@2x.webp?v=20261101-2" data-lb><img src="/shots/en/settings.webp?v=20261101-2" srcset="/shots/en/settings.webp?v=20261101-2 1x, /shots/en/settings@2x.webp?v=20261101-2 2x" alt="NodeRoost settings for the network, Tailscale version and local binary mirror" width="1280" height="900" loading="lazy" decoding="async"></a>
           </div>
           <div class="tour-panel" id="tour-login" data-tour-panel>
             <div class="tour-copy"><h3>Your sign-in.<br>Your control.</h3><p>Enable TOTP two-factor authentication and choose how long to trust your own devices. Review and revoke remembered devices from the panel.</p></div>
-            <a class="screen" href="/shots/en/login@2x.webp?v=0.25.0" data-lb><img src="/shots/en/login.webp?v=0.25.0" alt="NodeRoost sign-in screen" width="1226" height="868" loading="lazy" decoding="async"></a>
+            <a class="screen" href="/shots/en/login@2x.webp?v=20261101-2" data-lb><img src="/shots/en/login.webp?v=20261101-2" srcset="/shots/en/login.webp?v=20261101-2 1x, /shots/en/login@2x.webp?v=20261101-2 2x" alt="NodeRoost sign-in screen" width="1280" height="900" loading="lazy" decoding="async"></a>
           </div>
         </div>
         <p class="demo-note">The real interface with demo data. Node names and addresses shown in the screenshots are fictional.</p>
+      </div>
+    </section>
+
+    <section class="examples-section section-space" id="cases" aria-labelledby="cases-title">
+      <div class="shell">
+        <p class="eyebrow">Use cases</p>
+        <h2 id="cases-title">One network across any ISP and any NAT</h2>
+        <p class="examples-intro">
+          Machines find each other wherever they sit  -  cloud, office, home, behind
+          someone else&#39;s NAT. No public address and no port forwarding needed, and
+          you decide who talks to whom.
+        </p>
+
+        <div class="example-grid">
+          <div class="example-card">
+            <h3>Two LANs, no public addresses</h3>
+            <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="2" y="22" width="130" height="40" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="67.0" y="39.0" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">node-a</text><text x="67.0" y="52.0" fill="var(--example-muted)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">192.168.10.0/24</text><rect x="168" y="22" width="130" height="40" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="233.0" y="39.0" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">node-b</text><text x="233.0" y="52.0" fill="var(--example-muted)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">192.168.50.0/24</text><line x1="132" y1="42" x2="168" y2="42" stroke="var(--example-accent)" stroke-width="2"/></svg>
+            <p>The office and the warehouse start seeing each other&#39;s networks. Put
+               one node on each side, it advertises its subnet, you approve it  -
+               then rules decide who may cross. Neither side needs a static address
+               from its ISP.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>A work machine behind someone else&#39;s NAT</h3>
+            <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="24" width="96" height="36" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="48.0" y="45.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><line x1="150" y1="10" x2="150" y2="74" stroke="var(--example-muted-line)" stroke-dasharray="3 4"/><text x="150" y="82" fill="var(--example-muted)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">NAT</text><rect x="196" y="24" width="104" height="36" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="248.0" y="39.0" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">work-pc</text><text x="248.0" y="52.0" fill="var(--example-muted)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:3389</text><line x1="96" y1="42" x2="196" y2="42" stroke="var(--example-accent)" stroke-width="2"/></svg>
+            <p>Carrier-grade NAT, a router you don&#39;t own, nobody to ask for a port
+               forward. Put a node on that machine and it shows up on the network.
+               You open access to your laptop only, on one port only  -  no
+               TeamViewer, no reverse tunnel.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Admin panels and databases with no open ports</h3>
+            <svg class="dia" viewBox="0 0 300 96" aria-hidden="true"><rect x="0" y="8" width="96" height="30" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="48.0" y="26.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text><line x1="96" y1="23" x2="132" y2="30" stroke="var(--example-muted-line)" stroke-width="1.5"/><path d="M110 20 l8 8 M118 20 l-8 8" stroke="var(--example-muted)" stroke-width="1.6"/><rect x="0" y="58" width="96" height="30" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="48.0" y="76.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">device</text><line x1="96" y1="73" x2="150" y2="62" stroke="var(--example-accent)" stroke-width="2"/><rect x="150" y="4" width="150" height="88" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="225.0" y="51.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="225" y="22" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">server</text><rect x="162" y="32" width="126" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="225.0" y="45.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">postgres:5432</text><rect x="162" y="56" width="126" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="225.0" y="69.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">kube:6443</text></svg>
+            <p>The database, the IPMI board, the cluster API and the router&#39;s web UI
+               live on tailnet addresses. Nothing is published, no bastion host
+               needed, and you grant a port rather than the whole machine.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>A contractor gets exactly what they need</h3>
+            <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="92" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="46.0" y="49.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">contractor</text><line x1="92" y1="46" x2="119" y2="46" stroke="var(--example-accent)" stroke-width="1.5"/><path d="M118 42 L124 46 L118 50 Z" fill="var(--example-accent)"/><rect x="124" y="4" width="176" height="84" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="212.0" y="49.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="136" y="20" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="9.5" text-anchor="start">prod-db</text><rect x="136" y="28" width="72" height="22" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="172.0" y="42.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-1:5432</text><rect x="216" y="28" width="72" height="22" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="252.0" y="42.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-2:5432</text><rect x="136" y="58" width="152" height="22" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="212.0" y="72.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">+ new server</text></svg>
+            <p>Access is granted to a port, not to the whole machine: give them 5432
+               and they see the database and nothing else  -  no SSH, no admin panel.
+               It can go to a role  -  a group of servers: add another one to it and it
+               shows up for them on its own. Job done  -  delete their device, and the
+               access is gone everywhere at once.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Internet through a chosen server</h3>
+            <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="92" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="46.0" y="45.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">device</text><line x1="92" y1="42" x2="116" y2="42" stroke="var(--example-accent)" stroke-width="2"/><rect x="116" y="26" width="80" height="32" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="156.0" y="45.5" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-de</text><line x1="196" y1="42" x2="211" y2="42" stroke="var(--example-muted-line)" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M210 38 L216 42 L210 46 Z" fill="var(--example-muted-line)"/><rect x="216" y="26" width="84" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="258.0" y="45.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text></svg>
+            <p>Mark a server as a gateway and the traffic of whoever you allowed
+               leaves for the internet from its address. People switch between
+               gateways themselves in the Tailscale client, but only ever see the
+               ones you gave them.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>A server&#39;s whole traffic through another server</h3>
+            <svg class="dia" viewBox="0 0 300 104" aria-hidden="true"><rect x="0" y="22" width="88" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="44.0" y="41.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text><line x1="88" y1="38" x2="110" y2="38" stroke="var(--example-accent)" stroke-width="2"/><rect x="110" y="22" width="80" height="32" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="150.0" y="41.5" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-nl</text><line x1="190" y1="38" x2="207" y2="38" stroke="var(--example-muted-line)" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M206 34 L212 38 L206 42 Z" fill="var(--example-muted-line)"/><rect x="212" y="22" width="88" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="256.0" y="41.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text><line x1="34" y1="92" x2="34" y2="60" stroke="var(--example-accent)" stroke-width="2"/><path d="M30 60 L34 54 L38 60 Z" fill="var(--example-accent)"/><text x="48" y="90" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="9" text-anchor="start">inbound on its own IP</text></svg>
+            <p>The server reaches the internet through a node you pick, so its
+               requests arrive from that node&#39;s address  -  from the country a partner
+               expects, say. One tick on the server&#39;s card turns it on, another
+               turns it off.</p>
+            <p>Normally a server vanishes when its traffic is tunnelled: replies to
+               incoming connections leave through the tunnel and never arrive, so SSH
+               drops and the site stops answering. Not here  -  a reply goes back the
+               way the request came, and the server stays reachable at its own
+               address.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>A service that allows one address only</h3>
+            <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="28" width="84" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="42.0" y="47.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><line x1="84" y1="44" x2="106" y2="44" stroke="var(--example-accent)" stroke-width="2"/><rect x="106" y="28" width="76" height="32" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="144.0" y="47.5" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">edge-1</text><line x1="182" y1="44" x2="199" y2="44" stroke="var(--example-muted-line)" stroke-width="1.5"/><path d="M198 40 L204 44 L198 48 Z" fill="var(--example-muted-line)"/><rect x="204" y="18" width="96" height="52" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="252.0" y="47.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">api.example</text><text x="252" y="58" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">IP allowlist</text></svg>
+            <p>The partner allows one IP only, and you need to reach them from a
+               laptop. In the panel you say: for this address, go through edge-1  -  the
+               server whose IP is on their list. The requests arrive from edge-1, while
+               the rest of the laptop&#39;s traffic still goes direct.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Home NAS, cameras, Home Assistant</h3>
+            <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="42.0" y="49.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">phone</text><line x1="84" y1="46" x2="112" y2="46" stroke="var(--example-accent)" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="206.0" y="49.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="124" y="20" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">home</text><rect x="124" y="26" width="164" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="206.0" y="39.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">nas</text><rect x="124" y="50" width="78" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="163.0" y="63.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="210" y="50" width="78" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="249.0" y="63.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">hass</text></svg>
+            <p>No public IP, no dynamic DNS, no port forwarding on the router. Put a
+               node on the home server and reach it from anywhere  -  your phone, your
+               laptop, your work machine  -  exactly as you would from the sofa.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Server to server</h3>
+            <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="20" width="96" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="48.0" y="39.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ci-runner</text><line x1="96" y1="36" x2="180" y2="36" stroke="var(--example-accent)" stroke-width="2"/><text x="138" y="30" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:5432</text><rect x="180" y="20" width="120" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="240.0" y="39.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-fra-1</text><text x="150" y="76" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">firewall allowlists</text><line x1="93" y1="72" x2="207" y2="72" stroke="var(--example-muted)" stroke-width="1.2"/></svg>
+            <p>The machines sit with different providers, in different data centres,
+               with no network in common: the runner writes to the database, the
+               backup job ships to storage, the app talks to the next data centre.</p>
+            <p>That used to mean a port open to the world and an IP allowlist on a
+               firewall that broke on every migration. Now the machines see each
+               other directly and the access is one rule in the panel.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Not everything goes into the tunnel</h3>
+            <svg class="dia" viewBox="0 0 300 96" aria-hidden="true"><rect x="0" y="32" width="88" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="44.0" y="51.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><path d="M88 44 C120 44, 130 22, 162 22" fill="none" stroke="var(--example-accent)" stroke-width="2"/><path d="M88 52 C120 52, 130 74, 162 74" fill="none" stroke="var(--example-muted-line)" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M162 70 L168 74 L162 78 Z" fill="var(--example-muted-line)"/><rect x="170" y="6" width="130" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="235.0" y="25.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">work addresses</text><rect x="170" y="58" width="130" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="235.0" y="77.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text><text x="126" y="16" fill="var(--example-accent)" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">via the network</text><text x="126" y="92" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">direct</text></svg>
+            <p>A normal VPN swallows all your traffic. Here the laptop reaches the
+               internet directly and fast, and only what you listed goes through the
+               network: office subnets, specific services, individual addresses.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>The ISP changed  -  nothing broke</h3>
+            <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="6" width="132" height="30" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="66.0" y="24.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">203.0.113.7</text><line x1="14" y1="21" x2="118" y2="21" stroke="var(--example-muted)" stroke-width="1.2"/><line x1="132" y1="21" x2="163" y2="21" stroke="var(--example-muted-line)" stroke-width="1.5"/><path d="M162 17 L168 21 L162 25 Z" fill="var(--example-muted-line)"/><rect x="168" y="6" width="132" height="30" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="234.0" y="24.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">198.51.100.9</text><rect x="0" y="50" width="300" height="32" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="150.0" y="63.0" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">100.64.0.7</text><text x="150.0" y="76.0" fill="var(--example-muted)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">on the tailnet — unchanged</text></svg>
+            <p>You moved to another data centre, the provider handed out a new
+               address, the machine went from the office to someone&#39;s home. On the
+               tailnet it keeps its address and its name, so rules, scripts and
+               bookmarks need no editing.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Instead of mailing out VPN configs</h3>
+            <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="72" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="36.0" y="45.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">key</text><line x1="72" y1="42" x2="91" y2="42" stroke="var(--example-muted-line)" stroke-width="1.5"/><path d="M90 38 L96 42 L90 46 Z" fill="var(--example-muted-line)"/><rect x="96" y="26" width="108" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="150.0" y="45.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">one command</text><line x1="204" y1="42" x2="223" y2="42" stroke="var(--example-accent)" stroke-width="1.5"/><path d="M222 38 L228 42 L222 46 Z" fill="var(--example-accent)"/><rect x="228" y="26" width="72" height="32" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="264.0" y="45.5" fill="var(--example-accent)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">connected</text></svg>
+            <p>No <code>.ovpn</code> attachments. A person gets a single-use key and
+               one command for their OS  -  a minute later they are on the network.
+               Revoking means deleting a device, not reissuing configs for
+               everyone else.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>SSH closed to the internet for good</h3>
+            <svg class="dia" viewBox="0 0 300 100" aria-hidden="true"><rect x="0" y="8" width="92" height="28" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="46.0" y="26.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text><line x1="92" y1="22" x2="152" y2="22" stroke="var(--example-muted-line)" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="158" y1="16" x2="170" y2="28" stroke="var(--example-muted)" stroke-width="1.6"/><line x1="170" y1="16" x2="158" y2="28" stroke="var(--example-muted)" stroke-width="1.6"/><text x="150" y="44" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">22/tcp closed</text><rect x="0" y="60" width="92" height="28" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="46.0" y="78.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><line x1="92" y1="74" x2="196" y2="74" stroke="var(--example-accent)" stroke-width="2"/><text x="144" y="68" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:22</text><rect x="196" y="30" width="104" height="52" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="248.0" y="60.5" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text></svg>
+            <p>While the server answers on port 22, strangers&#39; bots pick at it around
+               the clock. With a node on it, that port can be closed on the public
+               interface for good  -  you come in on the network address instead, by a
+               rule from the panel.</p>
+            <p>There is nothing left outside to knock on, and the list of who may come
+               in sits in one place and changes by clicking.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>A way in when the usual one is shut</h3>
+            <svg class="dia" viewBox="0 0 300 100" aria-hidden="true"><rect x="0" y="36" width="88" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="44.0" y="55.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><path d="M88 46 C130 46, 152 24, 196 24" fill="none" stroke="var(--example-muted-line)" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="136" y1="24" x2="148" y2="36" stroke="var(--example-muted)" stroke-width="1.6"/><line x1="148" y1="24" x2="136" y2="36" stroke="var(--example-muted)" stroke-width="1.6"/><text x="120" y="16" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">public IP</text><path d="M88 58 C130 58, 152 78, 196 78" fill="none" stroke="var(--example-accent)" stroke-width="2"/><text x="130" y="94" fill="var(--example-accent)" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">over the network</text><rect x="196" y="10" width="104" height="80" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="248.0" y="54.5" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">srv-01</text></svg>
+            <p>The provider blocked the port, the public address is under attack,
+               somebody rewrote the firewall rules, the corporate VPN is down  -  and you
+               need to get in now. A node needs no more than outbound access to stay in
+               touch, so the machine is still reachable when nothing gets to it from
+               outside.</p>
+            <p>The panel is not part of the connection: even while it is unavailable,
+               the sessions already running carry on.</p>
+          </div>
+
+          <div class="example-card">
+            <h3>Hardware that takes no client</h3>
+            <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="42.0" y="49.5" fill="var(--example-text)" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text><line x1="84" y1="46" x2="112" y2="46" stroke="var(--example-accent)" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)" stroke-dasharray="4 3"/><text x="124" y="20" fill="var(--example-muted)" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">server room</text><rect x="124" y="26" width="76" height="20" rx="7" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="162.0" y="39.5" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-01</text><rect x="208" y="26" width="80" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="248.0" y="39.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ipmi</text><rect x="124" y="50" width="76" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="162.0" y="63.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="208" y="50" width="80" height="20" rx="7" fill="var(--example-node-bg)" stroke="var(--example-border)"/><text x="248.0" y="63.5" fill="var(--example-text)" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">switch</text></svg>
+            <p>An IPMI board, cameras, a printer, a managed switch, an old NAS  -
+               nothing can be installed on them, and you still have to reach them. Put
+               a node on any machine in that network, it advertises the subnet, you
+               approve it, and you work with all of it on internal addresses as if you
+               were sitting next to it.</p>
+            <p>Access is granted the same way as everywhere else: to whom, and on which
+               port.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="network-model section-space" id="model" aria-labelledby="model-title">
+      <div class="shell">
+        <p class="eyebrow">Model</p>
+        <h2 id="model-title">What makes something a server and something else a device</h2>
+        <p class="examples-intro">
+          headscale knows nothing about this  -  to it every machine is just a node.<br>
+          The split into servers and devices is ours; it lives in the panel&#39;s database.<br>
+          The difference is one thing: <b>access can be opened to a server, never to a
+          device</b>.<br>
+          So servers reach each other too, while devices cannot see each other at all.
+        </p>
+
+        <div class="model-pair">
+          <div class="model-kind model-server">
+            <p class="model-role">Server</p>
+            <h3>Access can be opened to it</h3>
+            <ul>
+              <li>This is what access gets opened to: a database, a hypervisor, the
+                  office router, a build machine.</li>
+              <li>A server is a source as well: the runner reaches the database, the
+                  backup job reaches storage, the app reaches the next data centre.</li>
+              <li>Servers can be grouped into roles, so you grant the role instead of
+                  every machine one by one.</li>
+              <li>A server can hand out its local network or work as a gateway out
+                  to the internet.</li>
+              <li>The agent goes on servers  -  it picks up the routes you set in the
+                  panel.</li>
+            </ul>
+          </div>
+
+          <div class="model-kind model-device">
+            <p class="model-role">Device</p>
+            <h3>Access is never opened to it</h3>
+            <ul>
+              <li>A laptop, a phone, a work computer  -  anything with a person
+                  sitting at it.</li>
+              <li>A device is given access to servers. <b>Giving access to the device
+                  itself is not possible</b>  -  that rule cannot be written.</li>
+              <li>Devices don&#39;t see each other: a colleague&#39;s laptop won&#39;t appear in
+                  the list, and typing its address by hand won&#39;t work either.</li>
+              <li>This is also where you allow exit gateways  -  which ones the person
+                  can switch on.</li>
+            </ul>
+          </div>
+        </div>
+
+        <ul class="model-facts">
+          <li><b>The type is derived automatically.</b> Roles, an approved subnet or
+            gateway mode mean a server. None of that means a device.</li>
+          <li><b>The type can be set by hand.</b> On the node&#39;s card: server, device,
+            or back to automatic.</li>
+          <li><b>Only what an administrator confirmed is taken into account.</b> A node
+            can announce “I route 192.168.0.0/24”. If that counted, one command on
+            someone else&#39;s laptop would be enough to make it a “server”  -  joining
+            “all servers”, no longer hidden from other devices, inheriting
+            everything granted to servers. So only the roles you assigned and the
+            subnets you approved are used.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="network-architecture section-space" id="arch" aria-labelledby="arch-title">
+      <div class="shell">
+        <p class="eyebrow">Architecture</p>
+        <h2 id="arch-title">The panel runs the network without traffic passing through it</h2>
+        <p class="examples-intro">
+          The panel reaches headscale over an internal Docker network  -  the
+          management API is never exposed.<br>
+          The only thing open to the world is what Tailscale clients need: joining
+          and fetching the network map.
+        </p>
+
+        <figure class="architecture-diagram" tabindex="0" aria-label="NodeRoost, headscale and node connection architecture">
+          <svg viewBox="0 0 980 400" role="img" aria-label="A two-layer diagram: on top the control side — browser, reverse proxy, panel and headscale; below two nodes connected directly over WireGuard. Only control data crosses between the layers"><text x="0" y="22" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="start">CONTROL</text><rect x="0" y="34" width="980" height="142" rx="12" fill="var(--example-node-bg)" stroke="#212836"/><rect x="65" y="70" width="160" height="60" rx="10" fill="#161C26" stroke="var(--example-border)"/><text x="145.0" y="96" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Browser</text><text x="145.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">administrator</text><rect x="275" y="70" width="190" height="60" rx="10" fill="#161C26" stroke="var(--example-border)"/><text x="370.0" y="96" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Reverse proxy</text><text x="370.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">TLS · allowlisted IPs</text><rect x="515" y="70" width="180" height="60" rx="10" fill="var(--example-active-bg)" stroke="var(--example-accent)"/><text x="605.0" y="96" fill="var(--example-accent)" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">NodeRoost</text><text x="605.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">panel + Postgres</text><rect x="745" y="70" width="170" height="60" rx="10" fill="#161C26" stroke="var(--example-border)"/><text x="830.0" y="96" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">headscale</text><text x="830.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">control server</text><line x1="225" y1="100" x2="268" y2="100" stroke="#3E4A5E" stroke-width="1.5"/><path d="M268 95.5 L275 100 L268 104.5 Z" fill="#3E4A5E"/><line x1="465" y1="100" x2="508" y2="100" stroke="#3E4A5E" stroke-width="1.5"/><path d="M508 95.5 L515 100 L508 104.5 Z" fill="#3E4A5E"/><line x1="695" y1="100" x2="738" y2="100" stroke="#3E4A5E" stroke-width="1.5"/><path d="M738 95.5 L745 100 L738 104.5 Z" fill="#3E4A5E"/><text x="490" y="160" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">internal Docker network · the management API is never exposed</text><line x1="165" y1="183" x2="165" y2="279" stroke="#3E4A5E" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M160.5 183 L165 176 L169.5 183 Z" fill="#3E4A5E"/><path d="M160.5 279 L165 286 L169.5 279 Z" fill="#3E4A5E"/><line x1="815" y1="183" x2="815" y2="279" stroke="#3E4A5E" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M810.5 183 L815 176 L819.5 183 Z" fill="#3E4A5E"/><path d="M810.5 279 L815 286 L819.5 279 Z" fill="#3E4A5E"/><text x="490" y="216" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">only keys, the network map, the policy and agent settings cross between layers</text><text x="490" y="240" fill="#A9B5C6" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">user traffic never enters here</text><text x="0" y="282" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="start">DATA</text><rect x="65" y="296" width="200" height="60" rx="10" fill="#161C26" stroke="var(--example-border)"/><text x="165.0" y="322" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">node A</text><text x="165.0" y="340" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">a laptop, say</text><rect x="715" y="296" width="200" height="60" rx="10" fill="#161C26" stroke="var(--example-border)"/><text x="815.0" y="322" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">node B</text><text x="815.0" y="340" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">a server, say</text><line x1="265" y1="326" x2="715" y2="326" stroke="var(--example-accent)" stroke-width="2.5"/><text x="490" y="314" fill="var(--example-accent)" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">WireGuard — straight between the nodes</text><text x="490" y="382" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">DERP steps in only when a direct connection fails</text></svg>
+
+          <figcaption>Settings go through the panel. Traffic flows between nodes.</figcaption>
+        </figure>
+
+        <ul class="architecture-facts">
+          <li><b>Nothing flows through the panel.</b> It hands out rules and
+            configuration; the packets travel between machines on their own over
+            WireGuard. While the panel is unavailable, established connections
+            keep working.</li>
+          <li><b>The agent exists because headscale has no way back.</b> A control
+            server cannot push anything to a node. So the node fetches its own
+            configuration by token, applies it and reports what it applied.</li>
+          <li><b>The policy is rebuilt as a whole.</b> Rules, roles, gateways and
+            directions turn into one HuJSON document. The panel validates and sends
+            it, and if headscale refuses it, puts the last working version back.</li>
+          <li><b>The panel does not mirror the network state.</b> Who is where and
+            with which address stays in headscale. Its own database holds only its
+            own things: grants, roles, directions, history.</li>
+        </ul>
       </div>
     </section>
 

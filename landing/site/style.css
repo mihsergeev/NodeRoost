@@ -17,26 +17,6 @@
   --dark-logo: block;
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --background: #f4f6f1;
-    --surface: #e9eee7;
-    --surface-raised: #ffffff;
-    --text: #18271e;
-    --muted: #52665a;
-    --faint: #62776a;
-    --line: #cbd6cb;
-    --line-soft: #dce4d9;
-    --accent: #176d3c;
-    --accent-strong: #126f3a;
-    --button-text: #f4fff5;
-    --header: rgba(244, 246, 241, .93);
-    --screen-shadow: 0 24px 64px rgba(25, 49, 30, .12);
-    --light-logo: block;
-    --dark-logo: none;
-  }
-}
 :root[data-theme="light"] {
   color-scheme: light;
   --background: #f4f6f1;
@@ -179,7 +159,7 @@ pre { padding: 28px 25px 17px; margin: 0; overflow: auto; tab-size: 2; color: va
 .site-footer p { font-size: 12px; color: var(--faint); }
 .site-footer nav { display: flex; align-items: center; gap: 25px; margin-left: auto; font-size: 12px; color: var(--muted); }
 .site-footer nav a:hover { color: var(--accent); }
-.lightbox { width: min(1480px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 40px); padding: 0; color: #eaf3ed; background: #111a15; border: 1px solid #4f6a57; border-radius: 9px; overflow: auto; box-shadow: 0 20px 100px rgba(0, 0, 0, .4); }
+.lightbox { width: min(1280px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 40px); padding: 0; color: #eaf3ed; background: #111a15; border: 1px solid #4f6a57; border-radius: 9px; overflow: auto; box-shadow: 0 20px 100px rgba(0, 0, 0, .4); }
 .lightbox::backdrop { background: rgba(3, 9, 6, .88); backdrop-filter: blur(7px); }
 .lightbox-header { display: flex; align-items: center; justify-content: space-between; gap: 25px; position: sticky; top: 0; z-index: 1; padding: 12px 16px 12px 23px; background: #111a15; border-bottom: 1px solid #354b3d; }
 .lightbox-caption { font-size: 13px; line-height: 1.5; }

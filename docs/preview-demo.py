@@ -4,6 +4,8 @@
 Build frontend/dist first, then run: python docs/preview-demo.py --port 8765
 Open http://127.0.0.1:8765 and sign in with admin / demo. The explicit test
 session marker is demo-session. Mutations affect memory only and reset on restart.
+For a 2560 x 1800 full-page capture, open /capture: the same live frontend
+uses a 1280 x 900 iframe viewport, rendered by the browser at CSS scale 2.
 No backend, remote request, command execution, DNS lookup or agent is involved.
 Fixtures contain only reserved example names and documentation IP ranges.
 """
@@ -277,7 +279,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; connect-src 'self'; frame-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(content)
@@ -314,6 +316,23 @@ class DemoHandler(BaseHTTPRequestHandler):
             return
         if self.command not in ("GET", "HEAD"):
             raise DemoError(405, "Only API requests may change demo memory")
+        if path == "/capture":
+            self.send_payload(200, b"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>NodeRoost screenshot preview</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 2560px; height: 1800px; }
+    iframe { position: absolute; inset: 0 auto auto 0; border: 0;
+      width: 1280px; height: 900px; transform: scale(2); transform-origin: 0 0; }
+  </style>
+</head>
+<body><iframe src="/" title="NodeRoost screenshot preview"></iframe></body>
+</html>
+""", "text/html; charset=utf-8")
+            return
         if path in ("/demo-enrollment.txt", "/demo-package.txt"):
             self.send_payload(200, b"Local demo only. No installation or download is performed.\n", "text/plain; charset=utf-8")
             return
