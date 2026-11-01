@@ -42,6 +42,7 @@ DNS_RECORDS_KEY = "dns_records"
 # -> _repoint_node_id), и обычный Lock на этом встал бы намертво.
 _write_lock = asyncio.Lock()
 _held: ContextVar[bool] = ContextVar("noderoost_settings_write_lock", default=False)
+_ATOMIC_UPDATE = "noderoost_settings_atomic_update"
 
 
 @asynccontextmanager
@@ -66,6 +67,28 @@ def serialized(fn):
             return await fn(*args, **kwargs)
 
     return wrapper
+
+
+@asynccontextmanager
+async def atomic_update(session: AsyncSession):
+    """Сохранить несколько настроек одним commit, откатив их вместе при сбое.
+
+    Session уже может иметь транзакцию после проверки авторизации. Новую begin
+    не открываем: откладываем commit только для этой сессии. Внешние операции
+    с собственным commit (audit, применение политики) выполняются после блока.
+    """
+    async with write_lock():
+        if session.info.get(_ATOMIC_UPDATE):
+            raise RuntimeError("Nested atomic settings updates are not supported")
+        session.info[_ATOMIC_UPDATE] = True
+        try:
+            yield
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+        finally:
+            session.info.pop(_ATOMIC_UPDATE, None)
 
 
 async def get_tailscale_version(session: AsyncSession, settings: Settings) -> str:
@@ -535,7 +558,10 @@ async def _set_raw(session: AsyncSession, key: str, value: str) -> None:
         session.add(AppSetting(key=key, value=value))
     else:
         row.value = value
-    await session.commit()
+    if session.info.get(_ATOMIC_UPDATE):
+        await session.flush()
+    else:
+        await session.commit()
 
 
 async def get_raw(session: AsyncSession, key: str) -> str | None:

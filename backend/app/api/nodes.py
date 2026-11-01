@@ -9,7 +9,7 @@ from app import aclgen, audit, ca, enroll, exitvia, geoip, hostinfo, routing, se
 from app.clientip import client_ip
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
-from app.hs_client import get_client
+from app.hs_client import HeadscaleError, get_client
 from app.hs_util import hs_call, norm_ts, require_hs
 from app.nodekind import editable_tags, effective_kind, is_online, node_tags
 from app.policy_apply import apply_policy, declare_tags
@@ -650,6 +650,16 @@ async def expire_node(
     return _map_node(node or {}, meta, hinfo)
 
 
+async def _delete_if_present(client, node_id: str) -> None:
+    try:
+        await client.delete_node(node_id)
+    except HeadscaleError as exc:
+        # После сбоя локальной БД ноды уже может не быть в headscale.
+        # Только настоящий HTTP 404 разрешает повторить локальную очистку.
+        if exc.status_code != status.HTTP_404_NOT_FOUND:
+            raise
+
+
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_node(
     node_id: str, request: Request, user: CurrentUser, session: SessionDep
@@ -657,14 +667,14 @@ async def delete_node(
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
-    await hs_call(client.delete_node(node_id))
-    # Удаляем шлюз из разрешенных выходов и снимаем принудительный выход.
-    for nid in await settings_store.drop_gateway(session, node_id):
-        await _set_agent_use_exit(session, nid, "")
-    await settings_store.clear_node_meta(session, node_id)  # чистим мету целиком
-    # правила и направления держат id ноды, а запись агента — её токен: без
-    # уборки правило висит в списке как действующее, а агент «молчит» вечно
-    await settings_store.forget_node_refs(session, node_id)
+    await hs_call(_delete_if_present(client, node_id))
+    async with settings_store.atomic_update(session):
+        # Удаляем шлюз из разрешенных выходов и снимаем принудительный выход.
+        for nid in await settings_store.drop_gateway(session, node_id):
+            await _set_agent_use_exit(session, nid, "")
+        await settings_store.clear_node_meta(session, node_id)
+        # Метаданные, агенты, ACL, маршрутизация и DNS очищаются вместе.
+        await settings_store.forget_node_refs(session, node_id)
     await audit.record(session, user.username, "node_delete", node_id, client_ip(request))
     # набор серверов мог измениться (удалили сервер) — пересобрать политику
     await apply_policy(session, client, settings)

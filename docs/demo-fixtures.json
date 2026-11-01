@@ -133,7 +133,7 @@
     "12": {"installed": false, "last_poll": null}
   },
   "responses": {
-    "/api/health": {"status": "ok", "db": "ok", "headscale": "ok", "version": "0.25.1"},
+    "/api/health": {"status": "ok", "db": "ok", "headscale": "ok", "version": "0.25.2"},
     "/api/config": {"panel_ip": "203.0.113.10", "headscale_server_url": "https://control.example.test", "headscale_configured": true},
     "/api/auth/login-options": {"trust_days": 30},
     "/api/auth/me": {"id": 1, "username": "admin"},

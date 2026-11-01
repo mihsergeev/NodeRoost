@@ -22,6 +22,10 @@ from app.config import Settings
 class HeadscaleError(Exception):
     """Ошибка обращения к headscale (сеть, авторизация, HTTP-статус)."""
 
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class HeadscaleClient:
     def __init__(self, base_url: str, api_key: str, timeout: float = 10.0) -> None:
@@ -67,7 +71,9 @@ class HeadscaleClient:
                     msg = j["message"]
             except ValueError:
                 pass
-            raise HeadscaleError(f"headscale {resp.status_code}: {msg}")
+            raise HeadscaleError(
+                f"headscale {resp.status_code}: {msg}", status_code=resp.status_code
+            )
         if not resp.content:
             return {}
         try:
