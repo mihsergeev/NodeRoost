@@ -5,6 +5,20 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.1] - 2026-11-02
+
+### Fixed
+
+- Deleting an exit gateway removes it from each node's allowed gateways and
+  clears forced exit settings on affected nodes. Other gateway permissions and
+  unrelated settings are preserved. A rejected headscale deletion leaves local
+  settings unchanged.
+- Failed Hide and Restore actions keep their error visible after the node list
+  refreshes.
+
+Regression tests cover successful and rejected gateway deletions, including
+cleanup of node, agent, access rule, routing and DNS references.
+
 ## [0.25.0] - 2026-11-01
 
 ### Changed
