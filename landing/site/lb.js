@@ -3,11 +3,10 @@
 
   var ru = document.documentElement.lang === 'ru';
   var themeButton = document.querySelector('[data-theme-toggle]');
-  var systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
   var themeKey = 'noderoost-site-theme';
 
   function currentTheme() {
-    return document.documentElement.dataset.theme || (systemTheme.matches ? 'dark' : 'light');
+    return document.documentElement.dataset.theme || 'dark';
   }
 
   function updateThemeButton() {
@@ -32,7 +31,6 @@
       try { localStorage.setItem(themeKey, nextTheme); } catch (error) { /* The current page still changes theme. */ }
       updateThemeButton();
     });
-    if (systemTheme.addEventListener) systemTheme.addEventListener('change', updateThemeButton);
     updateThemeButton();
   }
 
