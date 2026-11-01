@@ -119,7 +119,7 @@ class DemoState:
             if path == "/api/logs/summary":
                 nodes = [n for n in self.nodes if not n["hidden"]]
                 hs = r["/api/hs-info"]
-                return 200, {"panel_version": "0.25.0", "headscale_url": hs["server_url"],
+                return 200, {"panel_version": "0.25.1", "headscale_url": hs["server_url"],
                              "headscale_ok": True, "magic_dns": hs["dns"]["magic_dns"],
                              "base_domain": hs["dns"]["base_domain"], "nameservers": hs["dns"]["nameservers"],
                              "derp_embedded": True, "nodes_total": len(nodes),
