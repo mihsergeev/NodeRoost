@@ -5,6 +5,20 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.2] - 2026-11-02
+
+### Fixed
+
+- Local cleanup after deleting a node is saved in one database transaction.
+  Node metadata, gateway choices, agent settings, access rules, routing and DNS
+  references are either saved together or rolled back together on failure.
+- Retrying deletion after headscale has already removed the node now completes
+  local cleanup when headscale returns HTTP 404. Authentication, network and
+  other errors still fail without changing local settings.
+
+Regression tests cover failed writes and commits, lost responses, repeated
+deletion and concurrent agent polling while preserving unrelated settings.
+
 ## [0.25.1] - 2026-11-02
 
 ### Fixed

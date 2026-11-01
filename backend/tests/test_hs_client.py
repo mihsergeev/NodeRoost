@@ -48,6 +48,19 @@ async def test_error_on_401(monkeypatch):
         await client.ping()
 
 
+@pytest.mark.parametrize("code", [401, 403, 404, 503])
+async def test_http_error_keeps_status_separate_from_message(monkeypatch, code):
+    def handler(request):
+        assert request.method == "DELETE" and request.url.path == "/api/v1/node/2"
+        return httpx.Response(code, json={"code": 5 if code == 404 else 14,
+                                         "message": "node not found" if code == 404 else "upstream mentioned 404"})
+
+    _mock_asyncclient(monkeypatch, handler)
+    with pytest.raises(HeadscaleError) as caught:
+        await HeadscaleClient("http://headscale:8080", "example-key").delete_node("2")
+    assert caught.value.status_code == code
+
+
 async def test_list_preauthkeys(monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
