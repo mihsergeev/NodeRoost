@@ -42,6 +42,10 @@ const EN: Record<string, string> = {
   // --- ноды ---
   'Обновить': 'Refresh',
   'Всего': 'Total',
+  'Все': 'All',
+  'Карточка ноды': 'Node details',
+  'Выберите ноду': 'Select a node',
+  'Откройте сервер или устройство в списке слева': 'Open a server or device from the list on the left',
   'Онлайн': 'Online',
   'Оффлайн': 'Offline',
   'Поиск: имя, IP, тег…': 'Search: name, IP, tag…',

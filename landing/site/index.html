@@ -1,491 +1,144 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NodeRoost — панель управления headscale</title>
-<meta name="description" content="Self-hosted панель для headscale: доступы вместо policy.hujson, изоляция устройств, подсети, маршрутизация направлений и шлюзы выхода в интернет. Open source, BSD-3-Clause.">
-<meta property="og:title" content="NodeRoost — панель управления headscale">
-<meta property="og:description" content="Доступы вместо policy.hujson, изоляция устройств, подсети, маршрутизация и шлюзы выхода. Self-hosted, BSD-3-Clause.">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://noderoost.ru/">
-<meta property="og:image" content="https://noderoost.ru/shots/ru/servers.webp">
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" type="image/svg+xml" href="/noderoost-mark.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#00E58A">
-<link rel="manifest" href="/site.webmanifest">
-<meta name="theme-color" content="#0D111A">
-<link rel="stylesheet" href="/style.css?v=5">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NodeRoost - вся сеть headscale перед глазами</title>
+  <meta name="description" content="Панель управления headscale на вашем сервере. Узлы, доступы, маршруты, DNS и сертификаты в понятном интерфейсе. Открытый код, Docker Compose, RU / EN.">
+  <link rel="canonical" href="https://noderoost.ru/">
+  <link rel="alternate" hreflang="ru" href="https://noderoost.ru/">
+  <link rel="alternate" hreflang="en" href="https://noderoost.ru/en/">
+  <link rel="alternate" hreflang="x-default" href="https://noderoost.ru/">
+  <meta property="og:title" content="NodeRoost - вся сеть headscale перед глазами">
+  <meta property="og:description" content="Своя сеть, понятные правила и управление из браузера. Панель для headscale с открытым кодом.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://noderoost.ru/">
+  <meta property="og:image" content="https://noderoost.ru/shots/ru/servers@2x.webp?v=0.25.0">
+  <meta property="og:locale" content="ru_RU">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/noderoost-mark.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#101714">
+  <link rel="stylesheet" href="/style.css?v=20261101">
+  <script src="/lb.js?v=20261101" defer></script>
 </head>
 <body>
-
-<div class="top">
-  <div class="wrap">
-    <a class="brand" href="/"><img src="/mark.svg" alt="">NodeRoost</a>
-    <nav>
-      <a class="hide-sm" href="#why">Зачем</a>
-      <a class="hide-sm" href="#cases">Сценарии</a>
-      <a class="hide-sm" href="#model">Модель</a>
-      <a class="hide-sm" href="#ui">Интерфейс</a>
-      <a class="hide-sm" href="#arch">Как устроено</a>
-      <a href="#install">Установка</a>
-      <span class="sep hide-sm"></span>
-      <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a>
-      <a class="lang" href="/en/">EN</a>
-    </nav>
-  </div>
-</div>
-
-<div class="hero">
-  <div class="wrap hero-inner">
-    <img class="hero-logo" src="/logo.svg" alt="NodeRoost">
-    <p class="eyebrow">Open source · BSD-3-Clause · self-hosted</p>
-    <h1>Панель управления headscale</h1>
-    <p class="lead">
-      Свой control-сервер Tailscale — и нормальная админка к нему.<br>
-      Подключить машину, выдать доступ, пустить трафик через нужный узел —
-      без правки <code>policy.hujson</code> и SSH на ноды.
-    </p>
-    <div class="cta">
-      <a class="btn" href="https://github.com/mihsergeev/NodeRoost">Смотреть на GitHub</a>
-      <a class="btn btn-ghost" href="#install">Установка</a>
-    </div>
-    <div class="chips">
-      <span class="chip">headscale 0.29+</span>
-      <span class="chip">Docker Compose</span>
-      <span class="chip">FastAPI + React</span>
-      <span class="chip">агент для Linux</span>
-      <span class="chip">RU / EN</span>
-    </div>
-  </div>
-
-  <div class="wrap hero-shot">
-    <a class="frame" href="/shots/ru/servers@2x.webp" data-lb>
-      <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span><em>увеличить</em></div>
-      <img src="/shots/ru/servers.webp" alt="Список серверов и устройств в NodeRoost" width="1600" height="711"></a>
-  </div>
-</div>
-
-<section id="why">
-  <div class="wrap">
-    <p class="eyebrow-s">Зачем</p>
-    <h2>Зачем панель, если headscale и так работает</h2>
-    <p class="sub">
-      Панель не заменяет headscale и не проксирует трафик. Она берёт на себя то,
-      что иначе делается руками — в CLI и в файле политики.
-    </p>
-
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr><th>Задача</th><th>С NodeRoost</th><th>Без панели</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Выдать доступ</td><td>правило «кто → куда → порт» мышью</td><td>править <code>policy.hujson</code> руками</td></tr>
-          <tr><td>Изоляция личных устройств</td><td>устройства не видят друг друга всегда</td><td>следить за этим самому в ACL</td></tr>
-          <tr><td>Подсеть за нодой</td><td>кнопка на карточке сервера</td><td><code>approve-routes</code> по номеру ноды в CLI</td></tr>
-          <tr><td>Трафик к нужному адресу</td><td>указать домен — адрес панель обновит сама</td><td>подобрать CIDR и следить за сменой IP</td></tr>
-          <tr><td>Маршрут на самой ноде</td><td>агент применяет сам</td><td>SSH на каждую машину</td></tr>
-          <tr><td>Выход в интернет</td><td>у каждого устройства свой список шлюзов</td><td>exit-node открыт всем, кто прошёл ACL</td></tr>
-          <tr><td>Кто сейчас онлайн</td><td>история и алерты в Telegram</td><td><code>nodes list</code> — только срез на сейчас</td></tr>
-          <tr><td>Подключить машину</td><td>ключ и готовая команда под нужную ОС</td><td>создать ключ в CLI и продиктовать команду</td></tr>
-          <tr><td>Где стоит сервер</td><td>флаг страны по внешнему адресу</td><td>помнить самому или лезть в whois</td></tr>
-          <tr><td>Бэкап</td><td>снимок по расписанию, с проверкой</td><td>копировать sqlite-файл вручную</td></tr>
-          <tr><td>Ошибка в правилах</td><td>откат к предыдущей рабочей версии</td><td>править файл и применять заново</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-
-<section id="cases">
-  <div class="wrap">
-    <p class="eyebrow-s">Сценарии</p>
-    <h2>Одна сеть поверх любых провайдеров и NAT</h2>
-    <p class="sub">
-      Машины находят друг друга сами — в облаке, в офисе, дома, за чужим NAT.
-      Белый адрес и проброс портов для этого не нужны, а кто с кем говорит,
-      решаете вы.
-    </p>
-
-    <div class="cases">
-      <div class="case">
-        <h3>Две локалки без белых IP</h3>
-        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="2" y="22" width="130" height="40" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="67.0" y="39.0" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">node-a</text><text x="67.0" y="52.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">192.168.10.0/24</text><rect x="168" y="22" width="130" height="40" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="233.0" y="39.0" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">node-b</text><text x="233.0" y="52.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">192.168.50.0/24</text><line x1="132" y1="42" x2="168" y2="42" stroke="#00E58A" stroke-width="2"/></svg>
-        <p>Офис и склад начинают видеть сети друг друга. На каждой стороне
-           ставите по ноде, она объявляет свою подсеть, вы её одобряете —
-           дальше правилами решаете, кто куда ходит. Белый адрес не нужен
-           ни там, ни там.</p>
-      </div>
-
-      <div class="case">
-        <h3>Рабочий компьютер за чужим NAT</h3>
-        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="24" width="96" height="36" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="150" y1="10" x2="150" y2="74" stroke="#3A4557" stroke-dasharray="3 4"/><text x="150" y="82" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">NAT</text><rect x="196" y="24" width="104" height="36" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="248.0" y="39.0" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">work-pc</text><text x="248.0" y="52.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:3389</text><line x1="96" y1="42" x2="196" y2="42" stroke="#00E58A" stroke-width="2"/></svg>
-        <p>Серый адрес, роутер не ваш, попросить о пробросе порта некого.
-           Ставите ноду на этот компьютер — и он появляется в сети. Доступ
-           открываете только своему ноутбуку и только на нужный порт.
-           TeamViewer и обратный туннель не нужны.</p>
-      </div>
-
-      <div class="case">
-        <h3>Админки и базы без открытых портов</h3>
-        <svg class="dia" viewBox="0 0 300 96" aria-hidden="true"><rect x="0" y="8" width="96" height="30" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="48.0" y="26.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><line x1="96" y1="23" x2="132" y2="30" stroke="#3A4557" stroke-width="1.5"/><path d="M110 20 l8 8 M118 20 l-8 8" stroke="#78859A" stroke-width="1.6"/><rect x="0" y="58" width="96" height="30" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="76.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">устройство</text><line x1="96" y1="73" x2="150" y2="62" stroke="#00E58A" stroke-width="2"/><rect x="150" y="4" width="150" height="88" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="225.0" y="51.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="225" y="22" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">сервер</text><rect x="162" y="32" width="126" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="225.0" y="45.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">postgres:5432</text><rect x="162" y="56" width="126" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="225.0" y="69.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">kube:6443</text></svg>
-        <p>База, IPMI, API кластера, морда роутера живут на адресах тайлнета.
-           Наружу не открыт ни один порт, отдельный бастион не нужен. Доступ
-           даёте на конкретный порт, а не на сервер целиком.</p>
-      </div>
-
-      <div class="case">
-        <h3>Подрядчику — только то, что нужно</h3>
-        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">подрядчик</text><line x1="92" y1="46" x2="119" y2="46" stroke="#00E58A" stroke-width="1.5"/><path d="M118 42 L124 46 L118 50 Z" fill="#00E58A"/><rect x="124" y="4" width="176" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="136" y="20" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9.5" text-anchor="start">prod-db</text><rect x="136" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="172.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-1:5432</text><rect x="216" y="28" width="72" height="22" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="42.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-2:5432</text><rect x="136" y="58" width="152" height="22" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="212.0" y="72.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">+ новый сервер</text></svg>
-        <p>Доступ выдаётся не на сервер целиком, а на порт: дали 5432 — подрядчик
-           видит базу и больше ничего, ни SSH, ни админку. Выдать можно сразу на
-           роль — группу серверов: добавили в неё ещё один, он появился
-           у подрядчика сам. Закончил работу — удалили его устройство, и доступ
-           исчез везде сразу.</p>
-      </div>
-
-      <div class="case">
-        <h3>Интернет через выбранный сервер</h3>
-        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="92" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">устройство</text><line x1="92" y1="42" x2="116" y2="42" stroke="#00E58A" stroke-width="2"/><rect x="116" y="26" width="80" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="156.0" y="45.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-de</text><line x1="196" y1="42" x2="211" y2="42" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M210 38 L216 42 L210 46 Z" fill="#3A4557"/><rect x="216" y="26" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="258.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text></svg>
-        <p>Помечаете сервер шлюзом — и трафик тех, кому вы его разрешили,
-           выходит в интернет с его адреса. Переключается это в клиенте
-           Tailscale самим человеком, но в списке у него только те шлюзы,
-           которые вы ему дали.</p>
-      </div>
-
-      <div class="case">
-        <h3>Весь трафик сервера — через другой сервер</h3>
-        <svg class="dia" viewBox="0 0 300 104" aria-hidden="true"><rect x="0" y="22" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="41.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text><line x1="88" y1="38" x2="110" y2="38" stroke="#00E58A" stroke-width="2"/><rect x="110" y="22" width="80" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="150.0" y="41.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-nl</text><line x1="190" y1="38" x2="207" y2="38" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M206 34 L212 38 L206 42 Z" fill="#3A4557"/><rect x="212" y="22" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="256.0" y="41.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><line x1="34" y1="92" x2="34" y2="60" stroke="#00E58A" stroke-width="2"/><path d="M30 60 L34 54 L38 60 Z" fill="#00E58A"/><text x="48" y="90" fill="#78859A" font-family="system-ui,sans-serif" font-size="9" text-anchor="start">вход по своему IP</text></svg>
-        <p>Сервер выходит в интернет через выбранный узел: его запросы приходят
-           наружу с адреса шлюза — например, из нужной страны. Включается и
-           выключается галкой в карточке сервера.</p>
-        <p>Обычно после такого сервер пропадает: ответы на входящие соединения
-           уходят в туннель и не доходят обратно — рвётся SSH, перестаёт
-           открываться сайт. Здесь этого нет: ответ уходит тем же путём, которым
-           пришёл запрос, и сервер остаётся доступен по своему адресу.</p>
-      </div>
-
-      <div class="case">
-        <h3>Сервис пускает только с одного адреса</h3>
-        <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="28" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="47.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="84" y1="44" x2="106" y2="44" stroke="#00E58A" stroke-width="2"/><rect x="106" y="28" width="76" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="144.0" y="47.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">edge-1</text><line x1="182" y1="44" x2="199" y2="44" stroke="#3A4557" stroke-width="1.5"/><path d="M198 40 L204 44 L198 48 Z" fill="#3A4557"/><rect x="204" y="18" width="96" height="52" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="252.0" y="47.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">api.example</text><text x="252" y="58" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">белый список IP</text></svg>
-        <p>Партнёр пускает только с одного IP, а ходить к нему нужно с ноутбука.
-           Указываете в панели: к этому адресу — через edge-1, чей IP у партнёра
-           в списке. Запросы приходят к нему уже от edge-1, а весь остальной
-           трафик ноутбука идёт напрямую.</p>
-      </div>
-
-      <div class="case">
-        <h3>Домашний NAS, камеры, Home Assistant</h3>
-        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">телефон</text><line x1="84" y1="46" x2="112" y2="46" stroke="#00E58A" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="206.0" y="49.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle"></text><text x="124" y="20" fill="#78859A" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">дом</text><rect x="124" y="26" width="164" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="206.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">nas</text><rect x="124" y="50" width="78" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="163.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="210" y="50" width="78" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="249.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">hass</text></svg>
-        <p>Ни белого IP, ни DDNS, ни проброса портов на роутере. Ставите ноду
-           на домашний сервер и заходите к нему откуда угодно — с телефона,
-           ноутбука, рабочего компьютера — так же, как заходили бы из дома.</p>
-      </div>
-
-      <div class="case">
-        <h3>Сервер ходит к серверу</h3>
-        <svg class="dia" viewBox="0 0 300 88" aria-hidden="true"><rect x="0" y="20" width="96" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="48.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ci-runner</text><line x1="96" y1="36" x2="180" y2="36" stroke="#00E58A" stroke-width="2"/><text x="138" y="30" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:5432</text><rect x="180" y="20" width="120" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="240.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">db-fra-1</text><text x="150" y="76" fill="#78859A" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">белые списки на файрволе</text><line x1="78" y1="72" x2="222" y2="72" stroke="#78859A" stroke-width="1.2"/></svg>
-        <p>Машины стоят у разных провайдеров и в разных дата-центрах, общей
-           сети между ними нет: раннер льёт в базу, бэкап уезжает в хранилище,
-           приложение стучится в соседний ДЦ.</p>
-        <p>Раньше ради этого открывали порт наружу и держали белый список
-           адресов на файрволе, который ломался при каждом переезде. Теперь
-           машины видят друг друга напрямую, а доступ — одно правило в панели.</p>
-      </div>
-
-      <div class="case">
-        <h3>В туннель уходит не весь трафик</h3>
-        <svg class="dia" viewBox="0 0 300 96" aria-hidden="true"><rect x="0" y="32" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="51.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><path d="M88 44 C120 44, 130 22, 162 22" fill="none" stroke="#00E58A" stroke-width="2"/><path d="M88 52 C120 52, 130 74, 162 74" fill="none" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M162 70 L168 74 L162 78 Z" fill="#3A4557"/><rect x="170" y="6" width="130" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="235.0" y="25.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">рабочие адреса</text><rect x="170" y="58" width="130" height="32" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="235.0" y="77.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><text x="126" y="16" fill="#00E58A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">через сеть</text><text x="126" y="92" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">напрямую</text></svg>
-        <p>Обычный VPN заворачивает в себя всё подряд. Здесь ноутбук выходит
-           в интернет напрямую и быстро, а через сеть идёт только то, что вы
-           указали: подсети офиса, нужные сервисы, отдельные адреса.</p>
-      </div>
-
-      <div class="case">
-        <h3>Сменился провайдер — ничего не сломалось</h3>
-        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="6" width="132" height="30" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="66.0" y="24.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">203.0.113.7</text><line x1="14" y1="21" x2="118" y2="21" stroke="#78859A" stroke-width="1.2"/><line x1="132" y1="21" x2="163" y2="21" stroke="#3A4557" stroke-width="1.5"/><path d="M162 17 L168 21 L162 25 Z" fill="#3A4557"/><rect x="168" y="6" width="132" height="30" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="234.0" y="24.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">198.51.100.9</text><rect x="0" y="50" width="300" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="150.0" y="63.0" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">100.64.0.7</text><text x="150.0" y="76.0" fill="#78859A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">в тайлнете — не меняется</text></svg>
-        <p>Переехали в другой дата-центр, провайдер выдал новый адрес, машину
-           увезли из офиса домой. В тайлнете у неё прежний адрес и прежнее имя,
-           так что правила, скрипты и закладки переписывать не нужно.</p>
-      </div>
-
-      <div class="case">
-        <h3>Вместо рассылки VPN-конфигов</h3>
-        <svg class="dia" viewBox="0 0 300 84" aria-hidden="true"><rect x="0" y="26" width="72" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="36.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ключ</text><line x1="72" y1="42" x2="91" y2="42" stroke="#3A4557" stroke-width="1.5"/><path d="M90 38 L96 42 L90 46 Z" fill="#3A4557"/><rect x="96" y="26" width="108" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="150.0" y="45.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">одна команда</text><line x1="204" y1="42" x2="223" y2="42" stroke="#00E58A" stroke-width="1.5"/><path d="M222 38 L228 42 L222 46 Z" fill="#00E58A"/><rect x="228" y="26" width="72" height="32" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="264.0" y="45.5" fill="#00E58A" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">в сети</text></svg>
-        <p>Никаких <code>.ovpn</code> по почте. Человек получает одноразовый
-           ключ и одну команду под свою систему — через минуту он в сети.
-           Отобрать доступ — удалить устройство, а не перевыпускать конфиги
-           всем остальным.</p>
-      </div>
-
-      <div class="case">
-        <h3>Закрыть SSH снаружи совсем</h3>
-        <svg class="dia" viewBox="0 0 300 100" aria-hidden="true"><rect x="0" y="8" width="92" height="28" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="46.0" y="26.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">интернет</text><line x1="92" y1="22" x2="152" y2="22" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="158" y1="16" x2="170" y2="28" stroke="#78859A" stroke-width="1.6"/><line x1="170" y1="16" x2="158" y2="28" stroke="#78859A" stroke-width="1.6"/><text x="150" y="44" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">22/tcp закрыт</text><rect x="0" y="60" width="92" height="28" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="46.0" y="78.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="92" y1="74" x2="196" y2="74" stroke="#00E58A" stroke-width="2"/><text x="144" y="68" fill="#00E58A" font-family="ui-monospace,monospace" font-size="9" text-anchor="middle">:22</text><rect x="196" y="30" width="104" height="52" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="248.0" y="60.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">app-01</text></svg>
-        <p>Пока сервер отвечает на 22-м порту, его круглосуточно перебирают чужие
-           боты. Подключив ноду, порт на публичном интерфейсе можно закрыть
-           насовсем — и заходить на адрес в сети, по правилу из панели.</p>
-        <p>Снаружи стучаться становится некуда, а список тех, кому вход открыт,
-           лежит в одном месте и правится мышью.</p>
-      </div>
-
-      <div class="case">
-        <h3>Запасная дверь, когда основной путь закрыт</h3>
-        <svg class="dia" viewBox="0 0 300 100" aria-hidden="true"><rect x="0" y="36" width="88" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="44.0" y="55.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><path d="M88 46 C130 46, 152 24, 196 24" fill="none" stroke="#3A4557" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="136" y1="24" x2="148" y2="36" stroke="#78859A" stroke-width="1.6"/><line x1="148" y1="24" x2="136" y2="36" stroke="#78859A" stroke-width="1.6"/><text x="120" y="16" fill="#78859A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">белый IP</text><path d="M88 58 C130 58, 152 78, 196 78" fill="none" stroke="#00E58A" stroke-width="2"/><text x="130" y="94" fill="#00E58A" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">через сеть</text><rect x="196" y="10" width="104" height="80" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="248.0" y="54.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">srv-01</text></svg>
-        <p>Провайдер зарезал порт, белый адрес под атакой, кто-то переписал
-           правила на файрволе, лёг корпоративный VPN — а зайти надо сейчас. Ноде
-           для связи достаточно исходящего доступа наружу, поэтому машина
-           остаётся достижимой, когда снаружи к ней не подступиться.</p>
-        <p>Панель в самом соединении не участвует: даже если она недоступна,
-           уже работающие подключения продолжают работать.</p>
-      </div>
-
-      <div class="case">
-        <h3>Железки, на которые ничего не поставить</h3>
-        <svg class="dia" viewBox="0 0 300 92" aria-hidden="true"><rect x="0" y="30" width="84" height="32" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="42.0" y="49.5" fill="#C8D2E0" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">ноутбук</text><line x1="84" y1="46" x2="112" y2="46" stroke="#00E58A" stroke-width="2"/><rect x="112" y="4" width="188" height="84" rx="7" fill="#0F131B" stroke="#2A3242" stroke-dasharray="4 3"/><text x="124" y="20" fill="#78859A" font-family="system-ui,sans-serif" font-size="9.5" text-anchor="start">серверная</text><rect x="124" y="26" width="76" height="20" rx="7" fill="#0C1A15" stroke="#00E58A"/><text x="162.0" y="39.5" fill="#00E58A" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-01</text><rect x="208" y="26" width="80" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="248.0" y="39.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">ipmi</text><rect x="124" y="50" width="76" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="162.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">camera</text><rect x="208" y="50" width="80" height="20" rx="7" fill="#0F131B" stroke="#2A3242"/><text x="248.0" y="63.5" fill="#C8D2E0" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">switch</text></svg>
-        <p>IPMI, камеры, принтер, управляемый свитч, старый NAS — клиента туда не
-           установить, а дотянуться надо. Ставите ноду на любую машину в той же
-           сети, она отдаёт подсеть, вы её одобряете — и работаете со всем этим
-           по внутренним адресам, как будто сидите рядом.</p>
-        <p>Доступ выдаётся по-прежнему правилом: кому и на какой порт.</p>
+  <a class="skip-link" href="#main">К содержимому</a>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="/" aria-label="NodeRoost, главная"><span class="brand-mark"><img src="/mark.svg" width="32" height="34" alt=""></span><span>NodeRoost</span></a>
+      <nav class="main-nav" aria-label="Основная навигация">
+        <a class="desktop-link" href="#interface">Интерфейс</a>
+        <a class="desktop-link" href="#capabilities">Возможности</a>
+        <a href="#install">Установка</a>
+        <a class="nav-github" href="https://github.com/mihsergeev/NodeRoost">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+      <div class="header-tools">
+        <a class="language-link" href="/en/" lang="en" hreflang="en" aria-label="Read in English">EN</a>
+        <button class="theme-toggle" type="button" data-theme-toggle hidden aria-label="Переключить тему"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"></path></svg></button>
       </div>
     </div>
-  </div>
-</section>
+  </header>
 
-<section id="model">
-  <div class="wrap">
-    <p class="eyebrow-s">Модель</p>
-    <h2>Чем сервер отличается от устройства</h2>
-    <p class="sub">
-      headscale про это ничего не знает — для него все машины просто ноды.<br>
-      Деление на серверы и устройства придумали мы, живёт оно в базе панели.<br>
-      Разница в одном: <b>к серверу можно открыть доступ, к устройству — нельзя</b>.<br>
-      Поэтому серверы ходят и друг к другу, а устройства друг друга не видят вовсе.
-    </p>
-
-    <div class="pair">
-      <div class="kind srv">
-        <p class="role">Сервер</p>
-        <h3>К нему можно открыть доступ</h3>
-        <ul>
-          <li>Это то, к чему открывают доступ: база, гипервизор, роутер в офисе,
-              машина со сборкой.</li>
-          <li>Сервер и сам бывает источником: раннер ходит в базу, бэкап — в
-              хранилище, приложение — в соседний дата-центр.</li>
-          <li>Серверы можно собирать в роли и давать доступ сразу ко всей роли,
-              а не к каждой машине по отдельности.</li>
-          <li>Сервер умеет пустить через себя свою локальную сеть или работать
-              шлюзом выхода в интернет.</li>
-          <li>Агент ставится именно на серверы — он подхватывает маршруты,
-              которые вы задали в панели.</li>
-        </ul>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="shell">
+        <div class="hero-heading">
+          <div>
+            <div class="hero-lockup"><img class="logo-on-light" src="/brand-on-light.svg" alt="NodeRoost" width="1500" height="430"><img class="logo-on-dark" src="/brand-on-dark.svg" alt="NodeRoost" width="1500" height="430"></div>
+            <h1 id="hero-title">Вся сеть<br><span>перед глазами.</span></h1>
+          </div>
+          <div class="hero-intro">
+            <p>Панель для headscale. Серверы, устройства и правила доступа в одном понятном интерфейсе. Подключайте машины и управляйте сетью на своей инфраструктуре.</p>
+            <div class="actions">
+              <a class="button button-primary" href="#install">Установить NodeRoost <span aria-hidden="true">↓</span></a>
+              <a class="button button-quiet" href="https://github.com/mihsergeev/NodeRoost">Открыть GitHub <span aria-hidden="true">↗</span></a>
+            </div>
+            <p class="hero-note">Открытый код · BSD-3-Clause · Docker Compose</p>
+          </div>
+        </div>
+        <figure class="hero-figure">
+          <div class="screen-label"><span><span class="screen-label-line" aria-hidden="true"></span>Ваша сеть, целиком</span><span class="screen-hint">Нажмите на экран, чтобы рассмотреть</span></div>
+          <a class="screen hero-screen" href="/shots/ru/servers@2x.webp?v=0.25.0" data-lb>
+            <img src="/shots/ru/servers.webp?v=0.25.0" alt="NodeRoost: список серверов слева и подробности выбранного узла справа" width="1211" height="868" fetchpriority="high" decoding="async">
+            <span class="screen-zoom" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"></path></svg></span>
+          </a>
+          <figcaption><span>Список слева. Подробности справа. Контекст сети остается перед вами.</span><span>RU / EN</span></figcaption>
+        </figure>
+        <div class="architecture-note"><p><strong>headscale управляет соединениями.</strong> NodeRoost помогает управлять сетью.</p><p>Клиенты Tailscale, прямые соединения между узлами, ваш control-сервер.</p></div>
       </div>
+    </section>
 
-      <div class="kind dev">
-        <p class="role">Устройство</p>
-        <h3>К нему доступ не открывают</h3>
-        <ul>
-          <li>Ноутбук, телефон, рабочий компьютер — всё, за чем сидит живой
-              человек.</li>
-          <li>Устройству дают доступ к серверам. А вот <b>дать доступ к самому
-              устройству нельзя</b> — такого правила не получится.</li>
-          <li>Устройства не видят друг друга: ноутбук коллеги не появится
-              в списке, и вписать его адрес руками тоже не выйдет.</li>
-          <li>Здесь же вы разрешаете шлюзы выхода — какими из них человек
-              сможет пользоваться.</li>
-        </ul>
+    <section class="interface-section section-space" id="interface" aria-labelledby="interface-title">
+      <div class="shell">
+        <div class="section-heading">
+          <div><p class="eyebrow">От обзора к действию</p><h2 id="interface-title">Все нужное.<br>На своем месте.</h2></div>
+          <p class="section-intro">Доступ выдается правилом, маршрут выбирается по адресу, состояние узла видно в его карточке. Посмотрите, как это устроено.</p>
+        </div>
+        <div class="product-tour" data-tour>
+          <nav class="tour-tabs" aria-label="Разделы панели" data-tour-tabs>
+            <a class="is-active" href="#tour-access" data-tour-tab>Доступы</a>
+            <a href="#tour-routing" data-tour-tab>Маршруты</a>
+            <a href="#tour-dns" data-tour-tab>DNS</a>
+            <a href="#tour-node" data-tour-tab>Нода</a>
+            <a href="#tour-settings" data-tour-tab>Настройки</a>
+            <a href="#tour-login" data-tour-tab>Вход</a>
+          </nav>
+          <div class="tour-panel" id="tour-access" data-tour-panel>
+            <div class="tour-copy"><h3>Кто, куда,<br>на какой порт.</h3><p>Выдавайте доступ устройству или группе серверов. Панель соберет политику для headscale и вернет предыдущую версию, если новая не будет принята. Личные устройства изолированы друг от друга.</p></div>
+            <a class="screen" href="/shots/ru/access@2x.webp?v=0.25.0" data-lb><img src="/shots/ru/access.webp?v=0.25.0" alt="Правила доступа в NodeRoost: источники, серверы и разрешенные порты" width="1226" height="868" loading="lazy" decoding="async"></a>
+          </div>
+          <div class="tour-panel" id="tour-routing" data-tour-panel>
+            <div class="tour-copy"><h3>Нужный адрес.<br>Нужный шлюз.</h3><p>Укажите, каким узлам ходить к домену или подсети через выбранный сервер. При смене адреса домена панель обновит направление. Доступные шлюзы выхода в интернет тоже выбираете вы.</p></div>
+            <a class="screen" href="/shots/ru/routing@2x.webp?v=0.25.0" data-lb><img src="/shots/ru/routing.webp?v=0.25.0" alt="Маршрутизация в NodeRoost: устройства, адрес назначения и узел-шлюз" width="1211" height="868" loading="lazy" decoding="async"></a>
+          </div>
+          <div class="tour-panel" id="tour-dns" data-tour-panel>
+            <div class="tour-copy"><h3>Сервисы помнят<br>свои имена.</h3><p>Свяжите имя сервиса с узлом внутри сети. При переподключении узла запись возьмет его новый адрес. Публичный DNS при этом остается прежним, а для внутренних имен можно выпускать сертификаты.</p></div>
+            <a class="screen" href="/shots/ru/dns@2x.webp?v=0.25.0" data-lb><img src="/shots/ru/dns.webp?v=0.25.0" alt="DNS в NodeRoost: внутренние имена сервисов и сертификаты" width="1211" height="868" loading="lazy" decoding="async"></a>
+          </div>
+          <div class="tour-panel" id="tour-node" data-tour-panel>
+            <div class="tour-copy"><h3>Отдельный узел.<br>Полная картина.</h3><p>Роли, доступы, подсети и шлюзы собраны рядом с состоянием агента. Выберите сервер в списке и работайте с ним, сохраняя остальные узлы перед глазами.</p></div>
+            <a class="screen" href="/shots/ru/node@2x.webp?v=0.25.0" data-lb><img src="/shots/ru/node.webp?v=0.25.0" alt="Карточка сервера NodeRoost с ролями, состоянием агента и сетевыми настройками" width="1211" height="868" loading="lazy" decoding="async"></a>
+          </div>
+          <div class="tour-panel" id="tour-settings" data-tour-panel>
+            <div class="tour-copy"><h3>Настройки сети,<br>а не набор файлов.</h3><p>Диапазон адресов, версия клиента Tailscale, локальный мирор бинарей и API-ключи доступны в панели. Параметры, влияющие на работу сети, сопровождаются пояснениями.</p></div>
+            <a class="screen" href="/shots/ru/settings@2x.webp?v=0.25.0" data-lb><img src="/shots/ru/settings.webp?v=0.25.0" alt="Настройки NodeRoost: параметры сети, версия Tailscale и локальный мирор" width="1211" height="857" loading="lazy" decoding="async"></a>
+          </div>
+          <div class="tour-panel" id="tour-login" data-tour-panel>
+            <div class="tour-copy"><h3>Вход для вас.<br>Контроль у вас.</h3><p>Включите второй фактор TOTP и задайте срок доверия своим устройствам. Список запомненных устройств можно проверить и отозвать из панели.</p></div>
+            <a class="screen" href="/shots/ru/login@2x.webp?v=0.25.0" data-lb><img src="/shots/ru/login.webp?v=0.25.0" alt="Экран входа в NodeRoost" width="1226" height="868" loading="lazy" decoding="async"></a>
+          </div>
+        </div>
+        <p class="demo-note">Это реальный интерфейс с демонстрационными данными. Имена узлов и адреса на скриншотах вымышленные.</p>
       </div>
-    </div>
+    </section>
 
-    <ul class="facts">
-      <li><b>Тип определяется автоматически.</b> Есть роли, одобренная подсеть
-        или включён шлюз — сервер. Ничего этого нет — устройство.</li>
-      <li><b>Тип можно задать вручную.</b> На карточке ноды: сервер, устройство
-        или обратно на автоопределение.</li>
-      <li><b>Учитывается только то, что подтвердил администратор.</b> Нода умеет
-        объявить о себе: «я раздаю сеть 192.168.0.0/24». Если бы это шло в зачёт,
-        одной команды на чужом ноутбуке хватило бы, чтобы сделать его
-        «сервером» — попасть в группу «все серверы», перестать прятаться от
-        других устройств и получить всё, что выдано серверам. Поэтому в расчёт
-        идут только роли, которые назначили вы, и подсети, которые вы
-        одобрили.</li>
-    </ul>
-  </div>
-</section>
-
-<section id="ui">
-  <div class="wrap">
-    <p class="eyebrow-s">Интерфейс</p>
-    <h2>Как это выглядит</h2>
-    <p class="sub">Четыре экрана, на которых происходит почти всё.</p>
-
-    <div class="shots">
-      <figure class="shot">
-        <a class="frame" href="/shots/ru/node@2x.webp" data-lb>
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/nodes/12</span><em>увеличить</em></div>
-          <img src="/shots/ru/node.webp" alt="Карточка сервера" loading="lazy" width="1600" height="865"></a>
-        <figcaption><b>Карточка сервера.</b> Роли, объявленные подсети, режим
-          шлюза выхода и список устройств, которым он разрешён, состояние агента.</figcaption>
-      </figure>
-
-      <figure class="shot">
-        <a class="frame" href="/shots/ru/access@2x.webp" data-lb>
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/access</span><em>увеличить</em></div>
-          <img src="/shots/ru/access.webp" alt="Раздел доступов" loading="lazy" width="1600" height="584"></a>
-        <figcaption><b>Доступы.</b> Правило — «кто → куда → по какому порту».
-          Выдаётся сразу нескольким источникам; итоговый HuJSON собирает панель.</figcaption>
-      </figure>
-
-      <figure class="shot">
-        <a class="frame" href="/shots/ru/routing@2x.webp" data-lb>
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/routing</span><em>увеличить</em></div>
-          <img src="/shots/ru/routing.webp" alt="Раздел маршрутизации" loading="lazy" width="1600" height="860"></a>
-        <figcaption><b>Маршрутизация.</b> Направления «источник → адрес → через
-          какую ноду», с резолвом домена и автообновлением маршрута.</figcaption>
-      </figure>
-
-      <figure class="shot">
-        <a class="frame" href="/shots/ru/servers@2x.webp" data-lb>
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com/servers</span><em>увеличить</em></div>
-          <img src="/shots/ru/servers.webp" alt="Список серверов" loading="lazy" width="1600" height="711"></a>
-        <figcaption><b>Серверы и устройства.</b> Онлайн, адреса, роли, маршруты
-          и срок ключа — одним экраном, без переключения контекста.</figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<section id="arch">
-  <div class="wrap">
-    <p class="eyebrow-s">Как устроено</p>
-    <h2>Панель управляет сетью, но трафик через неё не идёт</h2>
-    <p class="sub">
-      В headscale панель ходит по внутренней сети Docker — управляющий API
-      наружу не выставлен.<br>
-      Снаружи доступно только то, что нужно клиентам Tailscale: подключиться
-      и получить карту сети.
-    </p>
-
-    <div class="arch" data-lb-svg data-caption="Как устроено">
-      <svg viewBox="0 0 980 400" role="img" aria-label="Схема из двух слоёв: сверху управление — браузер, обратный прокси, панель и headscale; снизу две ноды, соединённые напрямую по WireGuard. Между слоями идут только управляющие данные"><text x="0" y="22" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="start">УПРАВЛЕНИЕ</text><rect x="0" y="34" width="980" height="142" rx="12" fill="#0F131B" stroke="#212836"/><rect x="65" y="70" width="160" height="60" rx="10" fill="#161C26" stroke="#2A3242"/><text x="145.0" y="96" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Браузер</text><text x="145.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">администратор</text><rect x="275" y="70" width="190" height="60" rx="10" fill="#161C26" stroke="#2A3242"/><text x="370.0" y="96" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Обратный прокси</text><text x="370.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">TLS · доверенные адреса</text><rect x="515" y="70" width="180" height="60" rx="10" fill="#0C1A15" stroke="#00E58A"/><text x="605.0" y="96" fill="#00E58A" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">NodeRoost</text><text x="605.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">панель + Postgres</text><rect x="745" y="70" width="170" height="60" rx="10" fill="#161C26" stroke="#2A3242"/><text x="830.0" y="96" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">headscale</text><text x="830.0" y="114" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">control-сервер</text><line x1="225" y1="100" x2="268" y2="100" stroke="#3E4A5E" stroke-width="1.5"/><path d="M268 95.5 L275 100 L268 104.5 Z" fill="#3E4A5E"/><line x1="465" y1="100" x2="508" y2="100" stroke="#3E4A5E" stroke-width="1.5"/><path d="M508 95.5 L515 100 L508 104.5 Z" fill="#3E4A5E"/><line x1="695" y1="100" x2="738" y2="100" stroke="#3E4A5E" stroke-width="1.5"/><path d="M738 95.5 L745 100 L738 104.5 Z" fill="#3E4A5E"/><text x="490" y="160" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">внутренняя сеть Docker · управляющий API наружу не выставлен</text><line x1="165" y1="183" x2="165" y2="279" stroke="#3E4A5E" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M160.5 183 L165 176 L169.5 183 Z" fill="#3E4A5E"/><path d="M160.5 279 L165 286 L169.5 279 Z" fill="#3E4A5E"/><line x1="815" y1="183" x2="815" y2="279" stroke="#3E4A5E" stroke-width="1.5" stroke-dasharray="5 4"/><path d="M810.5 183 L815 176 L819.5 183 Z" fill="#3E4A5E"/><path d="M810.5 279 L815 286 L819.5 279 Z" fill="#3E4A5E"/><text x="490" y="216" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">между слоями ходят только ключи, карта сети, политика и настройки агента</text><text x="490" y="240" fill="#A9B5C6" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">пользовательский трафик сюда не попадает</text><text x="0" y="282" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="start">ДАННЫЕ</text><rect x="65" y="296" width="200" height="60" rx="10" fill="#161C26" stroke="#2A3242"/><text x="165.0" y="322" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">нода A</text><text x="165.0" y="340" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">например, ноутбук</text><rect x="715" y="296" width="200" height="60" rx="10" fill="#161C26" stroke="#2A3242"/><text x="815.0" y="322" fill="#E4EAF2" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">нода B</text><text x="815.0" y="340" fill="#8B98AC" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">например, сервер</text><line x1="265" y1="326" x2="715" y2="326" stroke="#00E58A" stroke-width="2.5"/><text x="490" y="314" fill="#00E58A" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">WireGuard — напрямую между узлами</text><text x="490" y="382" fill="#8B98AC" font-family="ui-monospace,monospace" font-size="11" text-anchor="middle">DERP включается, только если прямое соединение не установилось</text></svg>
-      <em>увеличить</em>
-    </div>
-
-    <ul class="facts">
-      <li><b>Через панель ничего не течёт.</b> Она раздаёт правила и настройки,
-        а пакеты идут между машинами сами, по WireGuard. Если панель
-        недоступна, установленные соединения продолжают работать.</li>
-      <li><b>Агент есть потому, что у headscale нет обратного канала.</b> Послать
-        что-то на ноду control-сервер не умеет. Поэтому нода сама забирает свою
-        конфигурацию по токену, применяет её и сообщает, что именно применила.</li>
-      <li><b>Политика пересобирается целиком.</b> Правила, роли, шлюзы
-        и направления превращаются в один файл HuJSON. Панель его проверяет
-        и отправляет, а если headscale не принял — возвращает предыдущую
-        рабочую версию.</li>
-      <li><b>Панель не дублирует состояние сети.</b> Кто где и с каким адресом —
-        это остаётся в headscale. В своей базе панель держит только собственные
-        настройки: доступы, роли, направления, историю.</li>
-    </ul>
-  </div>
-</section>
-
-<section id="install">
-  <div class="wrap">
-    <p class="eyebrow-s">Установка</p>
-    <h2>Docker Compose рядом с headscale</h2>
-    <p class="sub">Панель, Postgres и сам headscale поднимаются одним файлом.
-      Обратный прокси выдаёт TLS и держит панель за списком доверенных адресов.</p>
-
-    <div class="two">
-      <pre><span class="c"># 1. забрать репозиторий</span>
-git clone https://github.com/mihsergeev/NodeRoost.git
-cd NodeRoost
-
-<span class="c"># 2. домены, секреты, список доверенных адресов</span>
-cp .env.example .env && <span class="p">$EDITOR</span> .env
-
-<span class="c"># 3. поднять</span>
-docker compose up -d
-
-<span class="c"># 4. подключить ноду — команду выдаёт панель</span>
-curl -fsSL https://control.example.com/agent/&lt;токен&gt;/setup | sh</pre>
-
-      <div class="side">
-        <h3>Что понадобится</h3>
-        <dl>
-          <dt>headscale</dt><dd>0.29+, режим политики <code>database</code></dd>
-          <dt>хост</dt><dd>Docker с Compose, 1 vCPU / 1 ГБ</dd>
-          <dt>домены</dt><dd>один для панели, один для control-сервера</dd>
-          <dt>прокси</dt><dd>любой с TLS; в комплекте пример для caddy-docker-proxy</dd>
-          <dt>образы</dt><dd><code>ghcr.io/mihsergeev/noderoost-backend</code> и <code>-frontend</code></dd>
-        </dl>
+    <section class="capabilities-section section-space" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="shell capabilities-layout">
+        <div class="capabilities-heading"><p class="eyebrow">Повседневная работа</p><h2 id="capabilities-title">Меньше рутины<br>на каждой ноде.</h2><p>Панель хранит желаемое состояние сети. Агент применяет его на Linux-узлах и сообщает, что получилось.</p><a class="text-link" href="https://github.com/mihsergeev/NodeRoost#what-it-does">Подробнее в документации <span aria-hidden="true">↗</span></a><img class="capabilities-mark" src="/mark.svg" alt="" width="150" height="159" loading="lazy"></div>
+        <div class="capability-list">
+          <article><span class="feature-number" aria-hidden="true">01</span><div><h3>Подписанный агент</h3><p>Агент проверяет подпись обновления перед установкой. Маршруты, выход через шлюз и параметры клиента применяются на самой ноде.</p></div></article>
+          <article><span class="feature-number" aria-hidden="true">02</span><div><h3>TLS для внутренних имен</h3><p>Закрытый ключ создается на ноде и остается на ней. Панель подписывает сертификат своим центром, агент заботится о продлении.</p></div></article>
+          <article><span class="feature-number" aria-hidden="true">03</span><div><h3>2FA и доверенные устройства</h3><p>Второй фактор, управление запомненными устройствами, ограничение попыток входа и журнал действий администратора.</p></div></article>
+          <article><span class="feature-number" aria-hidden="true">04</span><div><h3>Бэкапы и наблюдение</h3><p>Снимки настроек и базы headscale, история доступности, уведомления в Telegram или webhook. В том числе о проблемах самой панели.</p></div></article>
+        </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<section id="security">
-  <div class="wrap">
-    <p class="eyebrow-s">Безопасность</p>
-    <h2>Безопасно по умолчанию</h2>
-    <p class="sub">
-      Всё перечисленное работает сразу после установки — включать или
-      настраивать отдельно ничего не нужно.
-    </p>
-    <div class="sec-split">
-      <ul class="facts">
-      <li><b>Двухфакторный вход и журнал действий.</b> Пароль и TOTP,
-        ограничение попыток подбора и запись того, кто и что менял. С дефолтным
-        паролем администратора панель просто не поднимется.</li>
-      <li><b>Личные устройства защищены сами по себе.</b> Ноутбуки и телефоны
-        ходят к серверам, но не видят друг друга. Это заложено в сборку политики,
-        а не в галочку, которую можно забыть поставить.</li>
-      <li><b>Доступ отзывается одним действием.</b> Удалили устройство — оно
-        исчезло из всех правил разом. Перевыпускать конфиги и править списки
-        не нужно.</li>
-      <li><b>Неудачная политика не оставит без доступа.</b> Панель проверяет
-        собранный HuJSON, применяет его и возвращает предыдущую рабочую версию,
-        если headscale отказал.</li>
-      <li><b>Защищённый контур — в комплекте.</b> В репозитории лежит готовый
-        пример обратного прокси: TLS, список доверенных адресов, отдельная сеть
-        под панель и закрытый снаружи управляющий API headscale. Разворачивается
-        как есть.</li>
-      <li><b>Исходящие запросы под контролем.</b> Адрес, куда панель шлёт
-        алерты, проверяется при сохранении: во внутреннюю сеть и открытым HTTP
-        запрос не уйдёт.</li>
-      <li><b>Сборку можно проверить.</b> Зависимости зафиксированы с хешами,
-        базовые образы — по дайджестам, на каждый коммит гоняются тесты и аудит
-        зависимостей. Код открыт под BSD-3: всё написанное здесь можно
-        прочитать.</li>
-      </ul>
+    <section class="install-section section-space" id="install" aria-labelledby="install-title">
+      <div class="shell install-layout">
+        <div><p class="eyebrow">Начать работу</p><h2 id="install-title">Разверните<br>на своем сервере.</h2><p class="install-intro">Установщик поднимет NodeRoost, headscale и обратный прокси с TLS через Docker Compose.</p><ul class="requirements"><li>Сервер с Ubuntu или Debian и доступом sudo</li><li>Два домена: для панели и control-сервера</li><li>Ваш внешний IP для доступа к панели</li></ul><div class="install-links"><a class="text-link" href="https://github.com/mihsergeev/NodeRoost/blob/main/docs/install.ru.md">Полная инструкция <span aria-hidden="true">↗</span></a><a class="text-link muted-link" href="https://github.com/mihsergeev/NodeRoost/blob/main/SECURITY.md">Рекомендации по безопасности <span aria-hidden="true">↗</span></a></div></div>
+        <div class="installation-command"><div class="command-header"><span><span class="brand-dot" aria-hidden="true"></span>Установка NodeRoost</span><button type="button" class="copy-button" data-copy-target="install-command" hidden>Копировать</button></div><pre><code id="install-command">curl -fsSL https://raw.githubusercontent.com/mihsergeev/NodeRoost/main/ops/install.sh \
+  | sudo bash -s -- \
+      --panel-domain panel.example.com \
+      --hs-domain hs.example.com \
+      --allow-ips "203.0.113.10"</code></pre><p class="command-note">Замените домены и пример IP на свои. Установщик создаст секреты и покажет данные для входа после запуска.</p><div class="source-link"><span>Хотите сначала заглянуть в код?</span><a href="https://github.com/mihsergeev/NodeRoost">Репозиторий на GitHub <span aria-hidden="true">↗</span></a></div></div>
+      </div>
+    </section>
+  </main>
 
-      <figure class="shot-side">
-        <a class="frame" href="/shots/ru/login@2x.webp" data-lb>
-          <div class="frame-bar"><i></i><i></i><i></i><span>panel.example.com</span><em>увеличить</em></div>
-          <img src="/shots/ru/login.webp" alt="Экран входа в NodeRoost" loading="lazy" width="998" height="1223">
-        </a>
-        <figcaption>Вход: пароль, второй фактор и ничего лишнего.</figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<footer>
-  <div class="wrap foot">
-    <div>NodeRoost — BSD-3-Clause</div>
-    <div>
-      <a href="https://github.com/mihsergeev/NodeRoost">GitHub</a> ·
-      <a href="https://github.com/juanfont/headscale">headscale</a> ·
-      <a href="/en/">English</a>
-    </div>
-  </div>
-</footer>
-
-<script src="/lb.js?v=5" defer></script>
-
+  <footer class="site-footer"><div class="shell footer-inner"><a class="brand" href="/"><span class="brand-mark"><img src="/mark.svg" width="28" height="30" alt=""></span><span>NodeRoost</span></a><p>Ваша инфраструктура. Открытый код.</p><nav aria-label="Ссылки в подвале"><a href="https://github.com/mihsergeev/NodeRoost">GitHub</a><a href="https://github.com/mihsergeev/NodeRoost/blob/main/LICENSE">BSD-3-Clause</a><a href="/en/" lang="en" hreflang="en">English</a></nav></div></footer>
 </body>
 </html>

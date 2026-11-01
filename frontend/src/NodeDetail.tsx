@@ -37,6 +37,7 @@ type Props = {
   onBack: () => void
   onChanged: () => void
   onUnauthorized: () => void
+  embedded?: boolean
 }
 
 export function NodeDetail({
@@ -45,6 +46,7 @@ export function NodeDetail({
   onBack,
   onChanged,
   onUnauthorized,
+  embedded = false,
 }: Props) {
   const { t } = useI18n()
   const [rules, setRules] = useState<AclRule[] | null>(null)
@@ -199,8 +201,8 @@ export function NodeDetail({
   }
 
   return (
-    <>
-      <button className="linklike detail-back" onClick={onBack}>
+    <div className={`node-detail${embedded ? ' node-detail-embedded' : ''}`}>
+      <button type="button" className="linklike detail-back" onClick={onBack}>
         ← {t('Ноды')}
       </button>
 
@@ -209,7 +211,10 @@ export function NodeDetail({
         <h2 className="detail-title">
           <span className={`dot ${node.online ? 'dot-ok' : 'dot-unknown'}`} />
           <CountryFlag code={node.country} />
-          {node.name}
+          <span className="node-detail-name">{node.name || t('без имени')}</span>
+          <span className={node.online ? 'pill-ok' : 'pill-warn'}>
+            {node.online ? t('онлайн') : t('оффлайн')}
+          </span>
           {node.admin && <span className="pill-admin">{t('админ')}</span>}
           {node.is_exit_node && <span className="pill-ok">exit</span>}
           {node.key_expired && <span className="pill-warn">{t('Ключ истёк')}</span>}
@@ -361,7 +366,7 @@ export function NodeDetail({
           )}
 
           {agent && (
-            <div className="spec-cell spec-wide">
+            <div className="spec-cell">
               <span className="spec-label">{t('Агент')}</span>
               <span className="spec-value agent-line">
                 {!agent.installed ? (
@@ -404,7 +409,7 @@ export function NodeDetail({
           </div>
 
           {node.tags.length > 0 && (
-            <div className="spec-cell spec-wide">
+            <div className="spec-cell">
               <span className="spec-label">{t('Теги')}</span>
               <span className="spec-value">
                 {node.tags.map((tg) => (
@@ -417,7 +422,7 @@ export function NodeDetail({
           )}
 
           {node.subnet_routes.length > 0 && (
-            <div className="spec-cell spec-wide">
+            <div className="spec-cell">
               <span className="spec-label">{t('Маршруты')}</span>
               <span className="spec-value">
                 {node.subnet_routes.map((r) => (
@@ -504,8 +509,8 @@ export function NodeDetail({
       </div>
 
       {node.is_exit_node && (
-        <div className="card">
-          <h3>{t('Клиентам: как ходить в интернет через эту exit-ноду')}</h3>
+        <details className="card node-exit-help">
+          <summary>{t('Клиентам: как ходить в интернет через эту exit-ноду')}</summary>
           <p className="muted small">
             {t('Выбор exit-ноды — на стороне клиента. Отдайте это пользователю.')}
           </p>
@@ -542,7 +547,7 @@ tailscale set --exit-node=`}</pre>
               name: node.name,
             })}
           </p>
-        </div>
+        </details>
       )}
 
 
@@ -594,6 +599,6 @@ tailscale set --exit-node=`}</pre>
           }}
         />
       )}
-    </>
+    </div>
   )
 }

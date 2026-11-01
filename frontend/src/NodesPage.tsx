@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
-  getDirections,
   getOutdatedAgents,
   deleteNode,
   expireNode,
@@ -46,9 +45,6 @@ export function NodesPage({
 }) {
   const { t } = useI18n()
   const [nodes, setNodes] = useState<Node[] | null>(null)
-  // маршрут → что за ним стоит. Сам по себе «203.0.113.44/32» не говорит
-  // ничего; панель знает, из какого направления он взялся, — показываем имя.
-  const [routeLabels, setRouteLabels] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
@@ -76,10 +72,20 @@ export function NodesPage({
   const [routesNode, setRoutesNode] = useState<Node | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [detailNodeId, setDetailNodeId] = useState<string | null>(openNodeId ?? null)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(!!openNodeId)
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 800px)').matches)
+  const requestedOpen = useRef(openNodeId ?? null)
+  const [linkedNodeId, setLinkedNodeId] = useState(openNodeId ?? null)
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>())
+  const detailPanel = useRef<HTMLDivElement>(null)
+  const returnFocus = useRef(false)
+  const loadSequence = useRef(0)
+
   useEffect(() => {
-    if (openNodeId) onOpened?.()
-    // один раз: дальше карточкой управляет сам пользователь
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const media = window.matchMedia('(max-width: 800px)')
+    const changed = () => setNarrow(media.matches)
+    media.addEventListener('change', changed)
+    return () => media.removeEventListener('change', changed)
   }, [])
   // перетаскивание ноды между группами (как в соседней панели): ref переживает
   // ре-рендеры, state нужен только для подсветки
@@ -117,28 +123,20 @@ export function NodesPage({
     })
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current
     try {
-      setNodes(await listNodes())
+      const next = await listNodes()
+      if (sequence !== loadSequence.current) return
+      setNodes(next)
       setError(null)
-      try {
-        const { directions } = await getDirections()
-        const map: Record<string, string> = {}
-        for (const d of directions) {
-          if (d.dst && d.ips.length) {
-            for (const ip of d.ips) map[ip.includes('/') ? ip : `${ip}/32`] = d.dst
-          }
-        }
-        setRouteLabels(map)
-      } catch {
-        /* не смогли — покажем маршруты как есть, это не повод ронять список */
-      }
     } catch (err) {
+      if (sequence !== loadSequence.current) return
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized()
         return
       }
       setError(err instanceof Error ? err.message : t('Не удалось загрузить ноды'))
-      setNodes([])
+      setNodes((prev) => prev ?? [])
     }
   }, [onUnauthorized, t])
 
@@ -187,7 +185,10 @@ export function NodesPage({
     // висело «оффлайн 2 мин назад», а нода, упавшая после загрузки страницы, не
     // подсвечивалась вовсе - то есть ровно то, ради чего подсветку и делали.
     const id = window.setInterval(load, 30000)
-    return () => window.clearInterval(id)
+    return () => {
+      ++loadSequence.current
+      window.clearInterval(id)
+    }
   }, [load])
 
   // ноды только этого типа (сервер/устройство)
@@ -265,22 +266,86 @@ export function NodesPage({
     }
   }, [visible])
 
-  // Скрыть/вернуть. setNodeMeta переписывает запись целиком, поэтому тащим с
-  // собой остальные поля - как и в переносе между группами.
+  const filtering = !!search.trim() || filter !== 'all'
+  const listed = useMemo(() => [
+    ...sections.admins,
+    ...sections.groups.flatMap((g) =>
+      filtering || !collapsed.has(g.group || '__none__')
+        ? g.subs.flatMap((sub) => sub.list)
+        : [],
+    ),
+    ...(hiddenOpen ? hiddenVisible : []),
+  ], [sections, filtering, collapsed, hiddenOpen, hiddenVisible])
+  const openingLink = requestedOpen.current !== null
+  const linkedNode = linkedNodeId === detailNodeId
+    ? (nodes ?? []).find((n) => n.id === linkedNodeId && n.kind !== kind)
+    : undefined
+  const selectedNode = listed.find((n) => n.id === detailNodeId) ?? linkedNode
+  const detailNode = selectedNode ?? (!narrow ? listed[0] : undefined)
+
+  useEffect(() => {
+    if (error || nodes === null || !requestedOpen.current) return
+    const target = nodes.find((n) => n.id === requestedOpen.current)
+    requestedOpen.current = null
+    if (target) {
+      if (target.hidden) setHiddenOpen(true)
+      setCollapsed((prev) => {
+        const next = new Set(prev)
+        next.delete(target.group?.trim() || '__none__')
+        return next
+      })
+      setDetailNodeId(target.id)
+      setMobileDetailOpen(true)
+    } else {
+      setLinkedNodeId(null)
+      setMobileDetailOpen(false)
+    }
+    onOpened?.()
+  }, [nodes, error, onOpened])
+
+  useEffect(() => {
+    if (nodes === null || openingLink) return
+    if (selectedNode) return
+    setDetailNodeId(narrow ? null : (listed[0]?.id ?? null))
+    setMobileDetailOpen(false)
+    setLinkedNodeId(null)
+  }, [nodes, listed, selectedNode, narrow, openingLink])
+
+  useEffect(() => {
+    if (narrow && mobileDetailOpen && detailNode) {
+      detailPanel.current?.focus({ preventScroll: true })
+      detailPanel.current?.scrollIntoView?.({ block: 'start' })
+    } else if (returnFocus.current) {
+      returnFocus.current = false
+      rowButtons.current.get(detailNodeId ?? '')?.focus({ preventScroll: true })
+    }
+  }, [narrow, mobileDetailOpen, detailNode?.id, detailNodeId])
+
+  useEffect(() => {
+    if (!narrow || !mobileDetailOpen) {
+      rowButtons.current.get(detailNodeId ?? '')?.scrollIntoView?.({ block: 'nearest' })
+    }
+  }, [detailNodeId, narrow, mobileDetailOpen])
+
+  function selectNode(n: Node) {
+    setLinkedNodeId(null)
+    setDetailNodeId(n.id)
+    setMobileDetailOpen(true)
+  }
+
+  function backToList() {
+    returnFocus.current = true
+    setMobileDetailOpen(false)
+    setLinkedNodeId(null)
+  }
+
+  // Меняем только hidden, остальные настройки сохраняются на сервере.
   async function doHide(n: Node, hidden: boolean) {
     if (hideBusy.current.has(n.id)) return
     hideBusy.current.add(n.id)
     setNodes((prev) => (prev ?? []).map((x) => (x.id === n.id ? { ...x, hidden } : x)))
     try {
-      await setNodeMeta(n.id, {
-        description: n.description,
-        kind: n.kind,
-        admin: n.admin,
-        muted: n.muted,
-        hidden,
-        group: n.group,
-        subgroup: n.subgroup,
-      })
+      await setNodeMeta(n.id, { hidden })
       await load()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
@@ -301,8 +366,7 @@ export function NodesPage({
     setDragOver(null)
   }
 
-  // Перенос ноды в группу/подгруппу. setNodeMeta переписывает запись целиком,
-  // поэтому тащим с собой описание/тип/админа — иначе они бы обнулились.
+  // Частичный запрос не перезапишет параллельные изменения доступа и алертов.
   async function dropOn(group: string, subgroup: string) {
     const id = dragRef.current
     endDrag()
@@ -312,13 +376,7 @@ export function NodesPage({
     // оптимистично — чтобы карточка не «прыгала» на время запроса
     setNodes((prev) => (prev ?? []).map((x) => (x.id === id ? { ...x, group, subgroup } : x)))
     try {
-      await setNodeMeta(id, {
-        description: n.description,
-        kind: n.kind,
-        admin: n.admin,
-        group,
-        subgroup,
-      })
+      await setNodeMeta(id, { group, subgroup })
     } catch (err) {
       handleErr(err)
     }
@@ -363,73 +421,68 @@ export function NodesPage({
     }
   }
 
-
-  const detailNode = detailNodeId
-    ? (nodes ?? []).find((n) => n.id === detailNodeId)
-    : null
-  if (detailNode) {
-    return (
-      <NodeDetail
-        node={detailNode}
-        nodes={nodes ?? []}
-        onBack={() => setDetailNodeId(null)}
-        onChanged={load}
-        onUnauthorized={onUnauthorized}
-      />
-    )
-  }
-
-  const renderCard = (n: Node) => (
+  const renderRow = (n: Node) => (
     <div
       key={n.id}
       className={
-        'card node-card node-clickable' +
+        'node-row' +
+        (detailNode?.id === n.id ? ' selected' : '') +
         (dragId === n.id ? ' dragging' : '') +
         (!n.online && !n.hidden ? ' node-off' : '') +
         (n.hidden ? ' node-hidden' : '')
       }
-      onClick={() => setDetailNodeId(n.id)}
-      title={t('Открыть')}
     >
-      <div className="node-main">
-        {!n.admin && (
-          <span
-            className="nr-grip"
-            draggable
-            onDragStart={() => startDrag(n.id)}
-            onDragEnd={endDrag}
-            onClick={(e) => e.stopPropagation()}
-            title={t('Перетащите в другую группу')}
-            aria-label={t('Перетащите в другую группу')}
-          >
-            ⠿
-          </span>
-        )}
+      {!n.admin && (
+        <span
+          className="nr-grip"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move'
+            e.dataTransfer.setData('text/plain', n.id)
+            startDrag(n.id)
+          }}
+          onDragEnd={endDrag}
+          title={t('Перетащите в другую группу')}
+          aria-label={t('Перетащите в другую группу')}
+        >
+          ⠿
+        </span>
+      )}
+      <button
+        type="button"
+        className="node-main node-row-select"
+        aria-label={`${t('Открыть')} ${n.name || t('без имени')}`}
+        aria-current={detailNode?.id === n.id ? 'true' : undefined}
+        onClick={() => selectNode(n)}
+        ref={(element) => {
+          if (element) rowButtons.current.set(n.id, element)
+          else rowButtons.current.delete(n.id)
+        }}
+      >
         <span className={`dot ${n.online ? 'dot-ok' : 'dot-fail'}`} />
-        <div className="node-info">
-          <div className="node-title">
+        <span className="node-info">
+          <span className="node-row-heading">
             {n.os && <OsIcon os={n.os} size={16} />}
             <CountryFlag code={n.country} />
             <span className="node-name">{n.name || t('без имени')}</span>
-            {n.admin && <span className="pill-admin">{t('админ')}</span>}
-            {/* Оффлайн раньше читался только по серой точке и строчке «видели
-                17 мин назад» - на экране с десятком карточек это не видно. */}
+          </span>
+          <span className="node-meta">
+            {n.ip_addresses.filter((ip) => !ip.includes(':')).map((ip) => (
+              <span key={ip} className="chip">{ip}</span>
+            ))}
             {!n.online && (
-              // И у скрытой тоже: «как давно лежит» - главное, что нужно для
-              // решения «вернуть или удалить», а раньше в разделе «Скрытые» от
-              // этого оставалась одна точка. Карточка там и так приглушена.
-              <span className={n.hidden ? 'pill-muted' : 'pill-warn'}>
+              <span className="node-row-status">
                 {n.last_seen
                   ? t('оффлайн {ago}', { ago: fmtAgo(n.last_seen, t) })
                   : t('оффлайн')}
               </span>
             )}
+            {n.admin && <span className="pill-admin">{t('админ')}</span>}
             {n.hidden && (
               <span className="pill-muted" title={t('Нода скрыта: не в счётчиках и без алертов')}>
                 {t('скрыта')}
               </span>
             )}
-            {/* заглушённая нода обязана быть видна: иначе о ней просто забудут */}
             {n.muted && (
               <span className="pill-muted" title={t('Алерты по этой ноде выключены')}>
                 {t('без алертов')}
@@ -448,60 +501,28 @@ export function NodesPage({
               </span>
             ) : (
               n.exit_via.length > 0 && (
-                <span className="pill-admin" title={t('Выход в интернет через')}>
-                  {t('выход через {n}').replace('{n}', String(n.exit_via.length))}
+                <span className="pill-admin" title={t('выход через {n}', { n: n.exit_via.length })}>
+                  exit · {n.exit_via.length}
                 </span>
               )
             )}
-            {n.subnet_routes.map((r) => (
-              <span key={r} className="tag-chip" title={routeLabels[r] ? r : undefined}>
-                {routeLabels[r] || r}
-              </span>
-            ))}
-            {(n.advertises_exit_node && !n.is_exit_node) ||
-            n.available_routes.some(
-              (r) => !EXIT_CIDRS.includes(r) && !n.approved_routes.includes(r),
-            ) ? (
-              // бейдж — сразу и кнопка: действие должно быть там, где видна проблема,
-              // а не в меню «⋯»
-              <button
-                className="pill-warn route-pending pill-action"
-                title={t('Одобрить маршруты')}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setRoutesNode(n)
-                }}
-              >
-                {t('маршруты ожидают')}
-              </button>
-            ) : null}
-          </div>
-          {n.description && <div className="node-desc">{n.description}</div>}
-          {/* IP, статус и теги — одной уплотнённой строкой (с переносом), а не
-              тремя; строку-заглушку «нет тегов» не показываем — её отсутствие и
-              так очевидно, а на каждой ноде это лишняя высота */}
-          <div className="node-meta">
-            {/* Только IPv4: правила, направления и маршруты панель строит по нему.
-                IPv6-адрес у ноды есть, но ни одно правило его не покрывает —
-                показывать его значило предлагать адрес, по которому доступ не
-                работает. */}
-            {n.ip_addresses
-              .filter((ip) => !ip.includes(':'))
-              .map((ip) => (
-                <span key={ip} className="chip">
-                  {ip}
-                </span>
-              ))}
-            {n.online && <span className="muted small">{t('онлайн')}</span>}
-            {n.tags.map((tag) => (
-              <span key={tag} className="tag-chip">
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="node-actions" onClick={(e) => e.stopPropagation()}>
+          </span>
+        </span>
+      </button>
+      <div className="node-actions">
+        {(n.advertises_exit_node && !n.is_exit_node) || n.available_routes.some(
+          (r) => !EXIT_CIDRS.includes(r) && !n.approved_routes.includes(r),
+        ) ? (
+          <button
+            type="button"
+            className="ghost icon-btn node-pending-action"
+            title={t('Одобрить маршруты')}
+            aria-label={t('Одобрить маршруты')}
+            onClick={() => setRoutesNode(n)}
+          >
+            ↗
+          </button>
+        ) : null}
         <Menu
           className="ghost icon-btn"
           caret={false}
@@ -526,7 +547,7 @@ export function NodesPage({
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head nodes-page-head">
         <h2>{kind === 'server' ? t('Серверы') : t('Устройства')}</h2>
         <div className="page-head-actions">
           {/* Ноды с агентом прошлого релиза: по карточке на ноду - занятие,
@@ -550,35 +571,45 @@ export function NodesPage({
 
       {error && <p className="form-error">{error}</p>}
 
-      {/* плитки-фильтры */}
-      <div className="stat-cards nodes-tiles">
+      <div className={`nodes-workspace${mobileDetailOpen && detailNode ? ' detail-open' : ''}`}>
+      <aside className="nodes-sidebar" aria-label={kind === 'server' ? t('Серверы') : t('Устройства')}>
+      <div className="nodes-side-tools">
+        <input
+          type="search"
+          className="search-box"
+          value={search}
+          onChange={(e) => {
+            setLinkedNodeId(null)
+            setSearch(e.target.value)
+          }}
+          aria-label={t('Поиск: имя, IP, тег…')}
+          placeholder={t('Поиск: имя, IP, тег…')}
+        />
+      <div className="nodes-filters" aria-label={t('Статус')}>
         {(
           [
-            ['all', t('Всего'), counts.total],
+            ['all', t('Все'), counts.total],
             ['online', t('Онлайн'), counts.online],
             ['offline', t('Оффлайн'), counts.offline],
           ] as const
         ).map(([key, label, val]) => (
           <button
             key={key}
-            className={`stat-card stat-tile-btn${filter === key ? ' stat-tile-active' : ''}`}
-            onClick={() => setFilter((f) => (f === key ? 'all' : (key as Filter)))}
+            type="button"
+            className={`nodes-filter${filter === key ? ' active' : ''}`}
+            aria-pressed={filter === key}
+            onClick={() => {
+              setLinkedNodeId(null)
+              setFilter(key)
+            }}
           >
-            <div className="stat-value">{val}</div>
-            <div className="stat-label">{label}</div>
+            {label} <b>{val}</b>
           </button>
         ))}
       </div>
-
-      <div className="nodes-toolbar">
-        <input
-          className="search-box"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('Поиск: имя, IP, тег…')}
-        />
       </div>
 
+      <div className="nodes-side-list">
       {nodes === null ? (
         <p className="muted">{t('загрузка…')}</p>
       ) : all.length === 0 ? (
@@ -614,12 +645,12 @@ export function NodesPage({
                 <span className="node-group-name">{t('Админские')}</span>
                 <span className="muted small">{sections.admins.length}</span>
               </div>
-              <div className="node-list">{sections.admins.map(renderCard)}</div>
+              <div className="node-rows">{sections.admins.map(renderRow)}</div>
             </div>
           )}
           {sections.groups.map((g) => {
             const gk = g.group || '__none__'
-            const isOpen = !collapsed.has(gk)
+            const isOpen = filtering || !collapsed.has(gk)
             return (
               <div
                 key={gk}
@@ -633,7 +664,13 @@ export function NodesPage({
                   dropOn(g.group, '')
                 }}
               >
-                <button className="node-group-head" onClick={() => toggleCollapse(gk)}>
+                <button
+                  type="button"
+                  className="node-group-head"
+                  aria-expanded={isOpen}
+                  disabled={filtering}
+                  onClick={() => toggleCollapse(gk)}
+                >
                   <span className="node-group-caret">{isOpen ? '▾' : '▸'}</span>
                   <span className="node-group-name">
                     {g.group || <span className="muted">{t('Без группы')}</span>}
@@ -665,9 +702,10 @@ export function NodesPage({
                         {(sub.subgroup || g.subs.length > 1) && (
                           <div className="node-subgroup-head">
                             {sub.subgroup || <span className="muted">{t('без подгруппы')}</span>}
+                            <span className="node-group-count">{sub.list.length}</span>
                           </div>
                         )}
-                        <div className="node-list">{sub.list.map(renderCard)}</div>
+                        <div className="node-rows">{sub.list.map(renderRow)}</div>
                       </div>
                     )
                   })}
@@ -681,17 +719,43 @@ export function NodesPage({
         <div className="node-group node-group-hidden">
           {/* настоящая кнопка, как у групп выше: самодельная из div понимала
               только Enter, а role="button" обязан отзываться и на пробел */}
-          <button className="node-group-head" onClick={toggleHidden}>
+          <button
+            type="button"
+            className="node-group-head"
+            aria-expanded={hiddenOpen}
+            title={t('не в счётчиках и без алертов, пока не вернёте')}
+            onClick={toggleHidden}
+          >
             <span className="node-group-caret">{hiddenOpen ? '▾' : '▸'}</span>
             <span className="node-group-name">{t('Скрытые')}</span>
             <span className="muted small">{hiddenVisible.length}</span>
-            <span className="muted small">
-              {t('не в счётчиках и без алертов, пока не вернёте')}
-            </span>
           </button>
-          {hiddenOpen && <div className="node-list">{hiddenVisible.map(renderCard)}</div>}
+          {hiddenOpen && <div className="node-rows">{hiddenVisible.map(renderRow)}</div>}
         </div>
       )}
+      </div>
+      </aside>
+
+      <div className="nodes-detail-panel" ref={detailPanel} tabIndex={-1} aria-label={t('Карточка ноды')}>
+        {detailNode ? (
+          <NodeDetail
+            key={detailNode.id}
+            embedded
+            node={detailNode}
+            nodes={nodes ?? []}
+            onBack={backToList}
+            onChanged={load}
+            onUnauthorized={onUnauthorized}
+          />
+        ) : (
+          <div className="card node-detail-empty">
+            <span className="node-empty-symbol" aria-hidden="true">◇</span>
+            <h3>{nodes === null ? t('загрузка…') : t('Выберите ноду')}</h3>
+            <p>{t('Откройте сервер или устройство в списке слева')}</p>
+          </div>
+        )}
+      </div>
+      </div>
 
       {editNode && (
         <NodeEditModal

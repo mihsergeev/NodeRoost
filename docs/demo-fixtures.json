@@ -1,0 +1,203 @@
+{
+  "node_defaults": {
+    "hostname": "",
+    "ip_addresses": [],
+    "online": true,
+    "last_seen": "2026-11-01T09:00:00Z",
+    "expiry": null,
+    "key_expired": false,
+    "forced_tags": [],
+    "tags": [],
+    "created_at": "2026-09-01T08:00:00Z",
+    "client_version": "1.102.4",
+    "os": "Ubuntu 24.04",
+    "arch": "x86_64",
+    "container": false,
+    "endpoint": "",
+    "country": "",
+    "direct_ok": true,
+    "available_routes": [],
+    "approved_routes": [],
+    "subnet_routes": [],
+    "is_exit_node": false,
+    "advertises_exit_node": false,
+    "description": "",
+    "kind": "server",
+    "admin": false,
+    "muted": false,
+    "hidden": false,
+    "exit_gateway": false,
+    "exit_via": [],
+    "force_exit": "",
+    "group": "",
+    "subgroup": ""
+  },
+  "nodes": [
+    {
+      "id": "1", "name": "edge-eu-01", "ip_addresses": ["100.64.10.11"],
+      "endpoint": "203.0.113.11:41641", "country": "DE",
+      "description": "European gateway and application ingress",
+      "tags": ["tag:gateway", "tag:production"], "forced_tags": ["tag:gateway", "tag:production"],
+      "group": "Acme", "subgroup": "Production",
+      "available_routes": ["0.0.0.0/0", "::/0", "203.0.113.0/24"],
+      "approved_routes": ["0.0.0.0/0", "::/0", "203.0.113.0/24"],
+      "subnet_routes": ["203.0.113.0/24"],
+      "is_exit_node": true, "advertises_exit_node": true, "exit_gateway": true
+    },
+    {
+      "id": "2", "name": "web-01", "ip_addresses": ["100.64.10.12"],
+      "endpoint": "203.0.113.12:41641", "country": "DE",
+      "description": "Public application frontend", "tags": ["tag:web"], "forced_tags": ["tag:web"],
+      "group": "Acme", "subgroup": "Production"
+    },
+    {
+      "id": "3", "name": "db-01", "ip_addresses": ["100.64.10.13"],
+      "endpoint": "203.0.113.13:41641", "country": "DE",
+      "description": "Application database, private access only", "tags": ["tag:database"], "forced_tags": ["tag:database"],
+      "group": "Acme", "subgroup": "Production", "os": "Debian 13"
+    },
+    {
+      "id": "4", "name": "staging-application-integration-01", "ip_addresses": ["100.64.10.14"],
+      "endpoint": "203.0.113.14:41641", "country": "FI",
+      "description": "Staging API and integration tests", "tags": ["tag:staging"], "forced_tags": ["tag:staging"],
+      "group": "Acme", "subgroup": "Staging", "container": true
+    },
+    {
+      "id": "5", "name": "lab-gateway", "ip_addresses": ["100.64.10.15"],
+      "endpoint": "198.51.100.15:41641", "country": "NL",
+      "description": "Lab subnet router and secondary exit", "tags": ["tag:gateway"], "forced_tags": ["tag:gateway"],
+      "group": "Lab", "subgroup": "Network",
+      "available_routes": ["0.0.0.0/0", "::/0", "198.51.100.0/24"],
+      "approved_routes": ["0.0.0.0/0", "::/0", "198.51.100.0/24"],
+      "subnet_routes": ["198.51.100.0/24"],
+      "is_exit_node": true, "advertises_exit_node": true, "exit_gateway": true
+    },
+    {
+      "id": "6", "name": "build-arm-01", "ip_addresses": ["100.64.10.16"],
+      "endpoint": "198.51.100.16:41641", "country": "NL",
+      "description": "ARM build worker", "tags": ["tag:build"], "forced_tags": ["tag:build"],
+      "group": "Lab", "subgroup": "Build", "arch": "aarch64", "client_version": "1.88.4"
+    },
+    {
+      "id": "7", "name": "test-runner-02", "ip_addresses": ["100.64.10.17"],
+      "endpoint": "198.51.100.17:41641", "country": "NL", "online": false,
+      "last_seen": "2026-11-01T06:35:00Z", "direct_ok": false,
+      "description": "Scheduled test runner", "tags": ["tag:build"], "forced_tags": ["tag:build"],
+      "group": "Lab", "subgroup": "Build", "muted": true
+    },
+    {
+      "id": "8", "name": "monitor-01", "ip_addresses": ["100.64.10.18"],
+      "endpoint": "203.0.113.18:41641", "country": "FI",
+      "description": "Metrics, dashboards and alert delivery", "tags": ["tag:monitoring"], "forced_tags": ["tag:monitoring"],
+      "group": "Infrastructure", "subgroup": "Operations", "os": "Debian 13"
+    },
+    {
+      "id": "9", "name": "backup-01", "ip_addresses": ["100.64.10.19"],
+      "endpoint": "203.0.113.19:41641", "country": "FI",
+      "description": "Encrypted backup storage", "tags": ["tag:backup"], "forced_tags": ["tag:backup"],
+      "group": "Infrastructure", "subgroup": "Operations", "force_exit": "1"
+    },
+    {
+      "id": "10", "name": "archive-01", "ip_addresses": ["100.64.10.20"],
+      "description": "Retired lab node, kept for later", "group": "Lab", "subgroup": "Archive",
+      "online": false, "hidden": true, "direct_ok": false, "last_seen": "2026-10-25T12:00:00Z"
+    },
+    {
+      "id": "11", "name": "admin-laptop", "ip_addresses": ["100.64.10.31"],
+      "endpoint": "198.51.100.31:41641", "country": "GB", "os": "Windows 11", "kind": "device",
+      "description": "Administrator workstation", "admin": true, "exit_via": ["1", "5"],
+      "group": "Acme", "subgroup": "Team"
+    },
+    {
+      "id": "12", "name": "field-tablet", "ip_addresses": ["100.64.10.32"],
+      "endpoint": "198.51.100.32:41641", "country": "GB", "os": "Android 15", "arch": "aarch64", "kind": "device",
+      "description": "Field access to application dashboards", "online": false, "direct_ok": false,
+      "last_seen": "2026-11-01T07:40:00Z", "exit_via": ["1"], "group": "Acme", "subgroup": "Team"
+    }
+  ],
+  "agent_defaults": {
+    "routes": [], "exit_node": false, "token": "demo-agent-placeholder",
+    "installed": true, "last_poll": "2026-11-01T09:00:00Z", "last_applied": "2026-11-01T09:00:00Z",
+    "applied_hash": "demo-state", "applied_current": true, "polling_only": false,
+    "setup_oneline": "echo 'Local demo: no agent is installed'",
+    "remove_oneline": "echo 'Local demo: no agent is removed'",
+    "script_current": true, "token_at": "2026-10-10T08:00:00Z"
+  },
+  "agents": {
+    "1": {"routes": ["203.0.113.0/24"], "exit_node": true},
+    "5": {"routes": ["198.51.100.0/24"], "exit_node": true},
+    "6": {"script_current": false},
+    "7": {"installed": false, "last_poll": "2026-11-01T06:35:00Z", "script_current": false},
+    "10": {"installed": false, "last_poll": null},
+    "11": {"installed": false, "last_poll": null},
+    "12": {"installed": false, "last_poll": null}
+  },
+  "responses": {
+    "/api/health": {"status": "ok", "db": "ok", "headscale": "ok", "version": "0.25.0"},
+    "/api/config": {"panel_ip": "203.0.113.10", "headscale_server_url": "https://control.example.test", "headscale_configured": true},
+    "/api/auth/login-options": {"trust_days": 30},
+    "/api/auth/me": {"id": 1, "username": "admin"},
+    "/api/auth/2fa": {"enabled": false},
+    "/api/auth/devices": {"trust_days": 30, "current_id": null, "devices": []},
+    "/api/policy/rules": {
+      "rules": [
+        {"src": {"kind": "node", "value": "11"}, "dst": {"kind": "servers", "value": ""}, "ports": "*"},
+        {"src": {"kind": "node", "value": "12"}, "dst": {"kind": "node", "value": "2"}, "ports": "443"},
+        {"src": {"kind": "tag", "value": "tag:web"}, "dst": {"kind": "tag", "value": "tag:database"}, "ports": "5432"},
+        {"src": {"kind": "tag", "value": "tag:monitoring"}, "dst": {"kind": "servers", "value": ""}, "ports": "9100"}
+      ],
+      "generated": "{\n  \"acls\": [\n    {\"action\": \"accept\", \"src\": [\"100.64.10.31\"], \"dst\": [\"tag:server:*\"]},\n    {\"action\": \"accept\", \"src\": [\"tag:web\"], \"dst\": [\"tag:database:5432\"]}\n  ]\n}"
+    },
+    "/api/routing": {"directions": [
+      {"id": "demo-1", "src_kind": "devices", "src": [], "full": false, "dst": "portal.example.com", "via": "1", "ports": "443", "ips": ["203.0.113.42"], "resolved_at": "2026-11-01T08:45:00Z", "error": "", "active": true, "via_agent": true},
+      {"id": "demo-2", "src_kind": "node", "src": ["6", "7"], "full": false, "dst": "198.51.100.0/24", "via": "5", "ports": "22,443", "ips": ["198.51.100.0/24"], "resolved_at": "2026-11-01T08:45:00Z", "error": "", "active": true, "via_agent": true}
+    ]},
+    "/api/hs-info": {
+      "server_url": "https://control.example.test",
+      "dns": {"magic_dns": true, "base_domain": "mesh.example.test", "nameservers": ["203.0.113.53", "198.51.100.53"], "search_domains": ["example.test"], "override_local_dns": false},
+      "derp": {"embedded": true, "urls": [], "auto_update": false},
+      "ipv4_prefix": "100.64.10.0/24", "allocation": "sequential", "restart_pending": false
+    },
+    "/api/hs-info/dns-records": {
+      "records": [
+        {"name": "app.example.test", "node_id": "2", "node_name": "web-01", "ip": "", "enabled": true, "cert": true, "cert_status": "ok", "cert_until": "2027-01-30T00:00:00Z", "cert_error": "", "addresses": ["100.64.10.12"], "note": ""},
+        {"name": "metrics.example.test", "node_id": "8", "node_name": "monitor-01", "ip": "", "enabled": true, "cert": true, "cert_status": "ok", "cert_until": "2027-01-30T00:00:00Z", "cert_error": "", "addresses": ["100.64.10.18"], "note": ""},
+        {"name": "stage.example.test", "node_id": "4", "node_name": "staging-application-integration-01", "ip": "", "enabled": true, "cert": true, "cert_status": "issuing", "cert_until": "", "cert_error": "", "addresses": ["100.64.10.14"], "note": ""},
+        {"name": "storage.example.test", "node_id": "", "node_name": "", "ip": "198.51.100.80", "enabled": true, "cert": false, "cert_status": "", "cert_until": "", "cert_error": "", "addresses": ["198.51.100.80"], "note": ""},
+        {"name": "archive.example.test", "node_id": "10", "node_name": "archive-01", "ip": "", "enabled": false, "cert": false, "cert_status": "", "cert_until": "", "cert_error": "", "addresses": [], "note": ""}
+      ],
+      "ca": {"exists": true, "subject": "CN=NodeRoost Demo CA", "not_after": "2046-10-01T00:00:00Z", "fingerprint": "DE:00:DE:00:DE:00:DE:00:DE:00:DE:00:DE:00:DE:00", "suffixes": [], "blocked": 1450, "install_sh": "echo 'Local demo: no certificate is installed'", "install_ps1": "Write-Output 'Local demo: no certificate is installed'", "auto": true},
+      "active": true, "restart_pending": false
+    },
+    "/api/apikeys": [
+      {"id": "1", "prefix": "demo-panel", "expiration": null, "created_at": "2026-09-01T08:00:00Z", "last_seen": "2026-11-01T09:00:00Z", "is_panel": true},
+      {"id": "2", "prefix": "demo-readonly", "expiration": "2027-01-01T08:00:00Z", "created_at": "2026-10-01T08:00:00Z", "last_seen": "2026-10-31T18:00:00Z", "is_panel": false}
+    ],
+    "/api/tailscale-version": {"current": "1.102.4", "env_default": "1.102.4"},
+    "/api/tailscale-version/latest": {"version": "1.102.4", "note": "Local demo fixture; no remote check"},
+    "/api/tailscale-version/mirror": {
+      "version": "1.102.4", "running": false, "done": 324009984, "total": 324009984,
+      "files": [
+        {"name": "tailscale_1.102.4_amd64.tgz", "ok": true, "size": 29360128, "note": "", "loading": false, "done": 29360128, "total": 29360128},
+        {"name": "tailscale_1.102.4_arm64.tgz", "ok": true, "size": 27262976, "note": "", "loading": false, "done": 27262976, "total": 27262976},
+        {"name": "tailscale_1.102.4_arm.tgz", "ok": true, "size": 26214400, "note": "", "loading": false, "done": 26214400, "total": 26214400},
+        {"name": "tailscale-setup-1.102.4-amd64.msi", "ok": true, "size": 84934656, "note": "", "loading": false, "done": 84934656, "total": 84934656},
+        {"name": "tailscale-setup-1.102.4-arm64.msi", "ok": true, "size": 80740352, "note": "", "loading": false, "done": 80740352, "total": 80740352},
+        {"name": "tailscale-setup-1.102.4-x86.msi", "ok": true, "size": 75497472, "note": "", "loading": false, "done": 75497472, "total": 75497472}
+      ]
+    },
+    "/api/alerts": {"telegram_token": "", "telegram_chat": "", "telegram_api": "", "webhook": "", "enabled": false},
+    "/api/backup/config": {"interval_hours": 24, "keep": 7},
+    "/api/backup/list": [
+      {"filename": "noderoost-demo-20261101-030000.tar.gz", "size": 1730150, "created": "2026-11-01T03:00:00Z"},
+      {"filename": "noderoost-demo-20261031-030000.tar.gz", "size": 1709178, "created": "2026-10-31T03:00:00Z"}
+    ],
+    "/api/logs/audit": [
+      {"ts": "2026-11-01T08:55:00Z", "username": "admin", "action": "node_meta", "target": "web-01", "detail": "Updated group: Acme / Production"},
+      {"ts": "2026-11-01T08:45:00Z", "username": "admin", "action": "routing_add", "target": "portal.example.com", "detail": "Devices via edge-eu-01, TCP 443"},
+      {"ts": "2026-11-01T08:30:00Z", "username": "admin", "action": "dns_records", "target": "app.example.test", "detail": "Certificate issued"},
+      {"ts": "2026-11-01T08:00:00Z", "username": "admin", "action": "login", "target": "", "detail": "Demo sign-in from 198.51.100.31"}
+    ],
+    "/api/logs/headscale": {"available": true, "text": "2026-11-01T08:55:00Z INF Node connected node=web-01 address=100.64.10.12\n2026-11-01T08:45:00Z INF Routes updated node=edge-eu-01\n2026-11-01T08:30:00Z INF DNS configuration refreshed records=4\n2026-11-01T08:00:00Z INF Control server ready", "note": "Local demo log fixture"}
+  }
+}
