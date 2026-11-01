@@ -5,6 +5,18 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.0] - 2026-11-01
+
+### Changed
+
+- Servers and devices use a compact grouped list beside the selected node's
+  details. Search, status filters and node actions stay within reach while
+  switching between nodes. On narrow screens, the list opens into a detail
+  view with a back button.
+- Refreshed the public website and README galleries with screenshots of the
+  running React interface using demonstration data. A loopback-only demo
+  server makes it possible to inspect the interface without a live tailnet.
+
 ## [0.24.1] - 2026-10-31
 
 ### Fixed

@@ -1,4 +1,5 @@
-# Скрины для README: статические моки на РЕАЛЬНОМ собранном CSS панели.
+# Legacy illustrative screenshots. Current screenshots use the React app
+# served by docs/preview-demo.py with demonstration API data.
 #
 # Почему не с живого прода: в кадр попали бы настоящие домены и адреса чужих
 # проектов. Моки берут тот же CSS, что уходит в образ (frontend/dist/assets/*.css),
@@ -9,6 +10,14 @@ import os
 import re
 import subprocess
 import sys
+
+if "--legacy" not in sys.argv:
+    raise SystemExit(
+        "This legacy renderer does not represent the current interface. "
+        "Build the frontend and run docs/preview-demo.py to capture the React app. "
+        "Use --legacy only to inspect the archived illustrations."
+    )
+
 from pathlib import Path
 
 ROOT = Path(r"Z:\ms\NodeRoost")

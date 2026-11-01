@@ -19,12 +19,16 @@ takes over the part that is otherwise done by hand.
 </tr>
 <tr>
 <td width="50%"><a href="docs/screenshots/node.png"><img src="docs/screenshots/node.png" alt="Server detail"></a><br><sub>Server detail — roles, subnets, exit gateway, agent</sub></td>
-<td width="50%"><a href="docs/screenshots/login.png"><img src="docs/screenshots/login.png" alt="Sign-in"></a><br><sub>Sign-in — password and a second factor</sub></td>
+<td width="50%"><a href="docs/screenshots/login.png"><img src="docs/screenshots/login.png" alt="Sign-in"></a><br><sub>Sign-in - password and optional 2FA</sub></td>
+</tr>
+<tr>
+<td width="50%"><a href="docs/screenshots/dns.png"><img src="docs/screenshots/dns.png" alt="DNS and certificates"></a><br><sub>DNS - internal names and certificates</sub></td>
+<td width="50%"><a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" alt="Settings"></a><br><sub>Settings - network and client binary mirror</sub></td>
 </tr>
 </table>
 
-<sub>Screens are rendered from the panel's own stylesheet with example data; the
-addresses are documentation ranges (RFC 5737), not a live tailnet.</sub>
+<sub>Screenshots show the running React interface with demonstration data.
+Public endpoints use documentation ranges (RFC 5737); this is not a live tailnet.</sub>
 
 ---
 
@@ -48,6 +52,11 @@ scenarios → docs/why.md](docs/why.md)**
 personal devices. Devices are isolated from one another and can never be a rule's
 target — enforced in the policy engine, not in the UI, because a rule can also
 arrive through the API.
+
+The grouped list stays beside the selected node's details, so you can move
+between machines without leaving the overview. Search and online/offline filters
+work across groups. On a phone, selecting a node opens its details with a back
+button to the list.
 
 **Grants, not an ACL file.** A rule is *who → where → on which port*. Grant it by
 clicking, to several nodes at once, or from inside a node's own page. The HuJSON is
