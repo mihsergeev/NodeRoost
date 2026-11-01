@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="108" viewBox="0 0 324 108" role="img" aria-labelledby="enrollment-title enrollment-desc" xml:lang="en">
+  <title id="enrollment-title">Instead of mailing out VPN configs</title>
+  <desc id="enrollment-desc">No .ovpn attachments. A person gets a single-use key and one command for their OS - a minute later they are on the network. Revoking means deleting a device, not reissuing configs for everyone else.</desc>
+  <rect width="324" height="108" fill="#101714" />
+  <g transform="translate(12 12)">
+    <rect x="0" y="26" width="72" height="32" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="36.0" y="45.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">key</text>
+    <line x1="72" y1="42" x2="91" y2="42" stroke="#819287" stroke-width="1.5" />
+    <path d="M90 38 L96 42 L90 46 Z" fill="#819287" />
+    <rect x="96" y="26" width="108" height="32" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="150.0" y="45.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">one command</text>
+    <line x1="204" y1="42" x2="223" y2="42" stroke="#9aefb4" stroke-width="1.5" />
+    <path d="M222 38 L228 42 L222 46 Z" fill="#9aefb4" />
+    <rect x="228" y="26" width="72" height="32" rx="7" fill="#1e2a23" stroke="#9aefb4" />
+    <text x="264.0" y="45.5" fill="#9aefb4" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">connected</text>
+  </g>
+</svg>

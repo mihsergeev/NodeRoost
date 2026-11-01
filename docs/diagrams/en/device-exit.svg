@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="108" viewBox="0 0 324 108" role="img" aria-labelledby="device-exit-title device-exit-desc" xml:lang="en">
+  <title id="device-exit-title">Internet through a chosen server</title>
+  <desc id="device-exit-desc">Mark a server as a gateway and the traffic of whoever you allowed leaves for the internet from its address. People switch between gateways themselves in the Tailscale client, but only ever see the ones you gave them.</desc>
+  <rect width="324" height="108" fill="#101714" />
+  <g transform="translate(12 12)">
+    <rect x="0" y="26" width="92" height="32" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="46.0" y="45.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">device</text>
+    <line x1="92" y1="42" x2="116" y2="42" stroke="#9aefb4" stroke-width="2" />
+    <rect x="116" y="26" width="80" height="32" rx="7" fill="#1e2a23" stroke="#9aefb4" />
+    <text x="156.0" y="45.5" fill="#9aefb4" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">gw-de</text>
+    <line x1="196" y1="42" x2="211" y2="42" stroke="#819287" stroke-width="1.5" stroke-dasharray="4 3" />
+    <path d="M210 38 L216 42 L210 46 Z" fill="#819287" />
+    <rect x="216" y="26" width="84" height="32" rx="7" fill="#18221d" stroke="#2d3a31" stroke-dasharray="4 3" />
+    <text x="258.0" y="45.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">internet</text>
+  </g>
+</svg>

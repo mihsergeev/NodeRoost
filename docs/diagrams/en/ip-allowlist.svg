@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="112" viewBox="0 0 324 112" role="img" aria-labelledby="ip-allowlist-title ip-allowlist-desc" xml:lang="en">
+  <title id="ip-allowlist-title">A service that allows one address only</title>
+  <desc id="ip-allowlist-desc">The partner allows one IP only, and you need to reach them from a laptop. In the panel you say: for this address, go through edge-1 - the server whose IP is on their list. The requests arrive from edge-1, while the rest of the laptop's traffic still goes direct.</desc>
+  <rect width="324" height="112" fill="#101714" />
+  <g transform="translate(12 12)">
+    <rect x="0" y="28" width="84" height="32" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="42.0" y="47.5" fill="#eef3ef" font-family="system-ui,sans-serif" font-size="10.5" text-anchor="middle">laptop</text>
+    <line x1="84" y1="44" x2="106" y2="44" stroke="#9aefb4" stroke-width="2" />
+    <rect x="106" y="28" width="76" height="32" rx="7" fill="#1e2a23" stroke="#9aefb4" />
+    <text x="144.0" y="47.5" fill="#9aefb4" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">edge-1</text>
+    <line x1="182" y1="44" x2="199" y2="44" stroke="#819287" stroke-width="1.5" />
+    <path d="M198 40 L204 44 L198 48 Z" fill="#819287" />
+    <rect x="204" y="18" width="96" height="52" rx="7" fill="#18221d" stroke="#2d3a31" />
+    <text x="252.0" y="47.5" fill="#eef3ef" font-family="ui-monospace,monospace" font-size="10.5" text-anchor="middle">api.example</text>
+    <text x="252" y="58" fill="#a5b3aa" font-family="system-ui,sans-serif" font-size="8.5" text-anchor="middle">IP allowlist</text>
+  </g>
+</svg>

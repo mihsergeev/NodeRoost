@@ -45,6 +45,44 @@ open-source реализации координационного сервера
 ни на что, ноутбук, выходящий в интернет через сервер, чей адрес разрешён у партнёра.
 **[Причины, цели и все сценарии → docs/why.ru.md](docs/why.ru.md)**
 
+## Сценарии использования
+
+На схемах вымышленные имена и примерные подсети. Нажмите на схему, чтобы открыть ее отдельно.
+
+<table>
+<tr>
+<td width="50%"><strong>Две локалки без белых IP</strong><br><a href="docs/diagrams/ru/lan-to-lan.svg"><img src="docs/diagrams/ru/lan-to-lan.svg" alt="Сети офиса и склада соединены через две ноды" width="420"></a><p>По одной ноде на каждой стороне, одобренные подсети и правила доступа. Офис и склад видят сети друг друга без белых адресов.</p></td>
+<td width="50%"><strong>Рабочий компьютер за чужим NAT</strong><br><a href="docs/diagrams/ru/behind-nat.svg"><img src="docs/diagrams/ru/behind-nat.svg" alt="Ноутбук подключается к рабочему компьютеру за NAT" width="420"></a><p>Подключайтесь к рабочему компьютеру без настройки чужого роутера и проброса портов. Откройте доступ своему ноутбуку на нужный порт.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Админки и базы без открытых портов</strong><br><a href="docs/diagrams/ru/private-services.svg"><img src="docs/diagrams/ru/private-services.svg" alt="Устройство подключается к закрытым портам базы и кластера, доступ из интернета запрещен" width="420"></a><p>Оставьте базы, IPMI и API кластера на адресах сети. Разрешите нужные порты только выбранным источникам.</p></td>
+<td width="50%"><strong>Подрядчику - только то, что нужно</strong><br><a href="docs/diagrams/ru/contractor-access.svg"><img src="docs/diagrams/ru/contractor-access.svg" alt="Подрядчику разрешены только порты баз у серверов одной роли" width="420"></a><p>Выдайте подрядчику доступ к порту базы, в том числе сразу на роль серверов. После работы удалите его устройство.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Интернет через выбранный сервер</strong><br><a href="docs/diagrams/ru/device-exit.svg"><img src="docs/diagrams/ru/device-exit.svg" alt="Устройство выходит в интернет через разрешенный шлюз" width="420"></a><p>Разрешите конкретные шлюзы выхода. Человек сможет выбирать между ними в своем клиенте Tailscale.</p></td>
+<td width="50%"><strong>Весь трафик сервера - через другой сервер</strong><br><a href="docs/diagrams/ru/server-exit.svg"><img src="docs/diagrams/ru/server-exit.svg" alt="Сервер выходит через шлюз, сохраняя свой путь для входящих соединений" width="420"></a><p>Направьте исходящий трафик сервера через выбранную ноду. Ответы на входящие соединения сохранят исходный путь.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Сервис пускает только с одного адреса</strong><br><a href="docs/diagrams/ru/ip-allowlist.svg"><img src="docs/diagrams/ru/ip-allowlist.svg" alt="Ноутбук ходит к сервису с белым списком IP через выбранный шлюз" width="420"></a><p>Ходите к сервису партнера через сервер с разрешенным IP. Остальной трафик ноутбука продолжит идти напрямую.</p></td>
+<td width="50%"><strong>Домашний NAS, камеры, Home Assistant</strong><br><a href="docs/diagrams/ru/home-network.svg"><img src="docs/diagrams/ru/home-network.svg" alt="Телефон подключается к сервисам домашней сети" width="420"></a><p>Открывайте домашние сервисы с телефона и ноутбука без белого IP, динамического DNS и проброса портов.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Сервер ходит к серверу</strong><br><a href="docs/diagrams/ru/server-to-server.svg"><img src="docs/diagrams/ru/server-to-server.svg" alt="Серверы у разных провайдеров соединены правилом доступа" width="420"></a><p>Раннер ходит в базу, бэкап уезжает в хранилище другого провайдера. Доступ определяется правилом вместо списка публичных IP.</p></td>
+<td width="50%"><strong>В туннель уходит не весь трафик</strong><br><a href="docs/diagrams/ru/split-tunnel.svg"><img src="docs/diagrams/ru/split-tunnel.svg" alt="Выбранные адреса идут через туннель, остальной трафик выходит в интернет напрямую" width="420"></a><p>Направляйте через сеть только выбранные подсети, домены и адреса. Остальной интернет-трафик идет напрямую.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Сменился провайдер - ничего не сломалось</strong><br><a href="docs/diagrams/ru/provider-change.svg"><img src="docs/diagrams/ru/provider-change.svg" alt="Нода сохраняет свое имя и адрес в сети после смены публичного адреса" width="420"></a><p>При смене провайдера или переезде нода сохраняет имя и адрес в сети. Правила и закладки продолжают работать.</p></td>
+<td width="50%"><strong>Вместо рассылки VPN-конфигов</strong><br><a href="docs/diagrams/ru/enrollment.svg"><img src="docs/diagrams/ru/enrollment.svg" alt="Новое устройство подключается к сети с одноразовым ключом" width="420"></a><p>Подключайте машину одноразовым ключом и командой для ее ОС. Чтобы отозвать доступ, удалите устройство.</p></td>
+</tr>
+<tr>
+<td width="50%"><strong>Закрыть SSH снаружи</strong><br><a href="docs/diagrams/ru/private-ssh.svg"><img src="docs/diagrams/ru/private-ssh.svg" alt="SSH доступен через внутреннюю сеть, публичный порт закрыт" width="420"></a><p>Закройте SSH на публичном интерфейсе и подключайтесь по адресу внутри сети. Доступ контролируется правилом.</p></td>
+<td width="50%"><strong>Запасной путь доступа</strong><br><a href="docs/diagrams/ru/recovery-access.svg"><img src="docs/diagrams/ru/recovery-access.svg" alt="Альтернативный сетевой путь к машине при недоступном публичном подключении" width="420"></a><p>Нода с исходящим доступом наружу дает дополнительный путь, когда публичный адрес или обычный VPN недоступен.</p></td>
+</tr>
+<tr>
+<td colspan="2"><strong>Железки, на которые ничего не поставить</strong><br><a href="docs/diagrams/ru/subnet-router.svg"><img src="docs/diagrams/ru/subnet-router.svg" alt="Маршрутизатор подсети дает доступ к камерам, IPMI и другому оборудованию без клиента" width="420"></a><p>Поставьте ноду рядом с камерами, принтерами, IPMI или старым NAS и одобрите ее подсеть. Выдавайте доступ к оборудованию по адресу и порту.</p></td>
+</tr>
+</table>
+
 ## Что она делает
 
 **Серверы и устройства.** Ноды разделены на серверы (то, *куда* ходят) и личные
@@ -166,6 +204,11 @@ docker compose up -d backend
 выдаст одноразовый ключ и готовую команду под Linux, Windows, macOS или Android.
 
 ## Как устроено
+
+![Управление через NodeRoost и headscale, трафик идет между узлами](docs/diagrams/ru/architecture.svg)
+
+Настройки идут через панель. Пользовательский трафик передается между узлами по
+WireGuard. Если прямое соединение не установилось, его передает DERP.
 
 ```
             ┌───────── публично ────────┐      ┌─── за вайтлистом ────┐
