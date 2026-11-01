@@ -658,9 +658,9 @@ async def delete_node(
     require_hs(settings)
     client = get_client(settings)
     await hs_call(client.delete_node(node_id))
-    # ноду могли использовать шлюзом выхода — снимаем форс у зависимых, иначе они
-    # остались бы с exit-node на удалённый узел (трафик в никуда)
-    await _clear_dependent_force_exit(session, node_id)
+    # Удаляем шлюз из разрешенных выходов и снимаем принудительный выход.
+    for nid in await settings_store.drop_gateway(session, node_id):
+        await _set_agent_use_exit(session, nid, "")
     await settings_store.clear_node_meta(session, node_id)  # чистим мету целиком
     # правила и направления держат id ноды, а запись агента — её токен: без
     # уборки правило висит в списке как действующее, а агент «молчит» вечно

@@ -348,9 +348,12 @@ export function NodesPage({
       await setNodeMeta(n.id, { hidden })
       await load()
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onUnauthorized()
-      else setError(err instanceof Error ? err.message : t('Ошибка'))
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized()
+        return
+      }
       await load()
+      setError(err instanceof Error ? err.message : t('Ошибка'))
     } finally {
       hideBusy.current.delete(n.id)
     }
