@@ -19,6 +19,7 @@ BACKUP_KEY = "backup"
 ACL_RULES_KEY = "acl_rules"
 NODE_META_KEY = "node_meta"  # {node_id: {"description": "..."}}
 TS_VERSION_KEY = "tailscale_version"  # пиновая версия клиента (override env)
+COMPANY_NAME_KEY = "company_name"
 # желаемое состояние нод для агента: какие маршруты анонсировать, быть ли exit
 AGENT_KEY = "node_agent"
 # направления «кто → куда → через какую ноду»: {id: {src, dst, via, ports, ips,
@@ -99,6 +100,15 @@ async def get_tailscale_version(session: AsyncSession, settings: Settings) -> st
 
 async def set_tailscale_version(session: AsyncSession, version: str) -> None:
     await _set_raw(session, TS_VERSION_KEY, version.strip())
+
+
+async def get_company_name(session: AsyncSession) -> str:
+    return await _get_raw(session, COMPANY_NAME_KEY) or ""
+
+
+@serialized
+async def set_company_name(session: AsyncSession, name: str) -> None:
+    await _set_raw(session, COMPANY_NAME_KEY, name)
 
 
 async def get_node_meta(session: AsyncSession) -> dict:

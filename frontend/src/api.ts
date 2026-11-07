@@ -122,6 +122,19 @@ export function getConfig(): Promise<PanelConfig> {
   return api<PanelConfig>('/api/config')
 }
 
+type PanelBranding = { company_name: string }
+
+export function getBranding(signal: AbortSignal): Promise<PanelBranding> {
+  return api<PanelBranding>('/api/branding', { signal })
+}
+
+export function setBranding(companyName: string): Promise<PanelBranding> {
+  return api<PanelBranding>('/api/branding', {
+    method: 'PUT',
+    body: JSON.stringify({ company_name: companyName }),
+  })
+}
+
 export type Health = {
   status: string
   db: string

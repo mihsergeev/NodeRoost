@@ -21,6 +21,8 @@ from app.schemas import (
     ApiKeyCreateIn,
     ApiKeyExpireIn,
     ApiKeyOut,
+    BrandingIn,
+    BrandingOut,
     DerpInfo,
     DnsInfo,
     CaInfo,
@@ -45,6 +47,22 @@ _LATEST_TTL = 24 * 3600
 _latest_cache: tuple[float, "TsLatestOut"] | None = None
 
 router = APIRouter(tags=["settings"])
+
+
+@router.get("/branding", response_model=BrandingOut)
+async def get_branding(
+    _: CurrentUser, session: SessionDep, response: Response
+) -> BrandingOut:
+    response.headers["Cache-Control"] = "no-store"
+    return BrandingOut(company_name=await settings_store.get_company_name(session))
+
+
+@router.put("/branding", response_model=BrandingOut)
+async def update_branding(
+    body: BrandingIn, _: CurrentUser, session: SessionDep
+) -> BrandingOut:
+    await settings_store.set_company_name(session, body.company_name)
+    return BrandingOut(company_name=body.company_name)
 
 
 def _is_panel_key(prefix: str, panel_key: str) -> bool:

@@ -451,6 +451,12 @@ const EN: Record<string, string> = {
 
   // --- настройки (API-ключи / DNS / DERP) ---
   'Настройки': 'Settings',
+  'Название компании': 'Company name',
+  'Показывается в заголовке вкладки после входа. Оставьте поле пустым, чтобы вернуть NodeRoost.':
+    'Shown in the browser tab after sign-in. Leave blank to restore NodeRoost.',
+  'Название компании должно быть одной строкой без управляющих символов':
+    'Enter a company name on one line without control characters.',
+  'Не удалось сохранить название компании': 'Could not save the company name',
   'API-ключи headscale': 'headscale API keys',
   'Создать ключ': 'Create key',
   'Ключи доступа к управляющему API headscale (их использует эта панель и сторонние клиенты).':

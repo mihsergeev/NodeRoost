@@ -27,6 +27,24 @@ class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BrandingIn(RequestModel):
+    company_name: str = Field(max_length=80)
+
+    @field_validator("company_name")
+    @classmethod
+    def normalize_company_name(cls, value: str) -> str:
+        name = value.strip()
+        if re.search(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]", name):
+            raise ValueError(
+                "Название компании должно быть одной строкой без управляющих символов"
+            )
+        return name
+
+
+class BrandingOut(BaseModel):
+    company_name: str
+
+
 class LoginRequest(RequestModel):
     # Потолки не косметика: username уходит в журнал (varchar(64)), и строка
     # длиннее молча роняла запись о неудачном входе вместе с откатом сессии -

@@ -1,5 +1,13 @@
-import { useEffect, useState } from 'react'
-import { getConfig, getToken, logoutServer, setToken, type PanelConfig } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ApiError,
+  getBranding,
+  getConfig,
+  getToken,
+  logoutServer,
+  setToken,
+  type PanelConfig,
+} from './api'
 import { LoginPage } from './LoginPage'
 import { NodesPage } from './NodesPage'
 import { AccessPage } from './AccessPage'
@@ -21,6 +29,7 @@ type View = 'servers' | 'devices' | 'access' | 'routing' | 'dns' | 'settings'
 function App() {
   const { t, lang, setLang } = useI18n()
   const [authed, setAuthed] = useState(() => getToken() !== null)
+  const [companyName, setCompanyName] = useState<string | null>(null)
   const [view, setView] = useState<View>('servers')
   // растёт при каждом клике по навигации — используется как key, чтобы страница
   // пересоздавалась (сбрасывала внутреннее состояние, напр. открытую деталь ноды)
@@ -87,13 +96,35 @@ function App() {
       .catch(() => {})
   }, [authed])
 
-  function logout() {
+  const logout = useCallback(() => {
     // Сначала просим сервер отозвать токен, потом забываем его локально.
     // Сеть может не ответить - выйти из панели это не должно мешать.
     logoutServer().catch(() => {})
     setToken(null)
+    setCompanyName(null)
     setAuthed(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!authed) return
+    const token = getToken()
+    const controller = new AbortController()
+    getBranding(controller.signal)
+      .then(({ company_name }) => {
+        if (!controller.signal.aborted && getToken() === token) {
+          setCompanyName((current) => current ?? company_name)
+        }
+      })
+      .catch((err) => {
+        if (controller.signal.aborted || getToken() !== token) return
+        if (err instanceof ApiError && err.status === 401) logout()
+      })
+    return () => controller.abort()
+  }, [authed, logout])
+
+  useEffect(() => {
+    document.title = authed && companyName ? `${companyName} · NodeRoost` : 'NodeRoost'
+  }, [authed, companyName])
 
   return (
     <main className="page">
@@ -218,7 +249,11 @@ function App() {
         ) : view === 'dns' ? (
           <DnsPage key={navSeq} onUnauthorized={logout} />
         ) : view === 'settings' ? (
-          <SettingsPage onUnauthorized={logout} />
+          <SettingsPage
+            companyName={companyName}
+            onCompanyNameChange={setCompanyName}
+            onUnauthorized={logout}
+          />
         ) : view === 'devices' ? (
           <NodesPage key={navSeq} kind="device" onUnauthorized={logout} />
         ) : (

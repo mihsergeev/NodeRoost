@@ -143,6 +143,36 @@ async def _login(client):
     return r.json()["access_token"]
 
 
+async def test_company_name_is_private_and_persists_until_reset(client):
+    path = "/api/branding"
+    assert (await client.get(path)).status_code == 401
+    assert (await client.put(path, json={"company_name": "Example"})).status_code == 401
+
+    token = await _login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    initial = await client.get(path, headers=headers)
+    assert initial.status_code == 200
+    assert initial.json() == {"company_name": ""}
+    assert initial.headers["cache-control"] == "no-store"
+
+    name = 'Компания «Пример» & <тест> "✓"'
+    saved = await client.put(path, json={"company_name": f"  {name}  "}, headers=headers)
+    assert saved.status_code == 200
+    assert saved.json() == {"company_name": name}
+    assert (await client.get(path, headers=headers)).json() == saved.json()
+    assert (await client.get(path)).status_code == 401
+
+    for invalid in ("x" * 81, "Company\x00Name", "Company\nName"):
+        rejected = await client.put(path, json={"company_name": invalid}, headers=headers)
+        assert rejected.status_code == 422
+    assert (await client.get(path, headers=headers)).json() == saved.json()
+
+    reset = await client.put(path, json={"company_name": "  "}, headers=headers)
+    assert reset.status_code == 200
+    assert reset.json() == {"company_name": ""}
+    assert (await client.get(path, headers=headers)).json() == reset.json()
+
+
 async def test_apikeys_requires_auth(client):
     assert (await client.get("/api/apikeys")).status_code == 401
 

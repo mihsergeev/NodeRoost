@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ApiError,
   api,
@@ -7,9 +7,11 @@ import {
   createApiKey,
   expireApiKey,
   getHsInfo,
+  getToken,
   getTsMirror,
   getTsVersion,
   listApiKeys,
+  setBranding,
   setHsNetwork,
   setTsVersion,
   tsCheck,
@@ -59,8 +61,24 @@ function pct(done: number, total: number): number {
   return Math.min(100, Math.round((done / total) * 100))
 }
 
-export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void }) {
+type SettingsPageProps = {
+  companyName: string | null
+  onCompanyNameChange: (name: string) => void
+  onUnauthorized: () => void
+}
+
+export function SettingsPage({
+  companyName,
+  onCompanyNameChange,
+  onUnauthorized,
+}: SettingsPageProps) {
   const { t } = useI18n()
+  const [companyDraft, setCompanyDraft] = useState<string | null>(null)
+  const [companyBusy, setCompanyBusy] = useState(false)
+  const [companySaved, setCompanySaved] = useState(false)
+  const [companyError, setCompanyError] = useState<string | null>(null)
+  const companyInput = companyDraft ?? companyName ?? ''
+  const companyDirty = companyDraft !== null && companyInput.trim() !== companyName
   const [keys, setKeys] = useState<ApiKey[] | null>(null)
   const [info, setInfo] = useState<HsInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -143,6 +161,30 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
       })
       .catch(() => {})
   }, [loadKeys])
+
+  async function saveCompanyName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!companyDirty || companyBusy) return
+    const token = getToken()
+    setCompanyBusy(true)
+    setCompanySaved(false)
+    setCompanyError(null)
+    try {
+      const { company_name } = await setBranding(companyInput)
+      if (getToken() !== token) return
+      onCompanyNameChange(company_name)
+      setCompanyDraft(null)
+      setCompanySaved(true)
+    } catch (err) {
+      if (getToken() !== token) return
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else if (err instanceof ApiError && err.status === 422) {
+        setCompanyError(t('Название компании должно быть одной строкой без управляющих символов'))
+      } else setCompanyError(t('Не удалось сохранить название компании'))
+    } finally {
+      setCompanyBusy(false)
+    }
+  }
 
   const netDirty =
     !!info &&
@@ -386,6 +428,39 @@ export function SettingsPage({ onUnauthorized }: { onUnauthorized: () => void })
       <div className="page-head">
         <h2>{t('Настройки')}</h2>
       </div>
+
+      <form className="card settings-section" onSubmit={saveCompanyName}>
+        <h3>
+          <label htmlFor="company-name">{t('Название компании')}</label>
+        </h3>
+        <p className="muted small" id="company-name-hint">
+          {t('Показывается в заголовке вкладки после входа. Оставьте поле пустым, чтобы вернуть NodeRoost.')}
+        </p>
+        <div className="field">
+          <input
+            id="company-name"
+            aria-describedby="company-name-hint"
+            value={companyInput}
+            placeholder="NodeRoost"
+            maxLength={80}
+            disabled={companyBusy}
+            onChange={(event) => {
+              setCompanyDraft(event.target.value)
+              setCompanySaved(false)
+              setCompanyError(null)
+            }}
+          />
+        </div>
+        <button type="submit" disabled={companyBusy || !companyDirty}>
+          {companyBusy ? t('Сохранение…') : t('Сохранить')}
+        </button>
+        {companyError && (
+          <p className="form-error" role="alert">{companyError}</p>
+        )}
+        {companySaved && (
+          <p className="form-ok" role="status">{t('Сохранено.')}</p>
+        )}
+      </form>
 
       {/* --- API-ключи --- */}
       <div className="card settings-section">
