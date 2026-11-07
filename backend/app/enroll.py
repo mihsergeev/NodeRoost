@@ -123,7 +123,9 @@ rm -f "$NRTMP/nr-up.err"
 REAL=""; ADDR=""
 i=0
 while [ $i -lt 10 ]; do
-    REAL="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName" *: *"\([^".]*\)\..*/\1/p' | head -1)"
+    STATUS="$(tailscale status --json --peers=false 2>/dev/null || true)"
+    FQDN="$(printf '%s\n' "$STATUS" | sed -n 's/.*"DNSName" *: *"\([^".][^"]*\.[^"]*\)".*/\1/p' | head -1)"
+    REAL="${FQDN%%.*}"
     ADDR="$(tailscale ip -4 2>/dev/null | head -1)"
     [ "$REAL" = "$NAME" ] && break
     i=$((i + 1))
@@ -139,8 +141,18 @@ if [ "$REAL" != "$NAME" ]; then
 else
     echo "NodeRoost: нода \"$REAL\" подключена ($ADDR)."
 fi
+# DNSName есть и при выключенном MagicDNS. Проверяем настройку сети и
+# локальный accept-dns, затем NSS, через который имя разрешают приложения.
+if [ -n "$ADDR" ] &&
+   printf '%s\n' "$STATUS" | grep -Eq '^[[:space:]]*"MagicDNSEnabled" *: *true[,[:space:]]*$' &&
+   command -v getent >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 &&
+   timeout 5 tailscale debug prefs 2>/dev/null | grep -Eq '^[[:space:]]*"CorpDNS" *: *true[,[:space:]]*$' &&
+   ! timeout 5 getent hosts "$FQDN" >/dev/null 2>&1; then
+    echo "NodeRoost: системный DNS не разрешает $FQDN." >&2
+    echo "Проверьте локальный фаервол (sudo ufw status numbered): исходящий UDP/TCP 53 к 100.100.100.100 через tailscale0." >&2
+fi
 # возвращаем запись истории (если скрипт упал раньше — просто откройте новый шелл)
-set -o history 2>/dev/null || true
+if [ -n "$BASH_VERSION" ]; then set -o history; fi
 """
 
 # --- Windows (PowerShell от администратора, MSI нужной версии) ---

@@ -1,3 +1,8 @@
+import os
+import subprocess
+
+import pytest
+
 from app import enroll
 from app.config import Settings
 from tests.conftest import ADMIN_PASSWORD
@@ -18,6 +23,67 @@ def test_linux_script():
     assert "tailscale up --reset --login-server=" in s
     # без --accept-routes источник молча игнорирует направления/полный туннель
     assert "--accept-routes" in s
+
+
+@pytest.mark.skipif(os.name != "posix", reason="runs the generated Linux shell script")
+@pytest.mark.parametrize(
+    ("magic_dns", "accept_dns", "lookup_ok", "warn"),
+    [
+        ("true", "true", "yes", False),
+        ("true", "true", "no", True),
+        ("false", "true", "no", False),
+        ("true", "false", "no", False),
+    ],
+)
+def test_linux_enroll_warns_only_if_enabled_system_dns_fails(
+    tmp_path, magic_dns, accept_dns, lookup_ok, warn
+):
+    tailscale = tmp_path / "tailscale"
+    tailscale.write_text(
+        """#!/bin/sh
+case "$1" in
+  up) exit 0 ;;
+  status) printf '{\n  "Self": {\n    "DNSName": "lab.example.test."\n  },\n  "CurrentTailnet": {\n    "MagicDNSEnabled": %s\n  }\n}\n' "$MAGIC_DNS" ;;
+  ip) printf '100.64.0.1\n' ;;
+  debug) printf '{\n  "CorpDNS": %s,\n  "WantRunning": true\n}\n' "$ACCEPT_DNS" ;;
+  *) exit 1 ;;
+esac
+"""
+    )
+    tailscale.chmod(0o755)
+    getent = tmp_path / "getent"
+    getent.write_text(
+        """#!/bin/sh
+[ "$1" = hosts ] || exit 2
+printf '%s' "$2" > "$LOOKUP_FILE"
+[ "$LOOKUP_OK" = yes ]
+"""
+    )
+    getent.chmod(0o755)
+    lookup = tmp_path / "lookup"
+    result = subprocess.run(
+        ["sh"],
+        input=enroll.build_script("linux", _S, "test-key", "lab"),
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "MAGIC_DNS": magic_dns,
+            "ACCEPT_DNS": accept_dns,
+            "LOOKUP_OK": lookup_ok,
+            "LOOKUP_FILE": str(lookup),
+        },
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=True,
+    )
+    assert 'нода "lab" подключена' in result.stdout
+    if magic_dns == accept_dns == "true":
+        assert lookup.read_text() == "lab.example.test."
+    else:
+        assert not lookup.exists()
+    assert ("системный DNS не разрешает lab.example.test." in result.stderr) == warn
+    assert ("ufw status numbered" in result.stderr) == warn
 
 
 def test_windows_script():

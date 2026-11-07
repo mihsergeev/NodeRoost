@@ -5,6 +5,13 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.4] - 2026-11-08
+
+### Fixed
+
+- Linux enrollment now warns when MagicDNS is enabled but the system resolver cannot resolve the node's full name. The warning points to the local firewall and leaves the connection active.
+- Successful Linux enrollment exits cleanly when run with /bin/sh.
+
 ## [0.25.3] - 2026-11-07
 
 ### Added
