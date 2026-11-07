@@ -187,13 +187,29 @@ def _edit_hs_config(config_path: str, mutate) -> None:
     Path(_restart_flag_path(config_path)).touch()
 
 
+def _set_split_routes(ns: dict, routes: dict[str, list[str]]) -> None:
+    if not routes:
+        ns.pop("split", None)
+        return
+    current = ns.get("split")
+    if not isinstance(current, dict):
+        ns["split"] = routes
+        return
+    for name in list(current):
+        if name not in routes:
+            del current[name]
+    for name, upstreams in routes.items():
+        if name not in current or current[name] != upstreams:
+            current[name] = upstreams
+
+
 def _write_dns_config(
     config_path: str,
     magic_dns: bool,
     base_domain: str,
     nameservers: list[str],
     override_local: bool = False,
-    split: list[str] | None = None,
+    split: dict[str, list[str]] | None = None,
 ) -> None:
     def mut(data: dict) -> None:
         dns = data.get("dns")
@@ -208,13 +224,7 @@ def _write_dns_config(
             dns["nameservers"] = ns
         ns["global"] = list(nameservers)
         if split is not None:
-            # Маршруты зон: имена внутри сети спрашиваются у меша, всё остальное
-            # остаётся своему резолверу ноды. Пустой набор убираем целиком -
-            # headscale не любит пустую секцию, да и врать в конфиге незачем.
-            if split:
-                ns["split"] = {z: [dnsrecords.MESH_RESOLVER] for z in split}
-            else:
-                ns.pop("split", None)
+            _set_split_routes(ns, split)
         # headscale НЕ СТАРТУЕТ с пустым списком серверов при override_local_dns:
         # «dns.nameservers.global must be set when dns.override_local_dns is true».
         # Поэтому без списка флаг обязан быть выключен: очистка списка в панели
@@ -230,7 +240,7 @@ def _write_dns_config(
     _edit_hs_config(config_path, mut)
 
 
-def _write_split_zones(config_path: str, zones: list[str]) -> None:
+def _write_split_routes(config_path: str, routes: dict[str, list[str]]) -> None:
     """Прописать маршруты имён внутри сети (dns.nameservers.split).
 
     Отдельно от остальных настроек DNS: набор имён меняется сам по себе, а не
@@ -246,18 +256,22 @@ def _write_split_zones(config_path: str, zones: list[str]) -> None:
         if not isinstance(ns, dict):
             ns = {}
             dns["nameservers"] = ns
-        if zones:
-            ns["split"] = {z: [dnsrecords.MESH_RESOLVER] for z in zones}
-        else:
-            ns.pop("split", None)
+        _set_split_routes(ns, routes)
 
     _edit_hs_config(config_path, mut)
 
 
-def _split_zones_in(cfg: dict) -> list[str]:
-    ns = ((cfg.get("dns") or {}).get("nameservers") or {})
+def _dns_routes_in(cfg: dict) -> tuple[str, list[str], dict[str, list[str]]]:
+    dns = cfg.get("dns") or {}
+    ns = dns.get("nameservers")
+    if not isinstance(ns, dict):
+        return str(dns.get("base_domain") or ""), ns if isinstance(ns, list) else [], {}
     split = ns.get("split")
-    return sorted(split.keys()) if isinstance(split, dict) else []
+    return (
+        str(dns.get("base_domain") or ""),
+        list(ns.get("global") or []),
+        split if isinstance(split, dict) else {},
+    )
 
 
 def _write_network_config(config_path: str, v4: str, allocation: str) -> None:
@@ -290,6 +304,13 @@ async def update_dns(
             status.HTTP_400_BAD_REQUEST,
             "Базовый домен не должен совпадать с доменом control-сервера или быть его суффиксом",
         )
+    records = await settings_store.get_dns_records(session)
+    old_base, old_upstreams, have_routes = _dns_routes_in(cfg)
+    routes = dnsrecords.merge_split_routes(
+        have_routes,
+        dnsrecords.routes_for_split(records, old_base, old_upstreams),
+        dnsrecords.routes_for_split(records, bd, body.nameservers),
+    )
     try:
         _write_dns_config(
             settings.headscale_config_path,
@@ -297,9 +318,7 @@ async def update_dns(
             bd,
             body.nameservers,
             body.override_local_dns,
-            dnsrecords.routes_for_split(
-                await settings_store.get_dns_records(session), bd
-            ),
+            routes,
         )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(
@@ -550,24 +569,19 @@ async def update_dns_records(
                 f"Не удалось записать config.yaml: {e}",
             ) from e
         cfg = _read_hs_config(settings.headscale_config_path)
-    # Маршруты имён: без них имя внутри сети резолвится только там, где меш забрал
-    # весь DNS, - а он его забирать не должен. С маршрутом нода спрашивает у меша
-    # ровно эти имена и сохраняет собственный резолвер.
-    #
-    # Дописываем только НОВЫЕ имена: правка конфига стоит перезапуска headscale, на
-    # время которого встаёт регистрация нод. Появление имени без него не работает
-    # вовсе, а вот исчезнувшее никому не мешает - маршрут на него просто вернёт
-    # NXDOMAIN. Подчищается он при следующей правке настроек DNS, где перезапуск и
-    # так неизбежен.
-    have_zones = _split_zones_in(cfg)
-    want_zones = dnsrecords.routes_for_split(
-        stored, str((cfg.get("dns") or {}).get("base_domain") or "")
+    # Изолированная зона может остаться локальной после удаления ее последней
+    # записи. У публичного имени удаляем маршрут, чтобы вернуть обычный DNS.
+    base, upstreams, have_routes = _dns_routes_in(cfg)
+    previous = await settings_store.get_dns_records(session)
+    want_routes = dnsrecords.merge_split_routes(
+        have_routes,
+        dnsrecords.routes_for_split(previous, base, upstreams),
+        dnsrecords.routes_for_split(stored, base, upstreams),
+        keep_unused_private=True,
     )
-    if set(want_zones) - set(have_zones):
+    if want_routes != have_routes:
         try:
-            _write_split_zones(
-                settings.headscale_config_path, sorted(set(have_zones) | set(want_zones))
-            )
+            _write_split_routes(settings.headscale_config_path, want_routes)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -723,13 +737,7 @@ async def hs_info(_: CurrentUser) -> HsInfoOut:
     settings = get_settings()
     cfg = _read_hs_config(settings.headscale_config_path)
     dns = cfg.get("dns") or {}
-    ns = dns.get("nameservers") or {}
-    if isinstance(ns, dict):
-        global_ns = ns.get("global") or []
-    elif isinstance(ns, list):
-        global_ns = ns
-    else:
-        global_ns = []
+    base, global_ns, split = _dns_routes_in(cfg)
     derp = cfg.get("derp") or {}
     derp_server = derp.get("server") or {}
     pref = cfg.get("prefixes") or {}
@@ -737,10 +745,13 @@ async def hs_info(_: CurrentUser) -> HsInfoOut:
         server_url=str(cfg.get("server_url", "") or ""),
         dns=DnsInfo(
             magic_dns=bool(dns.get("magic_dns", False)),
-            base_domain=str(dns.get("base_domain", "") or ""),
+            base_domain=base,
             nameservers=[str(x) for x in global_ns],
             search_domains=[str(x) for x in (dns.get("search_domains") or [])],
             override_local_dns=bool(dns.get("override_local_dns", False)),
+            split_repair_required=any(
+                dnsrecords.is_recursive_split_route(upstreams) for upstreams in split.values()
+            ),
         ),
         derp=DerpInfo(
             embedded=bool(derp_server.get("enabled", False)),

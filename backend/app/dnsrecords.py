@@ -133,39 +133,83 @@ async def sync(session: AsyncSession, settings: Settings, nodes: list[dict]) -> 
         return False  # фичей не пользовались — не сорим файлом в каталоге конфига
     return write_file(path, entries_for(stored, nodes))
 
-# Резолвер меша: его раздаёт сам клиент Tailscale на каждой ноде.
-MESH_RESOLVER = "100.100.100.100"
+# These are local to each Tailscale client, not recursive upstreams.
+MESH_RESOLVERS = {
+    ipaddress.ip_address("100.100.100.100"),
+    ipaddress.ip_address("fd7a:115c:a1e0::53"),
+}
 
 
-def routes_for_split(records: list[dict], base_domain: str = "") -> list[str]:
-    """Что ноды должны спрашивать у меша, а не у своего резолвера.
+def _is_mesh_resolver(value: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(str(value).split("%", 1)[0])
+    except ValueError:
+        return False
+    return (getattr(addr, "ipv4_mapped", None) or addr) in MESH_RESOLVERS
 
-    Правило одно, но с двумя исходами:
 
-    * Имя в ВЫДУМАННОМ домене (`nas.mesh`, `loki.lab`) - маршрутизируем домен
-      целиком. В интернете его нет, отнимать у ноды нечего, зато следующее имя в
-      том же домене не потребует править конфиг и перезапускать headscale.
-    * Имя в НАСТОЯЩЕМ домене (`panel.example.com`) - маршрутизируем только само
-      имя. Домен там живёт своей жизнью, и маршрут на него забрал бы у ноды весь
-      его резолв: соседние публичные имена перестали бы открываться. Это не
-      теория - так и случилось на живой сети, когда маршрут ставился на домен.
+def is_recursive_split_route(upstreams: list[str]) -> bool:
+    return isinstance(upstreams, list) and bool(upstreams) and all(
+        _is_mesh_resolver(value) for value in upstreams
+    )
 
-    Базовый домен сюда не попадает: MagicDNS-имена клиент резолвит и так.
-    Выключенные имена тоже - они нодам не раздаются.
+
+def routes_for_split(
+    records: list[dict], base_domain: str = "", upstreams: list[str] | None = None
+) -> dict[str, list[str]]:
+    """Маршруты extra records, которые клиент должен обрабатывать через MagicDNS.
+
+    Для публичного имени маршрут охватывает само имя и его поддомены, но не
+    соседние имена. Неизвестные поддомены идут к заданным администратором
+    резолверам. Для изолированных зон и при отсутствии upstream пустой список
+    означает локальный авторитетный ответ (NXDOMAIN для неизвестного имени).
+    Quad100 нельзя использовать как upstream: запрос вернется к тому же клиенту.
     """
     from app import ca  # локально: ca тянет список TLD с диска
 
     public = set(ca.public_tlds())
     base = (base_domain or "").strip().strip(".").lower()
-    out: set[str] = set()
+    resolvers = [value for value in upstreams or [] if not _is_mesh_resolver(value)]
+    out: dict[str, list[str]] = {}
     for rec in records or []:
         if not rec.get("enabled", True):
             continue
         name = str(rec.get("name") or "").strip().strip(".").lower()
         if not name or name == base or (base and name.endswith("." + base)):
             continue
-        out.add(name if ca.tld_of(name) in public else zone_of(name))
-    return sorted(out)
+        if ca.tld_of(name) in public:
+            out[name] = list(resolvers)
+        else:
+            out[zone_of(name)] = []
+    return dict(sorted(out.items()))
+
+
+def merge_split_routes(
+    existing: dict[str, list[str]],
+    previous: dict[str, list[str]],
+    desired: dict[str, list[str]],
+    *,
+    keep_unused_private: bool = False,
+) -> dict[str, list[str]]:
+    """Обновить маршруты панели и убрать старые петли, сохранив ручные маршруты."""
+    from app import ca
+
+    public = set(ca.public_tlds())
+    result = dict(existing)
+    for name, values in existing.items():
+        legacy = is_recursive_split_route(values)
+        managed = legacy or (name in previous and values == previous[name])
+        if not managed:
+            continue
+        if name in desired:
+            result[name] = desired[name]
+        elif keep_unused_private and name != "." and ca.tld_of(name) not in public:
+            result[name] = []
+        else:
+            del result[name]
+    for name, values in desired.items():
+        result.setdefault(name, values)
+    return result
 
 
 def zone_of(name: str) -> str:

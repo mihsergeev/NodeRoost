@@ -480,8 +480,8 @@ const EN: Record<string, string> = {
   'выкл': 'off',
   'Базовый домен': 'Base domain',
   'DNS-серверы': 'DNS servers',
-  'Пока здесь что-то задано, все ноды отдают в меш весь свой DNS, а не только имена сети. Имена внутри сети работают и с пустым полем.':
-    'While anything is set here, every node hands its whole DNS to the mesh, not just the network names. Names inside the network work with this field empty.',
+  'При включенном переопределении ноды с DNS из меша используют эти серверы для всех имен.':
+    'When override is enabled, nodes that accept mesh DNS use these servers for all names.',
   'Свои DNS-серверы заберут у ВСЕХ нод весь DNS: сервер со своим резолвером (корпоративный, облачный, локальный) перестанет видеть внутренние имена, а там, где эти серверы из его сети недоступны, потеряет резолв целиком. Имена внутри сети работают и без этого поля. Всё равно задать?':
     'Your own DNS servers take over the whole DNS of EVERY node: a server with its own resolver - corporate, cloud or local - stops seeing internal names, and where those servers are unreachable from its network it loses name resolution entirely. Names inside the network work without this field. Set them anyway?',
   'DNS-серверы (через запятую)': 'DNS servers (comma-separated)',
@@ -549,8 +549,9 @@ const EN: Record<string, string> = {
   'Отпечаток SHA-256': 'SHA-256 fingerprint',
   'Настроить': 'Configure',
   'Подписывает': 'Signs',
-  'Эти серверы нужны, только если вы хотите навязать нодам свой резолвер. Имена внутри сети работают и без них: панель прописывает маршрут их зоны в меш, поэтому нода спрашивает у меша ровно свои имена, а остальное - у своего резолвера. А вот заданные здесь серверы клиент Tailscale берёт как основные для ВСЕХ имён, и сервер со своим резолвером (корпоративный со split-horizon, облачный, локальный) тихо перестаёт видеть внутренние имена; если эти серверы из его сети недоступны, он теряет резолв целиком. Поэтому лучше оставить поле пустым.':
-    'These servers are only needed if you want to force your own resolver onto the nodes. Names inside the network work without them: the panel routes their zone to the mesh, so a node asks the mesh about exactly its own names and its own resolver about everything else. Servers set here, on the other hand, are taken by the Tailscale client as the primary ones for EVERY name, and a server with its own resolver (corporate split-horizon, cloud, local) quietly stops seeing internal names; if those servers are unreachable from its network, it loses resolution altogether. So it is better to leave the field empty.',
+  'Эти DNS-серверы отвечают за публичные поддомены под переопределенными именами. Если поле пустое, такие запросы получают NXDOMAIN. Опция «Использовать только эти серверы» также направляет к ним остальные DNS-запросы.':
+    'These DNS servers resolve public subdomains below overridden names. With an empty list those queries receive NXDOMAIN. Use only these servers also sends other DNS queries to them.',
+  'Примените настройки, чтобы обновить старые маршруты DNS.': 'Apply the settings to update legacy DNS routes.',
   'Ноды панель обслуживает сама. Машину, которую подключали руками, проще всего научить доверять одной командой — она снимет прежний сертификат панели и поставит текущий:':
     'Nodes are handled by the panel itself. A machine you joined by hand is easiest to teach with a single command — it removes the panel’s previous certificate and installs the current one:',
   'Linux и macOS': 'Linux and macOS',

@@ -412,6 +412,7 @@ export type HsInfo = {
     nameservers: string[]
     search_domains: string[]
     override_local_dns: boolean
+    split_repair_required: boolean
   }
   derp: { embedded: boolean; urls: string[]; auto_update: boolean }
   ipv4_prefix: string

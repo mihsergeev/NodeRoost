@@ -312,16 +312,15 @@ async def test_switching_a_name_off_keeps_it_but_stops_handing_it_out(client, hs
     body = r.json()
     assert body["records"][0]["enabled"] is False  # запись на месте
     assert dnsrecords.read_file(str(records)) == []  # но нодам не раздаётся
-    assert not flag.exists()  # и без перезапуска headscale
+    assert flag.exists()  # убрать маршрут, чтобы вернуть публичный ответ
 
     back = await _put(client, token, [{"name": "acontrol.example.com", "node_id": "7"}])
     assert back.json()["records"][0]["enabled"] is True
     assert dnsrecords.read_file(str(records))[0]["value"] == "100.100.0.1"
 
 
-async def test_clearing_the_list_leaves_the_file_and_config_alone(client, hs_env):
-    """Пустой список — это пустой файл, а не снятый путь: снимать его значит
-    трогать конфиг и перезапускать headscale ради ничего."""
+async def test_clearing_public_records_keeps_the_records_file_configured(client, hs_env):
+    """Убираем публичный маршрут, сохраняя путь к пустому файлу записей."""
     cfg, records = hs_env
     token = await _login(client)
     await _put(client, token, [{"name": "acontrol.example.com", "node_id": "7"}])
@@ -330,8 +329,9 @@ async def test_clearing_the_list_leaves_the_file_and_config_alone(client, hs_env
     r = await _put(client, token, [])
     assert r.status_code == 200
     assert dnsrecords.read_file(str(records)) == []
-    assert not flag.exists()
+    assert flag.exists()
     data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert "split" not in data["dns"]["nameservers"]
     assert data["dns"]["extra_records_path"] == "/etc/headscale/extra-records.json"
 
 
@@ -346,11 +346,81 @@ def test_split_routes_fit_the_kind_of_domain():
         {"name": "srv.noderoost.internal", "enabled": True},  # базовый домен
         {"name": "off.lan", "enabled": False},                 # выключено
     ]
-    assert dnsrecords.routes_for_split(recs, "noderoost.internal") == [
-        "mesh",                # выдуманный домен - целиком
-        "panel.example.com",   # настоящий - только само имя
+    assert dnsrecords.routes_for_split(recs, "noderoost.internal") == {
+        "mesh": [],
+        "panel.example.com": [],
+    }
+    assert dnsrecords.routes_for_split(
+        recs, "noderoost.internal", ["192.0.2.53", "100.100.100.100", "fd7a:115c:a1e0::53"]
+    ) == {"mesh": [], "panel.example.com": ["192.0.2.53"]}
+    assert dnsrecords.routes_for_split([], "noderoost.internal") == {}
+
+
+async def test_dns_records_repair_legacy_split_without_changing_manual_routes(client, hs_env):
+    import yaml
+
+    cfg, _ = hs_env
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    data["dns"]["nameservers"] = {
+        "global": ["192.0.2.53"],
+        "split": {
+            "panel.example.com": ["100.100.100.100"],
+            "mesh": ["100.100.100.100"],
+            "old.example.com": ["100.100.100.100"],
+            "private.test": ["192.0.2.54"],
+        },
+    }
+    cfg.write_text(yaml.safe_dump(data), encoding="utf-8")
+    flag = cfg.parent.parent / ".restart-request"
+    token = await _login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    info = await client.get("/api/hs-info", headers=headers)
+    assert info.json()["dns"]["split_repair_required"] is True
+    payload = [
+        {"name": "panel.example.com", "node_id": "7"},
+        {"name": "nas.mesh", "node_id": "7"},
     ]
-    assert dnsrecords.routes_for_split([], "noderoost.internal") == []
+
+    r = await _put(client, token, payload)
+    assert r.status_code == 200
+    expected = {"panel.example.com": ["192.0.2.53"], "mesh": [], "private.test": ["192.0.2.54"]}
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["dns"]["nameservers"]["split"] == expected
+    info = await client.get("/api/hs-info", headers=headers)
+    assert info.json()["dns"]["split_repair_required"] is False
+    assert flag.exists()
+    flag.unlink()
+
+    r = await _put(client, token, payload)
+    assert r.status_code == 200
+    assert not flag.exists()
+
+    payload[0]["enabled"] = False
+    r = await _put(client, token, payload)
+    assert r.status_code == 200
+    assert flag.exists()
+    del expected["panel.example.com"]
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["dns"]["nameservers"]["split"] == expected
+
+
+async def test_dns_settings_refresh_public_split_upstreams_without_enabling_override(client, hs_env):
+    import yaml
+
+    cfg, _ = hs_env
+    token = await _login(client)
+    response = await _put(client, token, [{"name": "panel.example.com", "node_id": "7"}])
+    assert response.status_code == 200
+    initial = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert initial["dns"]["nameservers"]["split"] == {"panel.example.com": []}
+
+    response = await client.put(
+        "/api/hs-info/dns",
+        json={"magic_dns": True, "base_domain": "mesh.example.test", "nameservers": ["192.0.2.53"]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    dns = yaml.safe_load(cfg.read_text(encoding="utf-8"))["dns"]
+    assert dns["override_local_dns"] is False
+    assert dns["nameservers"]["split"] == {"panel.example.com": ["192.0.2.53"]}
 
 
 async def test_new_name_is_routed_to_the_mesh(client, hs_env):
@@ -366,7 +436,7 @@ async def test_new_name_is_routed_to_the_mesh(client, hs_env):
     import yaml
 
     data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
-    assert data["dns"]["nameservers"]["split"] == {"mesh": ["100.100.100.100"]}
+    assert data["dns"]["nameservers"]["split"] == {"mesh": []}
     assert flag.exists()  # без перезапуска headscale маршрут не подхватит
 
     flag.unlink()

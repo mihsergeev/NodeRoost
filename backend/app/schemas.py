@@ -613,6 +613,7 @@ class DnsInfo(BaseModel):
     nameservers: list[str] = []
     search_domains: list[str] = []
     override_local_dns: bool = False
+    split_repair_required: bool = False
 
 
 class DerpInfo(BaseModel):

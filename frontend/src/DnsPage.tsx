@@ -201,7 +201,8 @@ export function DnsPage({ onUnauthorized }: Props) {
     .filter(Boolean)
   const srvDirty =
     !!info &&
-    (magic !== info.dns.magic_dns ||
+    (info.dns.split_repair_required ||
+      magic !== info.dns.magic_dns ||
       override !== info.dns.override_local_dns ||
       domain.trim() !== info.dns.base_domain ||
       parsedServers.join(',') !== info.dns.nameservers.join(','))
@@ -210,9 +211,10 @@ export function DnsPage({ onUnauthorized }: Props) {
     // Единственная настройка, которой можно отнять у нод их DNS: спрашиваем о ней
     // прямо, а не надеемся, что человек прочитал пояснение под полем.
     if (
+      override &&
       parsedServers.length > 0 &&
       info &&
-      info.dns.nameservers.length === 0 &&
+      !info.dns.override_local_dns &&
       !window.confirm(
         t(
           'Свои DNS-серверы заберут у ВСЕХ нод весь DNS: сервер со своим резолвером (корпоративный, облачный, локальный) перестанет видеть внутренние имена, а там, где эти серверы из его сети недоступны, потеряет резолв целиком. Имена внутри сети работают и без этого поля. Всё равно задать?',
@@ -671,9 +673,9 @@ export function DnsPage({ onUnauthorized }: Props) {
                 placeholder="1.1.1.1, 1.0.0.1"
               />
             </label>
-            {parsedServers.length > 0 && (
+            {override && parsedServers.length > 0 && (
               <p className="form-error">
-                {t('Пока здесь что-то задано, все ноды отдают в меш весь свой DNS, а не только имена сети. Имена внутри сети работают и с пустым полем.')}
+                {t('При включенном переопределении ноды с DNS из меша используют эти серверы для всех имен.')}
               </p>
             )}
             <label className="field field-check">
@@ -689,9 +691,12 @@ export function DnsPage({ onUnauthorized }: Props) {
           </div>
           <p className="muted small settings-note">
             {t(
-              'Эти серверы нужны, только если вы хотите навязать нодам свой резолвер. Имена внутри сети работают и без них: панель прописывает маршрут их зоны в меш, поэтому нода спрашивает у меша ровно свои имена, а остальное - у своего резолвера. А вот заданные здесь серверы клиент Tailscale берёт как основные для ВСЕХ имён, и сервер со своим резолвером (корпоративный со split-horizon, облачный, локальный) тихо перестаёт видеть внутренние имена; если эти серверы из его сети недоступны, он теряет резолв целиком. Поэтому лучше оставить поле пустым.',
+              'Эти DNS-серверы отвечают за публичные поддомены под переопределенными именами. Если поле пустое, такие запросы получают NXDOMAIN. Опция «Использовать только эти серверы» также направляет к ним остальные DNS-запросы.',
             )}
           </p>
+          {info?.dns.split_repair_required && (
+            <p className="muted small settings-note">{t('Примените настройки, чтобы обновить старые маршруты DNS.')}</p>
+          )}
           {srvErr && <p className="form-error">{srvErr}</p>}
           {srvMsg && <p className="form-ok">{srvMsg}</p>}
           <div className="dns-actions">

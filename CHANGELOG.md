@@ -5,6 +5,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.5] - 2026-11-08
+
+### Fixed
+
+- Prevented split DNS from forwarding unknown names back to the Tailscale client. Mesh overrides keep their private answers, and unknown names in isolated zones return NXDOMAIN.
+- Public subdomains under an override use the DNS servers configured in the panel, when present. Sibling public names keep their usual resolution.
+- After upgrading, click **Apply** on the DNS page once to refresh legacy split routes.
+
 ## [0.25.4] - 2026-11-08
 
 ### Fixed

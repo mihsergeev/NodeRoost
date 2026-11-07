@@ -205,7 +205,7 @@ seeing the company's internal names - see the next section.
 The join dialog has a **"Mesh DNS"** tick. For Linux it is off by default, for
 personal machines it is on, and here is why.
 
-With DNS servers set in the DNS section, a node with mesh DNS hands over **all**
+With DNS servers set and **Use only these servers** enabled, a node with mesh DNS hands over **all**
 of its DNS, not just the network names: on Linux that is `~.`
 on the tailscale0 interface, on Windows an NRPT rule for every name. A server
 with its own resolver (corporate split-horizon, cloud, local) then quietly stops
@@ -213,6 +213,15 @@ seeing internal names and starts getting the public addresses of the same
 services. If the panel's resolvers are unreachable from its network at all, it
 loses resolution completely. The server keeps running, so this gets noticed late
 and by accident.
+
+A public name overridden in the mesh keeps its private answer. For other names
+below that exact name, Tailscale queries the DNS servers configured in the panel,
+even when **Use only these servers** is off. With no servers configured, those names
+receive NXDOMAIN. Sibling domains keep their usual resolver. Queries inside
+private zones stay in the mesh.
+
+After upgrading from 0.25.4 or earlier, click **Apply** in the DNS settings once to
+refresh the existing routes. This applies the new configuration by restarting Headscale.
 
 With the tick cleared the script passes `--accept-dns=false` to the client. The
 cost: `*.<base domain>` (MagicDNS) and the "names inside the network" from the
