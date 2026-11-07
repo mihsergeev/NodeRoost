@@ -5,6 +5,13 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.3] - 2026-11-07
+
+### Added
+
+- Set an optional company name in Settings to identify this NodeRoost instance in the browser tab after signing in.
+- Saving updates the tab title immediately and keeps it after a reload. Clear the field to restore the default NodeRoost title.
+
 ## [0.25.2] - 2026-11-02
 
 ### Fixed
