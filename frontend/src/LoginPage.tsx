@@ -55,6 +55,7 @@ export function LoginPage({ onLogin }: Props) {
           setNeedOtp(true)
           setError(t('Неверный код 2FA'))
         } else {
+          resetOtp()
           setError(t('Неверный логин или пароль'))
         }
       } else {
@@ -63,6 +64,13 @@ export function LoginPage({ onLogin }: Props) {
     } finally {
       setBusy(false)
     }
+  }
+
+  function resetOtp() {
+    setNeedOtp(false)
+    setOtp('')
+    setRemember(false)
+    setTrustDays(0)
   }
 
   return (
@@ -124,6 +132,14 @@ export function LoginPage({ onLogin }: Props) {
         <button type="submit" disabled={busy}>
           {busy ? t('Проверка…') : t('Войти')}
         </button>
+        {needOtp && (
+          <button type="button" className="ghost" disabled={busy} onClick={() => {
+            resetOtp()
+            setError(null)
+          }}>
+            {t('Вернуться к логину и паролю')}
+          </button>
+        )}
       </form>
     </div>
   )

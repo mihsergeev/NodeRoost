@@ -237,7 +237,7 @@ async def test_the_file_exists_before_the_config_points_at_it(client, hs_env, mo
     monkeypatch.setattr(
         api_settings,
         "_write_extra_records_path",
-        lambda c, p: (seen.append(records.exists()), real(c, p))[1],
+        lambda c, p, routes: (seen.append(records.exists()), real(c, p, routes))[1],
     )
     token = await _login(client)
     assert (
@@ -253,6 +253,38 @@ async def test_the_control_server_name_is_refused(client, hs_env):
     r = await _put(client, token, [{"name": "hs.example.com", "node_id": "7"}])
     assert r.status_code == 400
     assert "control-сервер" in r.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("control", "record"),
+    [("https://hs.example.com.", "example.com"), ("https://hs.lab", "other.lab")],
+)
+async def test_a_split_zone_cannot_cover_the_control_host(client, hs_env, control, record):
+    cfg, records = hs_env
+    original = cfg.read_text(encoding="utf-8").replace("https://hs.example.com", control)
+    cfg.write_text(original, encoding="utf-8")
+    token = await _login(client)
+    r = await _put(client, token, [{"name": record, "node_id": "7"}])
+    assert r.status_code == 400
+    assert "control-сервера" in r.json()["detail"]
+    assert cfg.read_text(encoding="utf-8") == original
+    assert not records.exists()
+    assert not (cfg.parent.parent / ".restart-request").exists()
+
+
+async def test_dns_settings_reject_a_split_route_covering_control_host(client, hs_env):
+    cfg, _ = hs_env
+    original = cfg.read_text(encoding="utf-8") + "  nameservers:\n    split:\n      example.com: []\n"
+    cfg.write_text(original, encoding="utf-8")
+    token = await _login(client)
+    r = await client.put(
+        "/api/hs-info/dns",
+        json={"magic_dns": True, "base_domain": "mesh.internal", "nameservers": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400
+    assert cfg.read_text(encoding="utf-8") == original
+    assert not (cfg.parent.parent / ".restart-request").exists()
 
 
 async def test_a_magicdns_name_is_refused(client, hs_env):

@@ -68,6 +68,8 @@ async def test_delete_gateway_cleans_dependents_only_after_headscale_accepts(
         await settings_store.set_acl_rules(session, rules)
         await settings_store.set_routing(session, routing)
         await settings_store.set_dns_records(session, records)
+        await settings_store.stash_node_meta(session, "gateway", meta["2"], old_id="2", key_id="101")
+        await settings_store.stash_node_meta(session, "other", meta["5"], old_id="5", key_id="102")
 
     login = await client.post("/api/auth/login", json={"username": "admin",
                                                      "password": ADMIN_PASSWORD})
@@ -80,6 +82,7 @@ async def test_delete_gateway_cleans_dependents_only_after_headscale_accepts(
         actual_rules = await settings_store.get_acl_rules(session)
         actual_routing = await settings_store.get_routing(session)
         actual_records = await settings_store.get_dns_records(session)
+        pending = json.loads(await settings_store.get_raw(session, settings_store.PENDING_META_KEY))
 
     if delete_fails:
         assert response.status_code == 502
@@ -87,6 +90,7 @@ async def test_delete_gateway_cleans_dependents_only_after_headscale_accepts(
         assert actual_meta == meta and actual_agents == agents
         assert actual_rules == rules and actual_routing == routing
         assert actual_records == records
+        assert set(pending) == {"gateway", "other"}
         return
 
     assert response.status_code == 204
@@ -104,3 +108,4 @@ async def test_delete_gateway_cleans_dependents_only_after_headscale_accepts(
     assert actual_rules == rules[1:]
     assert actual_routing == {"kept": {"src_kind": "node", "src": ["6"], "via": "5"}}
     assert actual_records == records[1:]
+    assert set(pending) == {"other"}

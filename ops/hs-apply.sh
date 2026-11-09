@@ -20,24 +20,42 @@ if [ ! -f "$APP_DIR/compose.yml" ]; then
     fi
 fi
 FLAG="$APP_DIR/data/headscale/.restart-request"
+IN_PROGRESS="$APP_DIR/data/headscale/.restart-in-progress"
 STAMP="/run/noderoost-hs-apply.stamp"
 MIN_GAP="${NODEROOST_HS_APPLY_GAP:-20}"
+CONFIG="$APP_DIR/data/headscale/config/config.yaml"
 
-[ -f "$FLAG" ] || exit 0
-rm -f "$FLAG"
+exec 9>/run/noderoost-hs-apply.lock
+flock -n 9 || exit 0
+[ -f "$FLAG" ] || [ -f "$IN_PROGRESS" ] || exit 0
 
-# Флаг ставит контейнер панели, а перезапуск делаем мы на хосте. Без паузы между
-# перезапусками контейнер мог крутить control-сервер в цикле: ставим флаг -
-# рестарт - ставим снова. Ждём, пока с прошлого раза пройдёт хотя бы MIN_GAP.
+# Systemd повторит обработку, пока есть запрос. Пауза ограничивает частоту
+# попыток даже при невалидном конфиге или отказе Docker.
 NOW=$(date +%s)
 LAST=$(cat "$STAMP" 2>/dev/null || echo 0)
 case "$LAST" in ''|*[!0-9]*) LAST=0 ;; esac
-if [ $((NOW - LAST)) -lt "$MIN_GAP" ]; then
-    echo "hs-apply: прошлый перезапуск был $((NOW - LAST))с назад - пропускаю" >&2
-    exit 0
-fi
-echo "$NOW" > "$STAMP" 2>/dev/null || true
+WAIT=$((MIN_GAP - NOW + LAST))
+[ "$WAIT" -le 0 ] || sleep "$WAIT"
+date +%s > "$STAMP"
 
 cd "$APP_DIR"
+# Переименование забирает только текущий запрос. Правка, поступившая во время
+# применения, создает новый флаг. Не удаляем ни один флаг при отказе.
+if [ -f "$FLAG" ]; then
+    mv -fT "$FLAG" "$IN_PROGRESS"
+fi
+REVISION=$(sha256sum "$CONFIG")
+docker compose run --rm --no-deps --pull never headscale configtest
+[ "$REVISION" = "$(sha256sum "$CONFIG")" ] || exit 0
+
 # docker compose сам подхватывает ./.env (COMPOSE_FILE=compose.yml:compose.caddy.yml)
 docker compose restart headscale
+for _ in $(seq 1 12); do
+    if timeout 5 docker compose exec -T headscale headscale health >/dev/null 2>&1; then
+        rm -f "$IN_PROGRESS"
+        exit 0
+    fi
+    sleep 2
+done
+echo "hs-apply: headscale не прошел проверку после перезапуска" >&2
+exit 1

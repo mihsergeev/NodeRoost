@@ -9,12 +9,12 @@ from math import ceil
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app import alerts, certs, dnsrecords, policy_apply, routing, settings_store
+from app import alerts, certs, dnsrecords, exitvia, policy_apply, routing, settings_store
 
 from app.config import Settings
 from app.hs_client import HeadscaleError, get_client
 from app.models import NodeMetricSample, NodeStatus
-from app.nodekind import effective_kind, is_online
+from app.nodekind import editable_tags, effective_kind, is_online
 
 log = logging.getLogger("noderoost.collector")
 
@@ -79,9 +79,34 @@ async def collect_once(
     names = {n["id"]: n["name"] for n in nodes}
     # тип ноды (server/device) — алертим только серверы (устройства гасят на ночь)
     async with session_factory() as session:
-        # Нода после переподключения приходит с НОВЫМ id — забираем отложенную
-        # заметку (тип, админ, описание) обратно, иначе она вернётся чистой.
-        await settings_store.claim_pending_meta(session, raw)
+        async def prepare_gateway(node: dict) -> bool:
+            nid = str(node["id"])
+            try:
+                current = await client.get_node(nid)
+                if not current or current.get("ipAddresses") != node.get("ipAddresses"):
+                    return False
+                key = (node.get("preAuthKey") or {}).get("id")
+                if key != (current.get("preAuthKey") or {}).get("id"):
+                    return False
+                tag = exitvia.gateway_tag(nid)
+                tags = editable_tags(current)
+                if tag not in tags:
+                    await policy_apply.declare_tags(session, client, settings, [tag])
+                    updated = await client.set_node_tags(nid, [*tags, tag])
+                    if not updated or tag not in editable_tags(updated):
+                        updated = await client.get_node(nid)
+                    if not updated or tag not in editable_tags(updated):
+                        log.warning("Headscale не подтвердил тег переподключённого шлюза %s", nid)
+                        return False
+                return True
+            except HeadscaleError:
+                log.exception("Не удалось восстановить тег переподключённого шлюза %s", nid)
+                return False
+
+        # Привязки вступают в силу только после установки тега нового шлюза.
+        async with policy_apply.write_lock():
+            if await settings_store.claim_pending_meta(session, raw, prepare_gateway):
+                await policy_apply.apply_policy(session, client, settings)
         meta = await settings_store.get_node_meta(session)
     kinds = {str(n.get("id", "")): effective_kind(n, meta) for n in raw}
     # «не беспокоить»: помеченные ноды наблюдаем как обычно, но не уведомляем
@@ -135,7 +160,11 @@ async def collect_once(
         # под тем же замком: иначе самоисцеление могло встрять между сохранением
         # правил в запросе админа и его же пушем
         async with policy_apply.write_lock():
-            healed = await policy_apply.reconcile_policy(session, client, settings, raw)
+            # Роли могли измениться за время сбора. Строим ACL по снимку из-под замка.
+            live_nodes = await client.get_nodes()
+            healed = bool(live_nodes or not raw) and await policy_apply.reconcile_policy(
+                session, client, settings, live_nodes
+            )
         if healed:
             log.info("ACL самоисцелён: набор нод изменился — политика перепушена")
     return total

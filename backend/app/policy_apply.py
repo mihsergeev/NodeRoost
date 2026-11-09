@@ -4,6 +4,7 @@
 периодически из коллектора как самоисцеление (см. reconcile_policy)."""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
@@ -11,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import aclgen, exitvia, routing, settings_store
 from app.config import Settings
-from app.hs_client import HeadscaleClient
+from app.hs_client import HeadscaleClient, HeadscaleError
 from app.nodekind import effective_kind, node_tags
+
+log = logging.getLogger(__name__)
 
 # Последняя успешно запушенная политика (HuJSON-строка). Нужна, чтобы коллектор
 # перепушивал ТОЛЬКО при изменении, а не каждый цикл. Сбрасывается на рестарте
@@ -148,18 +151,16 @@ async def declare_tags(
     туда он попадает, только когда использован в правиле. Новую роль иначе не
     завести вовсе: замкнутый круг.
 
-    Собираем ПОЛНУЮ политику (со всей синтетикой админ-нод и направлений) плюс
-    новые теги: если бы мы отправили сюда только хранимые правила, доступы на
-    время пропали бы. Best-effort — при неудаче headscale откажет на следующем
-    шаге, и ошибка дойдёт до пользователя.
+    Вызывающий держит общий замок до окончания смены тегов. Объявление использует
+    полную действующую политику, включая правила панели и маршрутизацию.
     """
-    generated = await build_policy(session, client, settings, extra_tags=tags)
-    if generated is None:
+    if not tags:
         return
-    try:
+    async with write_lock():
+        generated = await build_policy(session, client, settings, extra_tags=tags)
+        if generated is None:
+            raise HeadscaleError("Не удалось собрать политику для объявления тегов")
         await client.set_policy(generated)
-    except Exception:  # noqa: BLE001 — не роняем назначение тега
-        pass
 
 
 async def push_policy(
@@ -175,20 +176,22 @@ async def push_policy(
     этом продолжает показывать успех.
     """
     global _last_pushed
-    generated = await build_policy(session, client, settings)
-    if generated is None:
-        # Сборка упала (headscale недоступен, битая запись в хранилище) — это НЕ
-        # успех. Раньше возвращалась пустая строка, и вызывающий считал, что ACL
-        # обновлён: отзыв доступа фиксировался в хранилище, а в силе оставались
-        # прежние, более широкие правила. Отказ должен быть виден, чтобы вызывающий
-        # откатился.
-        return "не удалось собрать политику (headscale недоступен?) — изменение не применено"
-    try:
-        await client.set_policy(generated)
-        _last_pushed = generated
-        return ""
-    except Exception as exc:  # noqa: BLE001 — текст отдаём вызывающему
-        return str(exc)
+    async with write_lock():
+        generated = await build_policy(session, client, settings)
+        if generated is None:
+            return "не удалось собрать политику (headscale недоступен?) — изменение не применено"
+        try:
+            await client.set_policy(generated)
+            _last_pushed = generated
+            return ""
+        except Exception as exc:  # noqa: BLE001 — текст отдаём вызывающему
+            return str(exc) or type(exc).__name__
+
+
+async def require_policy(session: AsyncSession, client: HeadscaleClient, settings: Settings) -> None:
+    err = await push_policy(session, client, settings)
+    if err:
+        raise HeadscaleError(err)
 
 
 async def apply_policy(
@@ -201,8 +204,9 @@ async def apply_policy(
     отзыва: в панели доступ снят, а в сети правило снова действует - до
     следующего цикла самоисцеления.
     """
-    async with write_lock():
-        await push_policy(session, client, settings)
+    err = await push_policy(session, client, settings)
+    if err:
+        log.warning("Не удалось применить политику Headscale: %s", err)
 
 
 def _same_policy(a: str, b: str) -> bool:

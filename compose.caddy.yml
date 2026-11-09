@@ -12,6 +12,10 @@
 #      отовсюду); управляющий /api/v1 и /swagger режем на Caddy (404), наружу
 #      остаётся только узловой контур. Панель ходит в /api/v1 по внутренней сети.
 services:
+  backend:
+    environment:
+      NODEROOST_TRUSTED_PROXY_HOPS: ${NODEROOST_TRUSTED_PROXY_HOPS:-2}
+
   frontend:
     # caddy проксирует по внутренней сети — host-порт не нужен (снимаем из base)
     ports: !reset []

@@ -37,6 +37,19 @@ def test_keys_are_pruned_not_grown_forever():
     t = 1000.0
     for i in range(ratelimit._MAX_KEYS + 50):
         ratelimit.too_many(f"10.0.{i // 256}.{i % 256}", now=t)
+    assert len(ratelimit._hits) == ratelimit._MAX_KEYS
     # все записи протухли → следующий вызов подчищает их
     ratelimit.too_many("1.2.3.4", now=t + ratelimit.PUBLIC_WINDOW + 1)
     assert len(ratelimit._hits) < ratelimit._MAX_KEYS
+
+
+def test_rejected_hits_do_not_extend_or_grow_the_window(monkeypatch):
+    from collections import OrderedDict
+
+    monkeypatch.setattr(ratelimit, "_hits", OrderedDict())
+    assert not ratelimit.too_many("source", limit=2, now=1000)
+    assert not ratelimit.too_many("source", limit=2, now=1001)
+    for _ in range(100):
+        assert ratelimit.too_many("source", limit=2, now=1059)
+    assert list(ratelimit._hits["source"]) == [1000, 1001]
+    assert not ratelimit.too_many("source", limit=2, now=1060)

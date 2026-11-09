@@ -1,3 +1,5 @@
+import json
+
 from app import settings_store
 from app.api.nodes import _map_node, _normalize_tags
 from tests.conftest import ADMIN_PASSWORD
@@ -74,6 +76,116 @@ async def _login(client):
         "/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD}
     )
     return r.json()["access_token"]
+
+
+async def _policy_nodes(client, monkeypatch):
+    from app import policy_apply
+    from app.api import nodes as api_nodes
+    from app.hs_client import HeadscaleError
+
+    class Control:
+        def __init__(self):
+            self.nodes = {
+                "70": {"id": "70", "ipAddresses": ["100.64.0.70"], "tags": ["tag:servers"]},
+                "71": {"id": "71", "ipAddresses": ["100.64.0.71"], "tags": []},
+            }
+            self.policy = {}
+            self.pushes = 0
+            self.lose_push_response = None
+
+        async def get_node(self, nid):
+            return self.nodes.get(nid)
+
+        async def get_nodes(self):
+            return list(self.nodes.values())
+
+        async def set_node_tags(self, nid, tags):
+            assert policy_apply._write_lock.locked()
+            assert set(tags) <= self.policy["tagOwners"].keys()
+            self.nodes[nid]["tags"] = tags
+            return self.nodes[nid]
+
+        async def set_policy(self, policy):
+            assert policy_apply._write_lock.locked()
+            self.policy = json.loads(policy)
+            self.pushes += 1
+            if self.pushes == self.lose_push_response:
+                raise HeadscaleError("ответ Headscale потерян после записи")
+
+    hs = Control()
+    monkeypatch.setattr(api_nodes, "get_client", lambda _: hs)
+    monkeypatch.setattr(api_nodes, "require_hs", lambda _: None)
+    return hs, {"Authorization": f"Bearer {await _login(client)}"}
+
+
+async def test_admin_revocation_rolls_back_after_headscale_loses_response(client, monkeypatch):
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    url = "/api/nodes/71/meta"
+    grant = await client.post(url, headers=headers, json={"admin": True, "description": "before"})
+    assert grant.status_code == 200, grant.text
+    assert grant.json()["admin"]
+    previous = hs.policy
+    assert any(r["src"] == ["100.64.0.71"] for r in previous["acls"])
+
+    hs.lose_push_response = hs.pushes + 1
+    failed = await client.post(url, headers=headers, json={"admin": False, "description": "after"})
+    assert failed.status_code == 502, failed.text
+    assert hs.policy == previous
+    unchanged = (await client.get("/api/nodes/71", headers=headers)).json()
+    assert unchanged["admin"] is True and unchanged["description"] == "before"
+
+    retried = await client.post(url, headers=headers, json={"admin": False})
+    assert retried.status_code == 200, retried.text
+    assert not retried.json()["admin"]
+    assert not any(r["src"] == ["100.64.0.71"] for r in hs.policy["acls"])
+
+
+async def test_exit_client_revocation_rolls_back_then_clears_forced_agent(client, monkeypatch):
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    gateway = await client.post("/api/nodes/70/meta", headers=headers, json={"exit_gateway": True})
+    assert gateway.status_code == 200, gateway.text
+    force = await client.post("/api/nodes/71/meta", headers=headers, json={"force_exit": "70"})
+    assert force.status_code == 200, force.text
+    assert force.json()["exit_via"] == ["70"]
+    previous = hs.policy
+    assert previous["grants"][0]["via"] == ["tag:xgw-70"]
+
+    url = "/api/nodes/70/exit-clients"
+    hs.lose_push_response = hs.pushes + 1
+    failed = await client.post(url, headers=headers, json={"devices": []})
+    assert failed.status_code == 502, failed.text
+    assert hs.policy == previous
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        assert (await settings_store.get_node_meta(session))["71"]["force_exit"] == "70"
+        assert (await settings_store.get_agent_all(session))["71"]["use_exit"] == "100.64.0.70"
+
+    removed = await client.post(url, headers=headers, json={"devices": []})
+    assert removed.status_code == 200, removed.text
+    updated = (await client.get("/api/nodes/71", headers=headers)).json()
+    assert updated["exit_via"] == [] and updated["force_exit"] == ""
+    assert not hs.policy.get("grants")
+    async with factory() as session:
+        assert "use_exit" not in (await settings_store.get_agent_all(session))["71"]
+
+
+async def test_roles_restore_previous_tags_and_policy_after_final_push_fails(client, monkeypatch):
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    url = "/api/nodes/70/tags"
+    initial = await client.post(url, headers=headers, json={"tags": ["original"]})
+    assert initial.status_code == 200, initial.text
+    previous = hs.policy
+    hs.lose_push_response = hs.pushes + 2  # объявление прошло, итоговый ACL не подтверждён
+    failed = await client.post(url, headers=headers, json={"tags": ["replacement"]})
+    assert failed.status_code == 502, failed.text
+    assert hs.nodes["70"]["tags"] == ["tag:original"]
+    assert hs.policy == previous
+
+    retried = await client.post(url, headers=headers, json={"tags": ["replacement"]})
+    assert retried.status_code == 200, retried.text
+    assert hs.nodes["70"]["tags"] == ["tag:replacement"]
+    assert "tag:replacement" in hs.policy["tagOwners"]
+    assert "tag:original" not in hs.policy["tagOwners"]
 
 
 async def test_nodes_requires_auth(client):

@@ -180,7 +180,7 @@ export function GrantModal({
             <input
               value={dest}
               onChange={(e) => setDest(e.target.value)}
-              placeholder="8.8.8.8, 10.0.0.0/8, myip.ru"
+              placeholder="8.8.8.8, 10.0.0.0/8, service.example.com"
             />
             <span className="muted small">
               {t('IP/подсеть — прямой доступ к этим адресам в тайлнете (напр. subnet-маршрут, конкретный хост). Сайт резолвится в IP. Обычный выход в интернет так НЕ настраивается — для него в «Изменить ноду» есть «Выход в интернет через».')}

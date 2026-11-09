@@ -115,8 +115,18 @@ const EN: Record<string, string> = {
     "Keep the archive as you would a private key: it holds the second-factor secret, the admin's password hash, the agent tokens and the control server's own keys. Whoever gets the file gets the network.",
   'headscale не принимает ключ панели — выпустите новый и впишите в .env':
     "headscale rejects the panel's key — issue a new one and put it in .env",
-  'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.':
-    'The change is saved but headscale has not restarted: the host helper is missing. Run `sudo ops/update.sh` on the server (it installs one) or restart it by hand: `docker compose restart headscale`.',
+  'Не удалось загрузить правила доступа': 'Could not load access rules',
+  'Правила доступа изменились. Проверьте актуальные правила и повторите правку.':
+    'Access rules changed. Review the current rules and make your edit again.',
+  'Часть изменений уже сохранена. Проверьте значения перед повтором.':
+    'Some changes were saved. Review the values before retrying.',
+  'Повторить удаление ноды «{name}» (ID {id})?': 'Retry deleting “{name}” (ID {id})?',
+  'Удаляем «{name}» (ID {id})…': 'Deleting “{name}” (ID {id})…',
+  'Удаление «{name}» (ID {id}) не подтверждено.': 'Deletion of “{name}” (ID {id}) is unconfirmed.',
+  'Повторить удаление': 'Retry deletion',
+  'Этот ID теперь относится к другой ноде.': 'This ID now belongs to a different node.',
+  'Нода из ссылки не найдена (ID {id}).': 'The linked node was not found (ID {id}).',
+  'Вернуться к логину и паролю': 'Return to username and password',
   'Создайте бота через @BotFather, вставьте его токен и chat_id (свой ID узнаете у @userinfobot).':
     'Create a bot with @BotFather, paste its token and a chat_id (@userinfobot tells you yours).',
   'Выбор exit-ноды — на стороне клиента. Отдайте это пользователю.':
@@ -487,7 +497,7 @@ const EN: Record<string, string> = {
   'DNS-серверы (через запятую)': 'DNS servers (comma-separated)',
   'Применить': 'Apply',
   'Применение…': 'Applying…',
-  'Сохранено. headscale перезапускается…': 'Saved. headscale is restarting…',
+  'Сохранено': 'Saved',
   'Применить изменения DNS? headscale перезапустится (~10–15 c), на это время регистрация нод приостановится. Смена базового домена меняет MagicDNS-имена всех нод.':
     'Apply DNS changes? headscale will restart (~10–15 s), pausing node registration meanwhile. Changing the base domain changes the MagicDNS names of all nodes.',
   'Применяется с перезапуском headscale (~10–15 c). Смена базового домена меняет MagicDNS-имена всех нод.':
@@ -504,15 +514,14 @@ const EN: Record<string, string> = {
     'No names yet. The usual case: a panel or an admin page lives on a name of its own and is closed from outside — add that name and point it at the node it runs on. The other case: a name for something that sits behind a node and takes no client of its own (a NAS, an IPMI board, a camera) — then give an address by hand instead of a node.',
   'пока не настроено': 'not set up yet',
   'записано, ждёт перезапуска headscale': 'written, waiting for headscale to restart',
-  'раздаётся нодам': 'handed out to nodes',
+  'настроено': 'configured',
   'Имя ведёт на адрес в сети — но только для машин сети. Публичный DNS панель не трогает: снаружи имя ведёт туда же, куда вело, и кто не в сети — заходит как раньше. Так к сервису, закрытому вайтлистом, ходят по внутреннему адресу.':
     'A name points at an address on the network — but only for machines on it. Public DNS is left alone: from outside the name leads where it always did, and whoever is not on the network gets in as before. That is how you reach a service closed behind an address allowlist by its internal address.',
-  'Галочка слева переключает имя между «внутрь сети» и «как снаружи» — снятая оставляет запись в списке, но нодам её не раздаёт. Переключается для всей сети сразу: адресно, по машинам, headscale раздавать имена не умеет. Имя получают и те машины, которым доступ к этому серверу не открыт: у них оно перестанет открываться совсем, наружу за ним они больше не пойдут. Правки применяются без перезапуска headscale; исключение — самое первое имя.':
-    'The tick on the left switches a name between “inside the network” and “as from outside” — unticked, the record stays in the list but is not handed to the nodes. It switches for the whole network at once: headscale cannot hand names out machine by machine. Machines with no access to that server get the name too: for them it stops opening at all, as they will no longer go out to the internet for it. Edits apply without restarting headscale; the very first name is the exception.',
+  'Галочка слева переключает имя между «внутрь сети» и «как снаружи» для всех нод. Имя внутри сети получат и ноды без доступа к указанному серверу. У них адрес перестанет открываться. Первая настройка имен и изменения маршрутов DNS требуют перезапуска headscale.':
+    'The checkbox switches a name between internal and external resolution for all nodes. Nodes without access to the target server also receive the internal name and lose access to that address. The first setup and DNS route changes require a headscale restart.',
   'Вести внутрь сети': 'Point inside the network',
-  'Первое имя нужно один раз показать headscale: он перезапустится (~10–15 c), на это время регистрация нод приостановится. Дальнейшие правки применяются без перезапуска.':
-    'The first name has to be shown to headscale once: it will restart (~10–15 s), pausing node registration meanwhile. Later edits apply without a restart.',
-  'Сохранено — имена уже раздаются нодам': 'Saved — the names are already going out to the nodes',
+  'Сохранить имена? При первой настройке или изменении маршрутов DNS headscale перезапустится. На это время регистрация нод приостановится.':
+    'Save these names? On first setup or when DNS routes change, headscale will restart. Node registration pauses during the restart.',
   'адрес вручную': 'address by hand',
   'На ноде агент от прошлого релиза — новых возможностей панели он не понимает. Обновление ставится только с подписью: нода проверит её ключом, вшитым при установке, и чужой скрипт не примет.':
     'The node runs an agent from an earlier release — it does not understand the panel’s newer abilities. An update installs only when signed: the node checks it against the key baked in at install time and refuses anything else.',

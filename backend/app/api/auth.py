@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
+from urllib.parse import urlparse
 
 from app import alerts, audit, devices, ratelimit, totp
 from app.clientip import client_ip
@@ -77,6 +78,8 @@ def _secure_request(request: Request) -> bool:
     Флаг Secure на куке за http браузер молча игнорирует, и устройство тогда не
     запоминается вовсе - поэтому ставим его по факту, а не всегда.
     """
+    if urlparse(get_settings().panel_url).scheme == "https":
+        return True
     proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
     return (proto or request.url.scheme) == "https"
 

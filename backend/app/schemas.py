@@ -493,6 +493,7 @@ class AclRule(RequestModel):
 
 class AclRulesIn(RequestModel):
     rules: list[AclRule] = Field(default_factory=list, max_length=500)
+    revision: str | None = None
 
 
 class AgentIn(RequestModel):
@@ -580,6 +581,7 @@ class ResolveHostOut(BaseModel):
 class AclRulesOut(BaseModel):
     rules: list[AclRule] = []
     generated: str = ""  # сгенерированный HuJSON (read-only превью)
+    revision: str
 
 
 # --- API-ключи headscale + инфо DNS/DERP ---

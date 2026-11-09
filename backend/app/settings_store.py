@@ -2,7 +2,9 @@
 
 import asyncio
 import hmac
+import ipaddress
 import json
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -189,26 +191,26 @@ PENDING_META_KEY = "node_meta_pending"
 
 @serialized
 async def stash_node_meta(
-    session: AsyncSession, name: str, entry: dict, old_id: str = ""
+    session: AsyncSession, name: str, entry: dict, old_id: str = "", key_id: str = ""
 ) -> None:
-    """Отложить заметку о ноде по её ИМЕНИ — на время переподключения.
+    """Отложить заметку до регистрации одноразовым ключом переподключения.
 
-    Переподключение удаляет ноду в headscale и заводит заново, с новым id;
-    заметка панели привязана к id и осталась бы висеть в пустоте. Ключ — имя,
-    потому что это единственное, что переживает пересоздание. Старый id тоже
-    запоминаем: на него ссылаются правила доступа и направления, и их придётся
-    перевести на новый (см. claim_pending_meta).
+    Имя остаётся ключом записи для совместимости с сохранёнными заметками.
+    Старый id нужен для перевода ссылок на новую ноду.
     """
     if not name or (not entry and not old_id):
         return
     raw = await _get_raw(session, PENDING_META_KEY)
     pending = json.loads(raw) if raw else {}
-    pending[name] = {"meta": entry, "old_id": str(old_id)}
+    pending[name] = {"meta": entry, "old_id": str(old_id), "key_id": str(key_id)}
     await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
 
 
-@serialized
-async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
+async def claim_pending_meta(
+    session: AsyncSession,
+    nodes: list[dict],
+    prepare_gateway: Callable[[dict], Awaitable[bool]] | None = None,
+) -> int:
     """Вернуть отложенные заметки нодам, которые уже переподключились.
 
     Что администратор успел выставить руками, не трогаем: из отложенного берём
@@ -216,31 +218,54 @@ async def claim_pending_meta(session: AsyncSession, nodes: list[dict]) -> int:
     отложенное при подключении (например «не брать DNS из меша») терялось, стоило
     панели первой записать тип ноды.
     """
-    raw = await _get_raw(session, PENDING_META_KEY)
-    pending = json.loads(raw) if raw else {}
-    if not pending:
-        return 0
-    meta = await get_node_meta(session)
-    moved = 0
-    for n in nodes or []:
-        name = str(n.get("givenName") or n.get("name") or "")
-        nid = str(n.get("id", ""))
-        if name not in pending or not nid:
-            continue
-        entry = pending.pop(name)
-        # старый формат (только заметка) — переживает обновление панели
-        note = entry.get("meta", entry) if isinstance(entry, dict) else {}
-        old_id = str(entry.get("old_id", "")) if isinstance(entry, dict) else ""
-        if note:
-            cur = meta.get(nid) if isinstance(meta.get(nid), dict) else {}
-            meta[nid] = {**note, **cur}  # выставленное руками сильнее отложенного
-        if old_id and old_id != nid:
-            await _repoint_node_id(session, old_id, nid)
-        moved += 1
-    if moved:
-        await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
-        await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
-    return moved
+    from app.aclgen import MESH_RANGE, _ipv4
+
+    async with atomic_update(session):
+        raw = await _get_raw(session, PENDING_META_KEY)
+        pending = json.loads(raw) if raw else {}
+        if not pending:
+            return 0
+        by_key = {
+            str(e["key_id"]): name for name, e in pending.items()
+            if isinstance(e, dict) and e.get("key_id")
+        }
+        meta = await get_node_meta(session)
+        moved = 0
+        for n in nodes or []:
+            key = str((n.get("preAuthKey") or {}).get("id") or "")
+            name = by_key.get(key) or str(n.get("givenName") or n.get("name") or "")
+            nid = str(n.get("id", ""))
+            entry = pending.get(name)
+            if not isinstance(entry, dict) or not nid:
+                continue
+            old_id = str(entry.get("old_id") or "")
+            expected_key = str(entry.get("key_id") or "")
+            if nid == old_id or (expected_key and expected_key != key):
+                continue
+            note = entry.get("meta", entry) or {}  # старый формат: только заметка
+            merged = {**note, **(meta.get(nid) or {})}
+            gateway_ip = ""
+            if merged.get("exit_gateway"):
+                gateway_ip = _ipv4(n) or ""
+                try:
+                    in_mesh = bool(gateway_ip and ipaddress.ip_address(gateway_ip) in MESH_RANGE)
+                except ValueError:
+                    in_mesh = False
+                if not in_mesh:
+                    continue
+                if prepare_gateway is not None and not await prepare_gateway(n):
+                    continue
+            if merged:
+                meta[nid] = merged
+            if old_id:
+                await _repoint_node_id(session, old_id, nid, meta=meta, gateway_ip=gateway_ip)
+                meta.pop(old_id, None)
+            pending.pop(name)
+            moved += 1
+        if moved:
+            await _set_raw(session, NODE_META_KEY, json.dumps(meta, ensure_ascii=False))
+            await _set_raw(session, PENDING_META_KEY, json.dumps(pending, ensure_ascii=False))
+        return moved
 
 
 @serialized
@@ -295,9 +320,20 @@ async def forget_node_refs(session: AsyncSession, node_id: str) -> None:
         # меше переиспользуются, и однажды оно приведёт на чужую машину
         await set_dns_records(session, left)
 
+    raw = await _get_raw(session, PENDING_META_KEY)
+    pending = json.loads(raw) if raw else {}
+    kept_pending = {
+        name: entry for name, entry in pending.items()
+        if not isinstance(entry, dict) or str(entry.get("old_id") or "") != node_id
+    }
+    if len(kept_pending) != len(pending):
+        await _set_raw(session, PENDING_META_KEY, json.dumps(kept_pending, ensure_ascii=False))
+
 
 @serialized
-async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
+async def _repoint_node_id(
+    session: AsyncSession, old: str, new: str, *, meta: dict | None = None, gateway_ip: str = ""
+) -> None:
     """Перевести всё, что ссылалось на ноду по id, на её новый id.
 
     После переподключения нода — та же машина, но для headscale уже другая
@@ -331,9 +367,23 @@ async def _repoint_node_id(session: AsyncSession, old: str, new: str) -> None:
         await set_routing(session, directions)
 
     agents = await get_agent_all(session)
-    if old in agents and new not in agents:
-        agents[new] = agents.pop(old)
+    if old in agents or gateway_ip:
+        previous_agent = agents.pop(old, {})
+        agents[new] = {**previous_agent, **(agents.get(new) or {})}
+        if gateway_ip:
+            agents[new]["exit"] = True
         await set_agent_all(session, agents)
+
+    if meta is not None and gateway_ip:
+        for nid, entry in meta.items():
+            if not isinstance(entry, dict):
+                continue
+            via = entry.get("exit_via") or []
+            if old in via:
+                entry["exit_via"] = list(dict.fromkeys(new if v == old else v for v in via))
+            if entry.get("force_exit") == old:
+                entry["force_exit"] = new
+                await set_agent_use_exit(session, nid, gateway_ip)
 
     records = await get_dns_records(session)
     touched = False
@@ -420,9 +470,16 @@ async def set_gateway_clients(
         entry = entry if isinstance(entry, dict) else {}
         via = [str(i) for i in (entry.get("exit_via") or [])]
         has, want = gateway_id in via, did in allowed
-        if want == has:
+        clear_force = not want and str(entry.get("force_exit") or "") == gateway_id
+        if want == has and not clear_force:
             continue
-        via = via + [gateway_id] if want else [v for v in via if v != gateway_id]
+        if want and not has:
+            via.append(gateway_id)
+        elif not want:
+            via = [v for v in via if v != gateway_id]
+        if clear_force:
+            entry.pop("force_exit", None)
+            await set_agent_use_exit(session, did, "")
         changed = True
         if via:
             entry["exit_via"] = via
@@ -464,6 +521,29 @@ async def get_agent_all(session: AsyncSession) -> dict:
 
 async def set_agent_all(session: AsyncSession, data: dict) -> None:
     await _set_raw(session, AGENT_KEY, json.dumps(data, ensure_ascii=False))
+
+
+@serialized
+async def set_agent_use_exit(session: AsyncSession, node_id: str, ip: str) -> None:
+    """Сохранить IPv4 шлюза в конфиге агента или сбросить принудительный выход."""
+    from app.aclgen import MESH_RANGE
+
+    if ip:
+        try:
+            if ipaddress.ip_address(ip) not in MESH_RANGE:
+                ip = ""
+        except ValueError:
+            ip = ""
+    agents = await get_agent_all(session)
+    cfg = agents.get(node_id) or {}
+    if str(cfg.get("use_exit") or "") == ip:
+        return
+    if ip:
+        cfg["use_exit"] = ip
+    else:
+        cfg.pop("use_exit", None)
+    agents[node_id] = cfg
+    await set_agent_all(session, agents)
 
 
 def _same_token(stored: object, given: str) -> bool:

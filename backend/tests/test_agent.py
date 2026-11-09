@@ -66,7 +66,8 @@ def test_agent_explains_a_deleted_node():
     setup = agent.build_setup("https://hs.example/agent/tok")
     assert "404" in setup
     assert "панель больше не знает этот узел" in setup
-    assert "/remove | sh" in setup           # готовая команда, чтобы убрать агента
+    assert "systemctl disable --now noderoost-agent.timer" in setup
+    assert "/remove | sh" not in setup
 
 
 def test_agent_does_not_start_tailscaled_behind_the_admin():

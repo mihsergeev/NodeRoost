@@ -293,7 +293,7 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
               <input
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
-                placeholder="203.0.113.7, 10.0.0.0/24, myip.ru"
+                placeholder="203.0.113.7, 10.0.0.0/24, service.example.com"
                 onKeyDown={(e) => e.key === 'Enter' && addRoute()}
               />
               <button className="ghost small" onClick={addRoute} disabled={busy || !dest.trim()}>

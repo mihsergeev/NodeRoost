@@ -6,6 +6,7 @@
 """
 
 import time
+from collections import OrderedDict, deque
 
 WINDOW = 300  # сек: окно подсчёта неудачных попыток
 MAX_FAILURES = 10  # неудач в окне до блокировки
@@ -25,8 +26,20 @@ PUBLIC_MAX = 60
 # способом съесть память панели запросами с рандомных адресов.
 _MAX_KEYS = 10_000
 
-_failures: dict[str, list[float]] = {}
-_hits: dict[str, list[float]] = {}
+_failures: OrderedDict[str, deque[float]] = OrderedDict()
+_hits: OrderedDict[str, deque[float]] = OrderedDict()
+
+
+def _make_room(entries: OrderedDict[str, deque[float]], cutoff: float) -> bool:
+    # Порядок - по последней принятой попытке. Отказы не продлевают окно.
+    while entries and next(iter(entries.values()))[-1] <= cutoff:
+        entries.popitem(last=False)
+    return len(entries) < _MAX_KEYS
+
+
+def _expire(times: deque[float], cutoff: float) -> None:
+    while times and times[0] <= cutoff:
+        times.popleft()
 
 
 def too_many(
@@ -37,27 +50,34 @@ def too_many(
     now: float | None = None,
 ) -> bool:
     """Регистрирует обращение и говорит, превышен ли лимит (скользящее окно)."""
+    if limit <= 0:
+        return True
     t = _now(now)
-    if len(_hits) > _MAX_KEYS:
-        for k in [k for k, v in _hits.items() if not v or t - v[-1] > window]:
-            _hits.pop(k, None)
-    times = [ts for ts in _hits.get(key, []) if t - ts < window]
+    times = _hits.get(key)
+    if times is None:
+        if not _make_room(_hits, t - window):
+            return True
+        times = _hits[key] = deque()
+    _expire(times, t - window)
+    if len(times) >= limit:
+        return True
     times.append(t)
-    _hits[key] = times
-    return len(times) > limit
+    _hits.move_to_end(key)
+    return False
 
 
 def _now(now: float | None) -> float:
-    return time.time() if now is None else now
+    return time.monotonic() if now is None else now
 
 
 def is_locked(key: str, *, now: float | None = None) -> bool:
     t = _now(now)
-    times = [ts for ts in _failures.get(key, []) if t - ts < LOCKOUT]
-    if times:
-        _failures[key] = times
-    else:
-        _failures.pop(key, None)
+    times = _failures.get(key)
+    if times is None:
+        return not _make_room(_failures, t - LOCKOUT)
+    _expire(times, t - LOCKOUT)
+    if not times:
+        _failures.pop(key)
     # блокируем, пока в пределах LOCKOUT набрано >= MAX_FAILURES неудач
     return len(times) >= MAX_FAILURES
 
@@ -66,16 +86,17 @@ def record_failure(key: str, *, now: float | None = None) -> bool:
     """Регистрирует неудачную попытку. Возвращает True, если ИМЕННО эта попытка
     перевела ключ в состояние блокировки (для однократного алерта)."""
     t = _now(now)
-    # Тот же потолок, что и у счётчика публичных роутов: иначе поток неудачных
-    # входов с разных адресов копит записи без предела и выедает память панели.
-    if len(_failures) > _MAX_KEYS:
-        for k in [k for k, v in _failures.items() if not v or t - v[-1] > LOCKOUT]:
-            _failures.pop(k, None)
-    times = [ts for ts in _failures.get(key, []) if t - ts < LOCKOUT]
+    times = _failures.get(key)
+    if times is None:
+        if not _make_room(_failures, t - LOCKOUT):
+            return False
+        times = _failures[key] = deque()
+    _expire(times, t - LOCKOUT)
+    if len(times) >= MAX_FAILURES:
+        return False
     times.append(t)
-    _failures[key] = times
-    recent = [ts for ts in times if t - ts < WINDOW]
-    return len(recent) == MAX_FAILURES
+    _failures.move_to_end(key)
+    return len(times) == MAX_FAILURES and t - times[0] < WINDOW
 
 
 def clear(key: str) -> None:

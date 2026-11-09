@@ -4,6 +4,7 @@ ops/restore.sh — у бэкенда нет доступа к их рестар�
 
 Запуск (внутри backend-образа, БД должна быть доступна):
     python -m app.restore_panel /path/to/panel.json
+    python -m app.restore_panel - < panel.json
 
 Идемпотентен: upsert по ключу настройки и по имени пользователя. Существующие
 настройки/юзеры, которых нет в бэкапе, НЕ удаляются (безопасно для частичного
@@ -12,6 +13,7 @@ ops/restore.sh — у бэкенда нет доступа к их рестар�
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -68,9 +70,26 @@ def _looks_public(url: str) -> bool:
     )
 
 
+def _read_panel_dump(path: str) -> dict:
+    data = json.load(sys.stdin) if path == "-" else json.loads(Path(path).read_bytes())
+    if not isinstance(data, dict):
+        raise ValueError("panel.json должен содержать объект")
+    for name, fields in (("app_settings", ("key", "value")),
+                         ("users", ("username", "password_hash"))):
+        rows = data.get(name, [])
+        if not isinstance(rows, list) or any(
+            not isinstance(row, dict)
+            or any(not isinstance(row.get(field, ""), str) for field in fields)
+            or not row.get(fields[0])
+            or (name == "users" and not row.get(fields[1]))
+            for row in rows
+        ):
+            raise ValueError(f"Неверный формат записей {name} в panel.json")
+    return data
+
+
 async def restore_panel(path: str) -> dict:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    data = _read_panel_dump(path)
     settings = get_settings()
     engine, Session = create_engine_and_factory(settings.db_url)
     try:
@@ -120,8 +139,14 @@ async def restore_panel(path: str) -> dict:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("usage: python -m app.restore_panel <panel.json>", file=sys.stderr)
-        raise SystemExit(2)
-    res = asyncio.run(restore_panel(sys.argv[1]))
-    print(f"restored: {res['settings']} настроек, {res['users']} юзеров")
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("path", help="panel.json or - for stdin")
+    args = parser.parse_args()
+    if args.check:
+        _read_panel_dump(args.path)
+    else:
+        res = asyncio.run(restore_panel(args.path))
+        print(f"restored: {res['settings']} настроек, {res['users']} юзеров")

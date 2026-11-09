@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   getOutdatedAgents,
-  deleteNode,
   expireNode,
   listNodes,
   setNodeMeta,
@@ -17,6 +16,7 @@ import { RoutesModal } from './RoutesModal'
 import { CountryFlag } from './CountryFlag'
 import { OsIcon } from './OsIcon'
 import { useI18n } from './i18n'
+import { matchesDeletionTarget, type NodeDeletionTarget, type useNodeDeletion } from './useNodeDeletion'
 
 const EXIT_CIDRS = ['0.0.0.0/0', '::/0']
 
@@ -36,12 +36,16 @@ export function NodesPage({
   onUnauthorized,
   openNodeId,
   onOpened,
+  onOpenOtherKind,
+  deletions,
 }: {
   kind: 'server' | 'device'
   onUnauthorized: () => void
   // id ноды из ссылки в алерте — открыть её карточку сразу при загрузке
   openNodeId?: string | null
   onOpened?: () => void
+  onOpenOtherKind: (kind: Node['kind']) => void
+  deletions: ReturnType<typeof useNodeDeletion>
 }) {
   const { t } = useI18n()
   const [nodes, setNodes] = useState<Node[] | null>(null)
@@ -75,7 +79,7 @@ export function NodesPage({
   const [mobileDetailOpen, setMobileDetailOpen] = useState(!!openNodeId)
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 800px)').matches)
   const requestedOpen = useRef(openNodeId ?? null)
-  const [linkedNodeId, setLinkedNodeId] = useState(openNodeId ?? null)
+  const [missingNodeId, setMissingNodeId] = useState<string | null>(null)
   const rowButtons = useRef(new Map<string, HTMLButtonElement>())
   const detailPanel = useRef<HTMLDivElement>(null)
   const returnFocus = useRef(false)
@@ -93,6 +97,7 @@ export function NodesPage({
   // ноды, по которым прямо сейчас летит запрос скрытия: пункт меню не
   // блокируется, и второй клик слал ещё один конкурирующий запрос
   const hideBusy = useRef<Set<string>>(new Set())
+  const moveBusy = useRef<Set<string>>(new Set())
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
   // Раскладка списка переживает переходы по меню. Страница пересоздаётся при
@@ -277,16 +282,18 @@ export function NodesPage({
     ...(hiddenOpen ? hiddenVisible : []),
   ], [sections, filtering, collapsed, hiddenOpen, hiddenVisible])
   const openingLink = requestedOpen.current !== null
-  const linkedNode = linkedNodeId === detailNodeId
-    ? (nodes ?? []).find((n) => n.id === linkedNodeId && n.kind !== kind)
-    : undefined
-  const selectedNode = listed.find((n) => n.id === detailNodeId) ?? linkedNode
-  const detailNode = selectedNode ?? (!narrow ? listed[0] : undefined)
+  const selectedNode = listed.find((n) => n.id === detailNodeId)
+  const detailNode = selectedNode ?? (!narrow && !openingLink && !missingNodeId ? listed[0] : undefined)
 
   useEffect(() => {
     if (error || nodes === null || !requestedOpen.current) return
     const target = nodes.find((n) => n.id === requestedOpen.current)
+    const id = requestedOpen.current
     requestedOpen.current = null
+    if (target && target.kind !== kind) {
+      onOpenOtherKind(target.kind)
+      return
+    }
     if (target) {
       if (target.hidden) setHiddenOpen(true)
       setCollapsed((prev) => {
@@ -297,19 +304,18 @@ export function NodesPage({
       setDetailNodeId(target.id)
       setMobileDetailOpen(true)
     } else {
-      setLinkedNodeId(null)
+      setMissingNodeId(id)
       setMobileDetailOpen(false)
     }
     onOpened?.()
-  }, [nodes, error, onOpened])
+  }, [nodes, error, kind, onOpened, onOpenOtherKind])
 
   useEffect(() => {
-    if (nodes === null || openingLink) return
+    if (nodes === null || openingLink || missingNodeId) return
     if (selectedNode) return
     setDetailNodeId(narrow ? null : (listed[0]?.id ?? null))
     setMobileDetailOpen(false)
-    setLinkedNodeId(null)
-  }, [nodes, listed, selectedNode, narrow, openingLink])
+  }, [nodes, listed, selectedNode, narrow, openingLink, missingNodeId])
 
   useEffect(() => {
     if (narrow && mobileDetailOpen && detailNode) {
@@ -328,7 +334,7 @@ export function NodesPage({
   }, [detailNodeId, narrow, mobileDetailOpen])
 
   function selectNode(n: Node) {
-    setLinkedNodeId(null)
+    setMissingNodeId(null)
     setDetailNodeId(n.id)
     setMobileDetailOpen(true)
   }
@@ -336,7 +342,6 @@ export function NodesPage({
   function backToList() {
     returnFocus.current = true
     setMobileDetailOpen(false)
-    setLinkedNodeId(null)
   }
 
   // Меняем только hidden, остальные настройки сохраняются на сервере.
@@ -348,6 +353,7 @@ export function NodesPage({
       await setNodeMeta(n.id, { hidden })
       await load()
     } catch (err) {
+      setNodes((prev) => (prev ?? []).map((x) => (x.id === n.id ? { ...x, hidden: n.hidden } : x)))
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized()
         return
@@ -360,6 +366,7 @@ export function NodesPage({
   }
 
   const startDrag = (id: string) => {
+    if (moveBusy.current.has(id)) return
     dragRef.current = id
     setDragId(id)
   }
@@ -374,16 +381,22 @@ export function NodesPage({
     const id = dragRef.current
     endDrag()
     const n = (nodes ?? []).find((x) => x.id === id)
-    if (!id || !n) return
+    if (!id || !n || moveBusy.current.has(id)) return
     if ((n.group ?? '') === group && (n.subgroup ?? '') === subgroup) return
+    moveBusy.current.add(id)
     // оптимистично — чтобы карточка не «прыгала» на время запроса
     setNodes((prev) => (prev ?? []).map((x) => (x.id === id ? { ...x, group, subgroup } : x)))
     try {
       await setNodeMeta(id, { group, subgroup })
     } catch (err) {
+      setNodes((prev) => (prev ?? []).map((x) =>
+        x.id === id ? { ...x, group: n.group, subgroup: n.subgroup } : x,
+      ))
       handleErr(err)
+    } finally {
+      await load()
+      moveBusy.current.delete(id)
     }
-    load()
   }
 
   function handleErr(err: unknown) {
@@ -409,19 +422,32 @@ export function NodesPage({
     }
   }
 
-  async function doDelete(n: Node) {
+  async function doDelete(n: NodeDeletionTarget, retry = false) {
     if (
       !window.confirm(
-        t('Удалить ноду «{name}»? Она будет удалена из тайлнета.', { name: n.name }),
+        retry
+          ? t('Повторить удаление ноды «{name}» (ID {id})?', { name: n.name, id: n.id })
+          : t('Удалить ноду «{name}»? Она будет удалена из тайлнета.', { name: n.name }),
       )
     )
       return
-    try {
-      await deleteNode(n.id)
-      load()
-    } catch (err) {
-      handleErr(err)
+    if (retry) {
+      try {
+        const current = await listNodes()
+        const found = current.find((x) => x.id === n.id)
+        if (found && !matchesDeletionTarget(n, found)) {
+          setNodes(current)
+          return
+        }
+      } catch (err) {
+        handleErr(err)
+        return
+      }
     }
+    if (await deletions.remove(n)) {
+      setNodes((prev) => (prev ?? []).filter((x) => x.id !== n.id))
+    }
+    await load()
   }
 
   const renderRow = (n: Node) => (
@@ -573,6 +599,27 @@ export function NodesPage({
 
 
       {error && <p className="form-error">{error}</p>}
+      {missingNodeId && (
+        <p className="form-error" role="alert">{t('Нода из ссылки не найдена (ID {id}).', { id: missingNodeId })}</p>
+      )}
+      {deletions.pending.filter((n) => n.kind === kind).map((n) => {
+        const found = nodes?.find((x) => x.id === n.id)
+        const different = found && !matchesDeletionTarget(n, found)
+        return (
+          <div className="card" key={n.id}>
+            <p>{t(n.busy ? 'Удаляем «{name}» (ID {id})…' : 'Удаление «{name}» (ID {id}) не подтверждено.', {
+              name: n.name, id: n.id,
+            })}</p>
+            {n.error && <p className="form-error" role="alert">{n.error}</p>}
+            {different && <p className="form-error">{t('Этот ID теперь относится к другой ноде.')}</p>}
+            {!n.busy && (
+              <button className="ghost small" disabled={nodes === null || !!error || different} onClick={() => doDelete(n, true)}>
+                {t('Повторить удаление')}
+              </button>
+            )}
+          </div>
+        )
+      })}
 
       <div className={`nodes-workspace${mobileDetailOpen && detailNode ? ' detail-open' : ''}`}>
       <aside className="nodes-sidebar" aria-label={kind === 'server' ? t('Серверы') : t('Устройства')}>
@@ -581,10 +628,7 @@ export function NodesPage({
           type="search"
           className="search-box"
           value={search}
-          onChange={(e) => {
-            setLinkedNodeId(null)
-            setSearch(e.target.value)
-          }}
+          onChange={(e) => setSearch(e.target.value)}
           aria-label={t('Поиск: имя, IP, тег…')}
           placeholder={t('Поиск: имя, IP, тег…')}
         />
@@ -601,10 +645,7 @@ export function NodesPage({
             type="button"
             className={`nodes-filter${filter === key ? ' active' : ''}`}
             aria-pressed={filter === key}
-            onClick={() => {
-              setLinkedNodeId(null)
-              setFilter(key)
-            }}
+            onClick={() => setFilter(key)}
           >
             {label} <b>{val}</b>
           </button>
@@ -748,6 +789,7 @@ export function NodesPage({
             nodes={nodes ?? []}
             onBack={backToList}
             onChanged={load}
+            onDelete={() => doDelete(detailNode)}
             onUnauthorized={onUnauthorized}
           />
         ) : (

@@ -8,6 +8,10 @@
 # Если у вас уже есть обратный прокси (nginx, Traefik, caddy-docker-proxy) —
 # берите compose.caddy.yml или проксируйте на порт из NODEROOST_BIND сами.
 services:
+  backend:
+    environment:
+      NODEROOST_TRUSTED_PROXY_HOPS: ${NODEROOST_TRUSTED_PROXY_HOPS:-2}
+
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped

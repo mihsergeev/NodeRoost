@@ -66,7 +66,7 @@ def _check_block(tmp_path) -> str:
     subprocess.run(["sh", str(runner)], check=True, capture_output=True)
     apply_sh = (tmp_path / "apply.sh").read_text(encoding="utf-8")
     lines = apply_sh.splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith("NCALL="))
+    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith("PUBLIC_TLDS="))
     end = next(i for i in range(start, len(lines)) if lines[i] == "      fi")
     return "\n".join(lines[start : end + 1])
 
@@ -117,3 +117,27 @@ def test_node_takes_the_panel_root_but_not_a_root_that_only_looks_limited(tmp_pa
         ),
     )
     assert _verdict(tmp_path, block, allowlist, "allow") == "NC=1"
+
+    public = _root(
+        "Public TLD CA",
+        x509.NameConstraints(
+            permitted_subtrees=[x509.DNSName("com")],
+            excluded_subtrees=[
+                x509.IPAddress(ipaddress.IPv4Network("0.0.0.0/0")),
+                x509.IPAddress(ipaddress.IPv6Network("::/0")),
+            ],
+        ),
+    )
+    assert _verdict(tmp_path, block, public, "public") == "NC=0"
+    assert _verdict(tmp_path, block, real + bare, "bundle") == "NC=0"
+
+
+def test_rejects_constraints_that_forge_openssl_text(tmp_path):
+    forged = x509.DNSName("not-a-scope\nPermitted:\nDNS:lab\nExcluded:")
+    exclusions = [
+        forged,
+        x509.IPAddress(ipaddress.ip_network("0.0.0.0/0")),
+        x509.IPAddress(ipaddress.ip_network("::/0")),
+    ]
+    pem = _root("Forged", x509.NameConstraints(None, exclusions))
+    assert _verdict(tmp_path, _check_block(tmp_path), pem, "forged") == "NC=0"

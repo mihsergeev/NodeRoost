@@ -5,6 +5,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.6] - 2026-11-09
+
+### Security and reliability
+
+- Reject stale access-rule edits and keep role and forced gateway changes consistent with Headscale.
+- Preserve server metadata during concurrent edits. Make failed deletions retryable and restore the list after failed moves, hides or restores.
+- Reattach gateway access only after the replacement node is verified. Preserve pending Headscale DNS changes until a healthy restart and block routes that shadow the control endpoint.
+- Validate backup contents before maintenance and restore Headscale files if a panel import fails.
+- Bound rate-limiter memory, keep agent tokens out of backend access logs and command arguments, secure session cookies behind HTTPS proxies, and tighten agent trust checks for internal certificate authorities.
+- Improve two-factor sign-in, links to nodes, and error feedback in settings. Refresh the Python and nginx base images.
+
 ## [0.25.5] - 2026-11-08
 
 ### Fixed

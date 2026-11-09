@@ -22,6 +22,7 @@ import {
   type TsMirror,
 } from './api'
 import { useI18n } from './i18n'
+import { useHeadscaleRestart } from './useHeadscaleRestart'
 
 function fmtDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString() : '—'
@@ -50,10 +51,6 @@ function cidrInfo(cidr: string): { count: number; first: string; last: string } 
 }
 
 const CIDR_EXAMPLES = ['100.64.0.0/10', '100.80.0.0/12', '100.100.0.0/16', '100.64.7.0/24']
-
-// Сообщение, когда правку записали, а перезапустить headscale некому.
-const HELPER_MISSING =
-  'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.'
 
 // Доля в процентах, без дробей и без выхода за 100: длина ответа иногда врёт.
 function pct(done: number, total: number): number {
@@ -91,7 +88,7 @@ export function SettingsPage({
   const [netV4, setNetV4] = useState('')
   const [netAlloc, setNetAlloc] = useState('sequential')
   const [netBusy, setNetBusy] = useState(false)
-  const [netMsg, setNetMsg] = useState<string | null>(null)
+  const [netSaved, setNetSaved] = useState(false)
   const [netErr, setNetErr] = useState<string | null>(null)
   // версия клиента Tailscale
   const [tsCur, setTsCur] = useState('')
@@ -104,16 +101,10 @@ export function SettingsPage({
   const [tsUpstream, setTsUpstream] = useState('')
   // Диапазон меша настраивается один раз и почти никогда не меняется, а цена
   // случайной правки высокая (рестарт headscale) — карточка закрыта на «Изменить».
-  // Отложенная перепроверка после перезапуска control-сервера: держим
-  // таймер, чтобы снять его при уходе со страницы - иначе он срабатывал
-  // уже на размонтированном экране.
-  const recheck = useRef<number | null>(null)
-  useEffect(
-    () => () => {
-      if (recheck.current !== null) window.clearTimeout(recheck.current)
-    },
-    [],
-  )
+  const markApplied = useCallback(() => {
+    setInfo((prev) => prev && { ...prev, restart_pending: false })
+  }, [])
+  useHeadscaleRestart(!!info?.restart_pending && !netBusy, markApplied, onUnauthorized)
   const [netLocked, setNetLocked] = useState(true)
   // ноды нужны карточке DERP: релей важен ровно настолько, насколько ноды НЕ
   // смогли соединиться напрямую — это и показываем вместо голого конфига
@@ -201,7 +192,7 @@ export function SettingsPage({
       return
     setNetBusy(true)
     setNetErr(null)
-    setNetMsg(null)
+    setNetSaved(false)
     try {
       const updated = await setHsNetwork({
         ipv4_prefix: netV4.trim(),
@@ -210,19 +201,7 @@ export function SettingsPage({
       setInfo(updated)
       seedForms(updated)
       setNetLocked(true)
-      setNetMsg(t('Сохранено. headscale перезапускается…'))
-      recheck.current = window.setTimeout(() => {
-        getHsInfo()
-          .then((i) => {
-            setInfo(i)
-            seedForms(i)
-            // Перезапускает headscale хостовый помощник. Если флаг ещё на месте,
-            // значит помощника нет (или он сломан): правка записана, но не
-            // действует — и сказать об этом должна панель, а не тишина.
-            if (i.restart_pending) setNetErr(t(HELPER_MISSING))
-          })
-          .catch(() => {})
-      }, 9000)
+      setNetSaved(true)
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
       else setNetErr(err instanceof Error ? err.message : t('Ошибка'))
@@ -259,6 +238,9 @@ export function SettingsPage({
         setTsInput(r.version)
         setTsMsg(t('Последняя официальная: {v}', { v: r.version }))
       } else setTsErr(r.note || t('Не удалось получить версию'))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else setTsErr(err instanceof Error ? err.message : t('Не удалось получить версию'))
     } finally {
       setTsBusy(false)
     }
@@ -273,6 +255,9 @@ export function SettingsPage({
       const r = await tsCheck(v)
       if (r.ok) setTsMsg(t('Версия {v} доступна для скачивания ✓', { v }))
       else setTsErr(r.note || t('Версия недоступна'))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else setTsErr(err instanceof Error ? err.message : t('Версия недоступна'))
     } finally {
       setTsBusy(false)
     }
@@ -698,6 +683,7 @@ export function SettingsPage({
             ) : (
               <button
                 className="ghost small"
+                disabled={netBusy}
                 onClick={() => {
                   if (info) seedForms(info)
                   setNetLocked(true)
@@ -711,7 +697,7 @@ export function SettingsPage({
             <span>{t('IPv4-диапазон (внутри 100.64.0.0/10)')}</span>
             <input
               value={netV4}
-              disabled={netLocked}
+              disabled={netLocked || netBusy}
               onChange={(e) => setNetV4(e.target.value)}
               placeholder="100.64.0.0/10"
             />
@@ -737,7 +723,7 @@ export function SettingsPage({
                   key={ex}
                   type="button"
                   className="cidr-chip"
-                  disabled={netLocked}
+                  disabled={netLocked || netBusy}
                   onClick={() => setNetV4(ex)}
                   title={info ? `${info.first} – ${info.last}` : ex}
                 >
@@ -751,7 +737,7 @@ export function SettingsPage({
             <select
               className="select"
               value={netAlloc}
-              disabled={netLocked}
+              disabled={netLocked || netBusy}
               onChange={(e) => setNetAlloc(e.target.value)}
             >
               <option value="sequential">{t('последовательно (.1, .2, .3…)')}</option>
@@ -759,7 +745,11 @@ export function SettingsPage({
             </select>
           </label>
           {netErr && <p className="form-error">{netErr}</p>}
-          {netMsg && <p className="form-ok">{netMsg}</p>}
+          {(netSaved || info?.restart_pending) && (
+            <p className={info?.restart_pending ? 'muted small' : 'form-ok'} aria-live="polite">
+              {info?.restart_pending ? t('записано, ждёт перезапуска headscale') : t('Сохранено')}
+            </p>
+          )}
           <div className="dns-actions">
             <button onClick={applyNet} disabled={netBusy || netLocked || !netDirty}>
               {netBusy ? t('Применение…') : t('Применить')}

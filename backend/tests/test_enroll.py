@@ -353,10 +353,14 @@ async def test_reconnect_leaves_mesh_dns_alone(client, monkeypatch):
     assert "--accept-dns" not in resp.json()["script"]
 
     async with app.state.session_factory() as s:
-        moved = await settings_store.claim_pending_meta(s, [{"id": "42", "givenName": "srv-1"}])
+        assert await settings_store.claim_pending_meta(s, [{"id": "42", "givenName": "srv-1"}]) == 0
+        moved = await settings_store.claim_pending_meta(s, [
+            {"id": "42", "givenName": "srv-1", "preAuthKey": {"id": "5"}},
+        ])
         assert moved == 1
         meta = await settings_store.get_node_meta(s)
     assert meta["42"]["kind"] == "server"
+    assert "7" not in meta
 
 
 async def test_pending_note_survives_a_meta_written_first(session):

@@ -207,6 +207,79 @@ async def test_collect_once_runs_to_the_end(session_factory, monkeypatch):
         assert await s.get(Certificate, "ушедшее.mesh") is None
 
 
+async def test_reconnected_gateway_transfers_clients_only_after_tag_is_restored(session_factory, monkeypatch):
+    import json
+
+    from app import settings_store
+    from app.hs_client import HeadscaleError
+
+    class Control:
+        def __init__(self):
+            self.nodes = {
+                "91": {"id": "91", "givenName": "gateway-new", "ipAddresses": ["100.64.0.91"],
+                       "preAuthKey": {"id": "100"}, "tags": []},
+                "92": {"id": "92", "givenName": "client", "ipAddresses": ["100.64.0.92"], "tags": []},
+                "93": {"id": "93", "givenName": "gateway", "ipAddresses": ["100.64.0.93"],
+                       "preAuthKey": {"id": "101"}, "tags": []},
+            }
+            self.policy = ""
+            self.fail_tag = True
+
+        async def get_nodes(self):
+            return list(self.nodes.values())
+
+        async def get_node(self, nid):
+            return self.nodes.get(nid)
+
+        async def set_node_tags(self, nid, tags):
+            assert nid == "91" and tags == ["tag:xgw-91"]
+            assert "tag:xgw-91" in json.loads(self.policy)["tagOwners"]
+            if self.fail_tag:
+                raise HeadscaleError("тег временно не установлен")
+            self.nodes[nid]["tags"] = tags
+
+        async def get_policy(self):
+            return {"policy": self.policy}
+
+        async def set_policy(self, policy):
+            self.policy = policy
+
+        async def list_preauthkeys(self):
+            return []
+
+    hs = Control()
+    monkeypatch.setattr(collector, "get_client", lambda _: hs)
+    monkeypatch.setattr(collector.dnsrecords, "sync", lambda *a, **k: _false())
+    async with session_factory() as session:
+        await settings_store.set_node_meta(session, "90", kind="server", exit_gateway=True)
+        await settings_store.set_node_meta(session, "92", exit_via=["90"], force_exit="90")
+        await settings_store.set_agent_all(session, {
+            "90": {"exit": True}, "92": {"use_exit": "100.64.0.90"},
+        })
+        old_meta = (await settings_store.get_node_meta(session))["90"]
+        await settings_store.stash_node_meta(session, "gateway", old_meta, old_id="90", key_id="100")
+
+    settings = Settings(headscale_api_key="fixture")
+    await collector.collect_once(session_factory, settings)
+    async with session_factory() as session:
+        meta = await settings_store.get_node_meta(session)
+        assert meta["92"]["force_exit"] == "90"
+        assert "91" not in meta and "93" not in meta
+    assert hs.nodes["91"]["tags"] == hs.nodes["93"]["tags"] == []
+
+    hs.fail_tag = False
+    await collector.collect_once(session_factory, settings)
+    async with session_factory() as session:
+        meta = await settings_store.get_node_meta(session)
+        assert meta["92"]["force_exit"] == "91" and meta["92"]["exit_via"] == ["91"]
+        assert meta["91"]["exit_gateway"] and "90" not in meta and "93" not in meta
+        agents = await settings_store.get_agent_all(session)
+        assert agents["92"]["use_exit"] == "100.64.0.91"
+        assert agents["91"]["exit"] and "90" not in agents
+    assert hs.nodes["91"]["tags"] == ["tag:xgw-91"] and hs.nodes["93"]["tags"] == []
+    assert json.loads(hs.policy)["grants"][0]["via"] == ["tag:xgw-91"]
+
+
 async def _false():
     return False
 

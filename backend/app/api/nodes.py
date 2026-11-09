@@ -1,5 +1,5 @@
 import ipaddress
-import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -12,7 +12,7 @@ from app.deps import CurrentUser, SessionDep
 from app.hs_client import HeadscaleError, get_client
 from app.hs_util import hs_call, norm_ts, require_hs
 from app.nodekind import editable_tags, effective_kind, is_online, node_tags
-from app.policy_apply import apply_policy, declare_tags
+from app.policy_apply import apply_policy, declare_tags, require_policy, write_lock
 from app.schemas import (  # noqa: I001
     normalize_node_name,
     EnrollOut,
@@ -26,6 +26,7 @@ from app.schemas import (  # noqa: I001
 )
 
 router = APIRouter(prefix="/nodes", tags=["nodes"])
+log = logging.getLogger(__name__)
 
 # CIDR, обозначающие exit-node (весь трафик)
 EXIT_ROUTES = ("0.0.0.0/0", "::/0")
@@ -177,6 +178,30 @@ def _kind_ctx(meta: dict | None, node_id, kind: str | None) -> dict:
     return ctx
 
 
+async def _set_policy_tags(session, client, settings, node_id, previous, wanted):
+    await hs_call(declare_tags(session, client, settings, sorted(set(wanted) - set(previous))))
+    node = await hs_call(client.set_node_tags(node_id, wanted))
+    if not node or set(editable_tags(node)) != set(wanted):
+        node = await hs_call(client.get_node(node_id))
+    if not node or set(editable_tags(node)) != set(wanted):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Headscale не подтвердил теги ноды")
+    return node
+
+
+async def _restore_node_policy(session, client, settings, node_id, previous_tags=None):
+    if previous_tags is not None:
+        try:
+            current = await client.get_node(node_id)
+            if current and set(editable_tags(current)) != set(previous_tags):
+                restored = exitvia.keep_tagged(previous_tags)
+                await _set_policy_tags(
+                    session, client, settings, node_id, editable_tags(current), restored
+                )
+        except Exception:
+            log.exception("Не удалось восстановить теги ноды %s", node_id)
+    await apply_policy(session, client, settings)
+
+
 @router.post("/{node_id}/meta", response_model=NodeOut)
 async def set_meta(
     node_id: str,
@@ -184,155 +209,119 @@ async def set_meta(
     user: CurrentUser,
     session: SessionDep,
 ) -> NodeOut:
-    """Заметка панели о ноде: описание + тип (сервер/устройство). Хранится в БД
-    панели, не в headscale. kind="" — вернуть в авто-определение."""
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
-    node = await hs_call(client.get_node(node_id))
-    if not node:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
-    # Через устройство трафик ходить не должен, и проверить это только в момент
-    # создания направления мало: иначе ноду достаточно сделать выходом, пока она
-    # сервер, а потом переобозвать устройством — направление продолжит жить, и
-    # чужой трафик пойдёт через машину, помеченную как личная.
-    if body.kind == "device":
-        used = [
-            d
-            for d in (await settings_store.get_routing(session)).values()
-            if str(d.get("via") or "") == str(node_id)
-        ]
-        if used:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Нода — выход в {len(used)} направлени{'и' if len(used) == 1 else 'ях'} "
-                "(«Маршрутизация»). Устройством её сделать нельзя: через личные машины "
-                "чужой трафик не пускаем. Сначала уберите эти направления.",
-            )
-    # Шлюзом выхода может быть только СЕРВЕР. Через личную машину чужой трафик не
-    # пускаем — и, что важнее, шлюз получает служебный тег, который становится
-    # назначением в правиле видимости: тег на устройстве открыл бы устройства друг
-    # другу в обход изоляции. UI галку устройству не показывает, но запрет должен
-    # держаться и при прямом обращении к API.
-    # Тип берём из сохранённой меты, а запросом только ПЕРЕКРЫВАЕМ. Иначе запрос
-    # без поля kind (галку шлюза ставят отдельно от смены типа) приходил с kind=None,
-    # мета подменялась пустой — и сервер, помеченный руками, но без тегов и
-    # маршрутов, авто-определялся устройством: панель отказывалась делать шлюзом
-    # именно ту ноду, ради которой ручной выбор типа и существует.
-    meta_stored = await settings_store.get_node_meta(session)
-    if body.exit_gateway and effective_kind(
-        node, _kind_ctx(meta_stored, node.get("id", node_id), body.kind)
-    ) != "server":
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Шлюзом выхода может быть только сервер: через личные устройства чужой "
-            "трафик не пускаем.",
-        )
-    # Принудительный выход через шлюз подразумевает, что этот шлюз ноде РАЗРЕШЁН
-    # (иначе headscale отвергнет exit-node): дописываем его в exit_via, чтобы
-    # сгенерировался грант autogroup:internet via tag:xgw-<шлюз>.
-    #
-    # И сам шлюз обязан быть УЖЕ помеченным шлюзом: иначе трафик ноды можно было бы
-    # завернуть через произвольный узел (в т.ч. чужое устройство), а агент молча
-    # долбился бы в ноду, которая exit не анонсирует.
-    meta_now = await settings_store.get_node_meta(session)
-    stored = meta_now.get(node_id) if isinstance(meta_now.get(node_id), dict) else {}
-    # Поле, которого в запросе НЕТ (None), не меняется — берём хранимое. Иначе
-    # частичное обновление (перетаскивание карточки шлёт только группу) сняло бы
-    # с сервера тег шлюза и убило выход у зависимых нод как побочный эффект.
-    eff_gateway = (
-        bool(stored.get("exit_gateway")) if body.exit_gateway is None else body.exit_gateway
-    )
-    eff_force = (
-        str(stored.get("force_exit") or "") if body.force_exit is None else body.force_exit
-    )
-    # Та же проверка, но для УЖЕ сохранённого признака шлюза. Проверка выше
-    # ловила только галку, выставленную этим же запросом: нода, помеченная
-    # шлюзом раньше, спокойно становилась устройством, тег xgw оставался на ней
-    # и выпадал из политики - у всех, кто выходил через неё, интернет тихо
-    # умирал, а снять галку из интерфейса было уже нельзя (у устройства её не
-    # показывают).
-    if eff_gateway and effective_kind(
-        node, _kind_ctx(meta_stored, node.get("id", node_id), body.kind)
-    ) != "server":
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Нода помечена шлюзом выхода в интернет. Устройством её сделать нельзя: "
-            "сначала снимите «Шлюз выхода в интернет» - вместе с ним снимется "
-            "принудительный выход у зависимых нод.",
-        )
-    if eff_force and eff_force not in exitvia.gateways(meta_now):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Принудительный выход возможен только через сервер, помеченный "
-            "«Шлюзом выхода в интернет».",
-        )
-    eff_via = None
-    if body.exit_via is not None or eff_force:
-        base = body.exit_via if body.exit_via is not None else [
-            str(i) for i in (stored.get("exit_via") or [])
-        ]
-        eff_via = list(base)
-        if eff_force and eff_force not in eff_via:
-            eff_via.append(eff_force)
-        # Выход разрешаем только через ноду, помеченную шлюзом. Раньше список
-        # не сверялся ни с чем: запрос с несуществующим id отвечал 200, связь
-        # показывалась в карточке, а в политику не попадала - то есть панель
-        # уверенно врала о том, как ходит трафик.
-        if body.exit_via is not None:
-            known = exitvia.gateways(meta_now)
-            unknown = [g for g in eff_via if g not in known]
-            if unknown:
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
-                    "Выход возможен только через сервер, помеченный «Шлюзом выхода "
-                    f"в интернет»: {', '.join(unknown)} таким не является.",
+    username = user.username
+    async with write_lock():
+        node = await hs_call(client.get_node(node_id))
+        if not node:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
+        previous_tags = editable_tags(node)
+        policy_started = tags_started = False
+        try:
+            async with settings_store.atomic_update(session):
+                meta = await settings_store.get_node_meta(session)
+                stored = meta.get(node_id) or {}
+                was_gateway = bool(stored.get("exit_gateway"))
+                gateway = was_gateway if body.exit_gateway is None else body.exit_gateway
+                kind = effective_kind(node, _kind_ctx(meta, node_id, body.kind))
+                if kind != "server" and gateway:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Шлюзом выхода в интернет может быть только сервер. "
+                        "Сначала снимите «Шлюз выхода в интернет» у этой ноды.",
+                    )
+                if body.kind is not None and kind != "server":
+                    directions = await settings_store.get_routing(session)
+                    if any(str(d.get("via") or "") == node_id for d in directions.values()):
+                        raise HTTPException(
+                            status.HTTP_400_BAD_REQUEST,
+                            "Нода служит выходом в разделе «Маршрутизация». "
+                            "Сначала уберите эти направления.",
+                        )
+
+                via = body.exit_via
+                force = body.force_exit
+                if via is not None or force is not None:
+                    effective_force = str(stored.get("force_exit") or "") if force is None else force
+                    via = list(stored.get("exit_via") or []) if via is None else list(via)
+                    if effective_force and effective_force not in via:
+                        via.append(effective_force)
+                    gateways = set(exitvia.gateways(meta))
+                    if (effective_force and effective_force not in gateways) or (
+                        body.exit_via is not None and set(via) - gateways
+                    ):
+                        raise HTTPException(
+                            status.HTTP_400_BAD_REQUEST,
+                            "Выход возможен только через сервер, помеченный «Шлюз выхода в интернет».",
+                        )
+
+                await settings_store.set_node_meta(
+                    session, node_id, body.description, body.kind, body.admin,
+                    body.group, body.subgroup, body.muted, body.hidden,
+                    body.exit_gateway, via, force,
                 )
-    await settings_store.set_node_meta(
-        session, node_id, body.description, body.kind, body.admin,
-        body.group, body.subgroup, body.muted, body.hidden, body.exit_gateway,
-        eff_via, body.force_exit,
-    )
-    # Сняли «шлюз выхода» — снимаем и выбор этого шлюза у устройств: иначе связь
-    # висит в карточке как рабочая, а принудительный выход гонит трафик на ноду,
-    # которой политика выходить наружу уже не разрешает.
-    if stored.get("exit_gateway") and not eff_gateway:
-        for nid in await settings_store.drop_gateway(session, node_id):
-            await _set_agent_use_exit(session, nid, "")
-    await audit.record(session, user.username, "node_meta", node_id, body.kind or "")
-    # Принудительный выход: кладём тайнет-IP шлюза в конфиг агента этой ноды —
-    # агент поставит `tailscale set --exit-node`. Это exit-node, а не subnet-
-    # маршруты, поэтому весь трафik ноды идёт через шлюз и НЕ течёт на другие ноды.
-    gw_ip = ""
-    if eff_force:
-        gw = await hs_call(client.get_node(eff_force))
-        gw_ip = aclgen._ipv4(gw or {}) or ""
-    await _set_agent_use_exit(session, node_id, gw_ip)
-    # Сервер-шлюз выхода: должен быть exit-нодой (анонсировать 0.0.0.0/0) И иметь
-    # служебный тег, по которому via его находит. Тег объявляем в политике до
-    # назначения (declare_tags), иначе headscale его не примет; exit включаем
-    # через агента. Снятие галки — убираем и то, и другое.
-    tag = exitvia.gateway_tag(node_id)
-    if eff_gateway:
-        await declare_tags(session, client, settings, [tag])
-        cur = [t for t in node_tags(node) if t != tag]
-        await hs_call(client.set_node_tags(node_id, cur + [tag]))
-        await _set_agent_exit(session, node_id, True)
-    else:
-        cur = [t for t in node_tags(node) if t != tag]
-        if cur != node_tags(node):
-            await hs_call(client.set_node_tags(node_id, exitvia.keep_tagged(cur)))
-        await _set_agent_exit(session, node_id, False)
-        # перестал быть шлюзом — снимаем принудительный выход у зависимых нод,
-        # иначе у них остался бы exit-node без гранта (интернет молча умрёт)
-        await _clear_dependent_force_exit(session, node_id)
-    await apply_policy(session, client, settings)
-    node = await hs_call(client.get_node(node_id))  # теги могли смениться
-    meta = await settings_store.get_node_meta(session)
-    # hinfo обязателен и здесь: интерфейс перерисовывает карточку ЭТИМ ответом,
-    # и без него у ноды пропадали ОС, адрес и флаг страны до обновления списка.
+                if was_gateway and not gateway:
+                    for nid in await settings_store.drop_gateway(session, node_id):
+                        await settings_store.set_agent_use_exit(session, nid, "")
+                if force is not None:
+                    gw = await hs_call(client.get_node(force)) if force else {}
+                    gw_ip = aclgen._ipv4(gw or {}) or ""
+                    if force:
+                        try:
+                            ready = bool(gw_ip and ipaddress.ip_address(gw_ip) in aclgen.MESH_RANGE)
+                        except ValueError:
+                            ready = False
+                        if not ready:
+                            raise HTTPException(
+                                status.HTTP_400_BAD_REQUEST, "У шлюза выхода нет IPv4-адреса в сети"
+                            )
+                    await settings_store.set_agent_use_exit(session, node_id, gw_ip)
+
+                tag = exitvia.gateway_tag(node_id)
+                if gateway:
+                    wanted = list(dict.fromkeys([*previous_tags, tag]))
+                    await _set_agent_exit(session, node_id, True)
+                elif tag in previous_tags:
+                    wanted = exitvia.keep_tagged([t for t in previous_tags if t != tag])
+                    await _set_agent_exit(session, node_id, False)
+                else:
+                    wanted = previous_tags
+                    if was_gateway:
+                        await _set_agent_exit(session, node_id, False)
+
+                if set(wanted) != set(previous_tags):
+                    policy_started = tags_started = True
+                    node = await _set_policy_tags(
+                        session, client, settings, node_id, previous_tags, wanted
+                    )
+                meta = await settings_store.get_node_meta(session)
+                updated = meta.get(node_id) or {}
+                if tags_started or any(
+                    updated.get(field) != stored.get(field)
+                    for field in ("kind", "admin", "exit_gateway", "exit_via")
+                ):
+                    policy_started = True
+                    await hs_call(require_policy(session, client, settings))
+        except BaseException:
+            if policy_started:
+                restored_tags = None
+                if tags_started:
+                    restored_tags = previous_tags
+                    try:
+                        saved = (await settings_store.get_node_meta(session)).get(node_id) or {}
+                        if bool(saved.get("exit_gateway")) == gateway:
+                            restored_tags = None
+                    except Exception:
+                        log.exception("Не удалось проверить сохранённую мету ноды %s", node_id)
+                await _restore_node_policy(
+                    session, client, settings, node_id, restored_tags
+                )
+            raise
+    await audit.record(session, username, "node_meta", node_id, body.kind or "")
     hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
-    return _map_node(node or {}, meta, hinfo)
+    return _map_node(node, meta, hinfo)
 
 
 @router.post("/{node_id}/exit-clients", response_model=NodeOut)
@@ -342,35 +331,36 @@ async def set_exit_clients(
     user: CurrentUser,
     session: SessionDep,
 ) -> NodeOut:
-    """Серверная сторона выбора выхода: задать, каким устройствам разрешён выход
-    в интернет через ЭТОТ шлюз. Правит поле exit_via у указанных устройств —
-    та же связь, что редактируется и в карточке устройства, только с другой
-    стороны."""
+    """Обновить разрешённые устройства и сбросить принудительный выход у исключённых."""
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
-    node = await hs_call(client.get_node(node_id))
-    if not node:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
-    meta = await settings_store.get_node_meta(session)
-    nodes = await hs_call(client.get_nodes()) or []
-    # через шлюз ходят только устройства — серверы в список не берём
-    device_ids = [
-        str(n.get("id", "")) for n in nodes if effective_kind(n, meta) != "server"
-    ]
-    await settings_store.set_gateway_clients(
-        session, node_id, body.devices, device_ids
-    )
-    await audit.record(
-        session, user.username, "node_exit_clients", node_id, str(len(body.devices))
-    )
-    await apply_policy(session, client, settings)
-    node = await hs_call(client.get_node(node_id))
-    meta = await settings_store.get_node_meta(session)
-    # hinfo обязателен и здесь: интерфейс перерисовывает карточку ЭТИМ ответом,
-    # и без него у ноды пропадали ОС, адрес и флаг страны до обновления списка.
+    username = user.username
+    async with write_lock():
+        node = await hs_call(client.get_node(node_id))
+        if not node:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
+        nodes = await hs_call(client.get_nodes()) or []
+        policy_started = False
+        try:
+            async with settings_store.atomic_update(session):
+                meta = await settings_store.get_node_meta(session)
+                if node_id not in exitvia.gateways(meta):
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сервер не помечен шлюзом выхода")
+                device_ids = [
+                    str(n.get("id", "")) for n in nodes if effective_kind(n, meta) != "server"
+                ]
+                if await settings_store.set_gateway_clients(session, node_id, body.devices, device_ids):
+                    policy_started = True
+                    await hs_call(require_policy(session, client, settings))
+                meta = await settings_store.get_node_meta(session)
+        except BaseException:
+            if policy_started:
+                await apply_policy(session, client, settings)
+            raise
+    await audit.record(session, username, "node_exit_clients", node_id, str(len(body.devices)))
     hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
-    return _map_node(node or {}, meta, hinfo)
+    return _map_node(node, meta, hinfo)
 
 
 async def _set_agent_exit(session, node_id: str, on: bool) -> None:
@@ -380,58 +370,6 @@ async def _set_agent_exit(session, node_id: str, on: bool) -> None:
     if bool(cfg.get("exit")) == on:
         return
     cfg["exit"] = on
-    agents[node_id] = cfg
-    await settings_store.set_agent_all(session, agents)
-
-
-async def _clear_dependent_force_exit(session, gateway_id: str) -> list[str]:
-    """Снять принудительный выход у нод, которые ходили через ЭТОТ шлюз.
-
-    Нужно, когда шлюз перестаёт быть шлюзом (снята галка) или удаляется: иначе у
-    зависимой ноды остаётся exit-node на узел, которого больше нет в разрешённых, —
-    грант на выход пропадает, а `--exit-node` остаётся, и интернет на ней молча
-    умирает. Возвращает id затронутых нод."""
-    meta = await settings_store.get_node_meta(session)
-    hit = [
-        nid
-        for nid, e in meta.items()
-        if isinstance(e, dict) and str(e.get("force_exit") or "") == str(gateway_id)
-    ]
-    for nid in hit:
-        meta[nid].pop("force_exit", None)
-        if not meta[nid]:
-            meta.pop(nid, None)
-        await _set_agent_use_exit(session, nid, "")
-    if hit:
-        await settings_store.set_raw(
-            session, settings_store.NODE_META_KEY, json.dumps(meta, ensure_ascii=False)
-        )
-    return hit
-
-
-async def _set_agent_use_exit(session, node_id: str, ip: str) -> None:
-    """Принудительный выход: тайнет-IP шлюза в конфиг агента ноды (агент поставит
-    `tailscale set --exit-node`). Пусто = снять принудительный выход.
-
-    Значение уходит в команду, которую агент выполняет на ноде под root, поэтому
-    пропускаем только настоящий IPv4 из диапазона меша: мусор (или что-то, что
-    когда-нибудь придёт из headscale не в том виде) до шелла не доберётся."""
-    if ip:
-        try:
-            if not aclgen.MESH_RANGE.overlaps(
-                ipaddress.ip_network(f"{ip}/32", strict=False)
-            ):
-                ip = ""
-        except ValueError:
-            ip = ""
-    agents = await settings_store.get_agent_all(session)
-    cfg = agents.get(node_id) or {}
-    if str(cfg.get("use_exit") or "") == ip:
-        return
-    if ip:
-        cfg["use_exit"] = ip
-    else:
-        cfg.pop("use_exit", None)
     agents[node_id] = cfg
     await settings_store.set_agent_all(session, agents)
 
@@ -447,6 +385,13 @@ async def reconnect_node(
     """Переподключить ноду: удаляет её запись в headscale (освобождает IP) и отдаёт
     скрипт для запуска на самой ноде (logout+up с новым ключом → новый IP из текущего
     диапазона). Имя ноды сохраняется."""
+    async with write_lock():
+        return await _reconnect_node(node_id, body, user, session)
+
+
+async def _reconnect_node(
+    node_id: str, body: ReconnectIn, user: CurrentUser, session: SessionDep
+) -> EnrollOut:
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
@@ -480,20 +425,9 @@ async def reconnect_node(
             expiration=exp_iso,
         )
     )
-    # только теперь удаляем старую запись (если создание ключа упало — нода цела)
-    # Заметки панели привязаны к id, а переподключение заводит ноду заново —
-    # откладываем их по имени, иначе нода вернётся без типа, админ-флага
-    # и описания (см. settings_store.claim_pending_meta).
-    meta_now = await settings_store.get_node_meta(session)
-    stashed = dict(meta_now.get(str(node_id)) or {})
-    await settings_store.stash_node_meta(
-        session, str(node.get("givenName") or node.get("name") or ""),
-        stashed, old_id=str(node_id),
-    )
-    await hs_call(client.delete_node(node_id))
-    # мета была привязана к старому id — чистим (панель перенесёт тип/описание/
-    # админ/роли на новую ноду при переподключении)
-    await settings_store.clear_node_meta(session, node_id)
+    key_id = str(key.get("id") or "")
+    if not key_id or not key.get("key"):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Headscale не вернул ключ переподключения")
     version = await settings_store.get_tailscale_version(session, settings)
     ca_pem = await ca.root_cert(session) if await ca.auto_install(session) else ""
     script = enroll.build_script(
@@ -502,7 +436,15 @@ async def reconnect_node(
     )
     from app.api.enroll import _join_link
 
-    url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
+    # Готовим ссылку и перенос до удаления старой ноды. При ошибке записи она
+    # останется на связи. Старая мета удаляется при подтверждении нового id.
+    async with settings_store.atomic_update(session):
+        meta = await settings_store.get_node_meta(session)
+        await settings_store.stash_node_meta(
+            session, name, dict(meta.get(node_id) or {}), old_id=node_id, key_id=key_id
+        )
+        url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
+    await hs_call(client.delete_node(node_id))
     await audit.record(session, user.username, "node_reconnect", node_id, name)
     await apply_policy(session, client, settings)
     return EnrollOut(
@@ -510,7 +452,7 @@ async def reconnect_node(
         hostname=name,
         login_server=settings.headscale_server_url,
         script=script,
-        key_id=str(key.get("id", "")),
+        key_id=key_id,
         expires_at=exp_iso,
         join_url=url,
         join_cmd=cmd,
@@ -571,20 +513,22 @@ async def set_tags(
     # Уже висящие служебные теги СОХРАНЯЕМ: список тегов перезаписывается целиком,
     # а роли в UI показываются без служебных — иначе правка роли у сервера-шлюза
     # молча срывала бы с него тег, и выход через этот шлюз перестал бы работать.
-    current = await hs_call(client.get_node(node_id))
-    if not current:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
-    keep = [t for t in node_tags(current) if exitvia.is_service_tag(t)]
-    # headscale не примет тег, которого нет в tagOwners действующей политики,
-    # поэтому СНАЧАЛА объявляем его там, и только потом вешаем на ноду.
-    if tags:
-        await declare_tags(session, client, settings, tags)
-    # Пустой список headscale отвергает («последний тег снять нельзя»), поэтому
-    # снятие ПОСЛЕДНЕЙ роли оставляет служебный маркер — в ролях он не виден.
-    want = exitvia.keep_tagged(tags + keep)
-    if exitvia.MARKER_TAG in want:
-        await declare_tags(session, client, settings, [exitvia.MARKER_TAG])
-    node = await hs_call(client.set_node_tags(node_id, want))
+    async with write_lock():
+        current = await hs_call(client.get_node(node_id))
+        if not current:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
+        previous = editable_tags(current)
+        keep = [t for t in previous if exitvia.is_service_tag(t)]
+        # При снятии последней роли остаётся служебный маркер Headscale.
+        want = exitvia.keep_tagged(tags + keep)
+        node = current
+        if set(want) != set(previous):
+            try:
+                node = await _set_policy_tags(session, client, settings, node_id, previous, want)
+                await hs_call(require_policy(session, client, settings))
+            except BaseException:
+                await _restore_node_policy(session, client, settings, node_id, previous)
+                raise
     await audit.record(session, user.username, "node_tags", node_id, ", ".join(tags))
     meta = await settings_store.get_node_meta(session)
     hinfo = await hostinfo.read_all_async(get_settings().headscale_db_path)
@@ -667,14 +611,14 @@ async def delete_node(
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
-    await hs_call(_delete_if_present(client, node_id))
-    async with settings_store.atomic_update(session):
-        # Удаляем шлюз из разрешенных выходов и снимаем принудительный выход.
-        for nid in await settings_store.drop_gateway(session, node_id):
-            await _set_agent_use_exit(session, nid, "")
-        await settings_store.clear_node_meta(session, node_id)
-        # Метаданные, агенты, ACL, маршрутизация и DNS очищаются вместе.
-        await settings_store.forget_node_refs(session, node_id)
-    await audit.record(session, user.username, "node_delete", node_id, client_ip(request))
-    # набор серверов мог измениться (удалили сервер) — пересобрать политику
-    await apply_policy(session, client, settings)
+    async with write_lock():
+        await hs_call(_delete_if_present(client, node_id))
+        async with settings_store.atomic_update(session):
+            # Метаданные, агенты, ACL, маршрутизация и DNS очищаются вместе.
+            for nid in await settings_store.drop_gateway(session, node_id):
+                await settings_store.set_agent_use_exit(session, nid, "")
+            await settings_store.clear_node_meta(session, node_id)
+            await settings_store.forget_node_refs(session, node_id)
+        await audit.record(session, user.username, "node_delete", node_id, client_ip(request))
+        # Набор серверов мог измениться после удаления.
+        await apply_policy(session, client, settings)

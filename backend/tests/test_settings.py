@@ -275,6 +275,10 @@ async def test_hs_info_admits_a_restart_that_never_happened(client, monkeypatch,
     # помощник снимает этот файл, перезапустив headscale; пока он лежит — не снял
     (tmp_path / ".restart-request").touch()
     assert (await client.get("/api/hs-info", headers=h)).json()["restart_pending"] is True
+    (tmp_path / ".restart-request").rename(tmp_path / ".restart-in-progress")
+    assert (await client.get("/api/hs-info", headers=h)).json()["restart_pending"] is True
+    (tmp_path / ".restart-in-progress").unlink()
+    assert (await client.get("/api/hs-info", headers=h)).json()["restart_pending"] is False
 
 
 async def test_unknown_field_in_a_request_is_an_error(client):

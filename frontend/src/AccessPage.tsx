@@ -1,16 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  ApiError,
-  getPolicyRules,
-  listNodes,
-  putPolicyRules,
-  type AclRule,
-  type AclSelector,
-  type Node,
-} from './api'
+import { listNodes, type AclSelector, type Node } from './api'
 import { groupGrants, portLabel, selLabel, toggleRule } from './aclui'
 import { BulkGrantModal } from './BulkGrantModal'
 import { useI18n } from './i18n'
+import { useAclRules } from './useAclRules'
 
 type Lens = 'who' | 'server'
 type Tr = (s: string, p?: Record<string, string | number>) => string
@@ -26,53 +19,20 @@ function entityLabel(sel: AclSelector, nodes: Node[], t: Tr) {
 // Обзор всех выдач + массовая выдача. Точечно правится доступ внутри ноды.
 export function AccessPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   const { t } = useI18n()
-  const [rules, setRules] = useState<AclRule[] | null>(null)
+  const { rules, loading, saving, error, reload, save } = useAclRules(onUnauthorized)
   const [nodes, setNodes] = useState<Node[]>([])
   const [lens, setLens] = useState<Lens>('who')
   const [addOpen, setAddOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const [r, ns] = await Promise.all([
-        getPolicyRules(),
-        listNodes().catch(() => [] as Node[]),
-      ])
-      setRules(r.rules)
-      setNodes(ns)
-      setError(null)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onUnauthorized()
-      else setError(err instanceof Error ? err.message : t('Ошибка'))
-      setRules([])
-    }
-  }, [onUnauthorized, t])
+  const loadNodes = useCallback(() => {
+    listNodes().then(setNodes).catch(() => setNodes([]))
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [load])
+    loadNodes()
+  }, [loadNodes])
 
-  const save = useCallback(
-    async (next: AclRule[]) => {
-      const prev = rules
-      setRules(next)
-      setBusy(true)
-      setError(null)
-      try {
-        const r = await putPolicyRules(next)
-        setRules(r.rules)
-      } catch (err) {
-        setRules(prev ?? [])
-        if (err instanceof ApiError && err.status === 401) onUnauthorized()
-        else setError(err instanceof Error ? err.message : t('Ошибка'))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [rules, onUnauthorized, t],
-  )
-
+  const busy = loading || saving
   const grants = useMemo(() => (rules ? groupGrants(rules, lens) : []), [rules, lens])
 
   return (
@@ -80,10 +40,13 @@ export function AccessPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       <div className="page-head">
         <h2>{t('Доступы')}</h2>
         <div className="page-head-actions">
-          <button className="ghost" onClick={load}>
+          <button className="ghost" disabled={busy} onClick={() => {
+            loadNodes()
+            void reload()
+          }}>
             {t('Обновить')}
           </button>
-          <button onClick={() => setAddOpen(true)} disabled={busy}>
+          <button onClick={() => setAddOpen(true)} disabled={busy || rules === null}>
             {t('+ Выдать доступ')}
           </button>
         </div>
@@ -100,17 +63,17 @@ export function AccessPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       <p className="muted small access-hint">
         {t('Убрать доступ — крестиком на нужном чипе. Выдать сразу нескольким — кнопкой выше; точечно — внутри карточки ноды.')}
       </p>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
 
       {rules === null ? (
-        <p className="muted">{t('загрузка…')}</p>
+        loading && <p className="muted">{t('загрузка…')}</p>
       ) : grants.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <span className="empty-emoji">🔒</span>
             <h3>{t('Доступов пока нет')}</h3>
             <p>{t('Всё запрещено. Нажмите «Выдать доступ», чтобы разрешить первую связь.')}</p>
-            <button onClick={() => setAddOpen(true)}>{t('+ Выдать доступ')}</button>
+            <button disabled={busy} onClick={() => setAddOpen(true)}>{t('+ Выдать доступ')}</button>
           </div>
         </div>
       ) : (

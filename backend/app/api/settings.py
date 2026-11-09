@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import time
@@ -45,6 +46,7 @@ TS_PKG_BASE = "https://pkgs.tailscale.com/stable"
 # кэш ответа «последняя версия»: (когда получили, что получили)
 _LATEST_TTL = 24 * 3600
 _latest_cache: tuple[float, "TsLatestOut"] | None = None
+_dns_write_lock = asyncio.Lock()
 
 router = APIRouter(tags=["settings"])
 
@@ -154,6 +156,29 @@ def _read_hs_config(path: str) -> dict:
 def _restart_flag_path(config_path: str) -> str:
     # флаг рядом с каталогом конфига: /data/headscale/.restart-request
     return os.path.join(os.path.dirname(os.path.dirname(config_path)), ".restart-request")
+
+
+def _restart_pending(config_path: str) -> bool:
+    request = Path(_restart_flag_path(config_path))
+    return request.exists() or request.with_name(".restart-in-progress").exists()
+
+
+def _control_host(cfg: dict, fallback_url: str) -> str:
+    url = str(cfg.get("server_url") or fallback_url or "")
+    return (urlparse(url).hostname or "").lower().rstrip(".")
+
+
+def _guard_control_routes(server_host: str, routes: dict[str, list[str]]) -> None:
+    for route in routes:
+        suffix = route.lower().strip(".")
+        if server_host and (
+            not suffix or server_host == suffix or server_host.endswith("." + suffix)
+        ):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"DNS-зона {route} перекрывает имя control-сервера {server_host}. "
+                "Выберите более точное имя вне зоны control-сервера",
+            )
 
 
 def _edit_hs_config(config_path: str, mutate) -> None:
@@ -296,40 +321,44 @@ async def update_dns(
     """Правит DNS/MagicDNS в config.yaml и просит хост перезапустить headscale.
     ВНИМАНИЕ: смена base_domain меняет MagicDNS-имена всех нод."""
     settings = get_settings()
-    cfg = _read_hs_config(settings.headscale_config_path)
-    server_host = (urlparse(str(cfg.get("server_url", ""))).hostname or "").lower()
-    bd = body.base_domain
-    if bd and server_host and (server_host == bd or server_host.endswith("." + bd)):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Базовый домен не должен совпадать с доменом control-сервера или быть его суффиксом",
+    async with _dns_write_lock:
+        cfg = _read_hs_config(settings.headscale_config_path)
+        server_host = _control_host(cfg, settings.headscale_server_url)
+        bd = body.base_domain
+        if bd and server_host and (server_host == bd or server_host.endswith("." + bd)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Базовый домен не должен совпадать с доменом control-сервера или быть его суффиксом",
+            )
+        records = await settings_store.get_dns_records(session)
+        old_base, old_upstreams, have_routes = _dns_routes_in(cfg)
+        routes = dnsrecords.merge_split_routes(
+            have_routes,
+            dnsrecords.routes_for_split(records, old_base, old_upstreams),
+            dnsrecords.routes_for_split(records, bd, body.nameservers),
         )
-    records = await settings_store.get_dns_records(session)
-    old_base, old_upstreams, have_routes = _dns_routes_in(cfg)
-    routes = dnsrecords.merge_split_routes(
-        have_routes,
-        dnsrecords.routes_for_split(records, old_base, old_upstreams),
-        dnsrecords.routes_for_split(records, bd, body.nameservers),
-    )
-    try:
-        _write_dns_config(
-            settings.headscale_config_path,
-            body.magic_dns,
-            bd,
-            body.nameservers,
-            body.override_local_dns,
-            routes,
-        )
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            f"Не удалось записать config.yaml: {e}",
-        ) from e
-    await audit.record(session, user.username, "dns_update", bd)
-    return await hs_info(user)
+        _guard_control_routes(server_host, routes)
+        try:
+            _write_dns_config(
+                settings.headscale_config_path,
+                body.magic_dns,
+                bd,
+                body.nameservers,
+                body.override_local_dns,
+                routes,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Не удалось записать config.yaml: {e}",
+            ) from e
+        await audit.record(session, user.username, "dns_update", bd)
+        return await hs_info(user)
 
 
-def _write_extra_records_path(config_path: str, hs_path: str) -> None:
+def _write_extra_records_path(
+    config_path: str, hs_path: str, routes: dict[str, list[str]] | None = None
+) -> None:
     """Разовая правка config.yaml: показать headscale наш файл с именами."""
 
     def mut(data: dict) -> None:
@@ -350,6 +379,12 @@ def _write_extra_records_path(config_path: str, hs_path: str) -> None:
         # Список прямо в конфиге и файл — два источника одного и того же. Оставить
         # оба значит спорить самим с собой: что победит, по конфигу не прочитать.
         dns.pop("extra_records", None)
+        if routes is not None:
+            ns = dns.get("nameservers")
+            if not isinstance(ns, dict):
+                ns = {"global": list(ns) if isinstance(ns, list) else []}
+                dns["nameservers"] = ns
+            _set_split_routes(ns, routes)
 
     _edit_hs_config(config_path, mut)
 
@@ -426,7 +461,7 @@ async def _records_out(
         active=dnsrecords.hs_path_configured(
             cfg, settings.headscale_extra_records_path_in_hs
         ),
-        restart_pending=os.path.exists(_restart_flag_path(config_path)),
+        restart_pending=_restart_pending(config_path),
     )
 
 
@@ -498,110 +533,113 @@ async def update_dns_records(
 ) -> DnsRecordsOut:
     """Задать имена внутри меша целиком (список заменяется).
 
-    Записи подхватываются headscale без перезапуска. Перезапуск нужен ровно один
-    раз — когда путь к файлу впервые попадает в config.yaml.
+    Записи подхватываются без перезапуска. Смена пути или split-зон требует
+    применения config.yaml хостовым помощником.
     """
     settings = get_settings()
     require_hs(settings)
     nodes = await hs_call(get_client(settings).get_nodes())
     known = {str(n.get("id", "")) for n in nodes}
-    cfg = _read_hs_config(settings.headscale_config_path)
-    server_host = (urlparse(str(cfg.get("server_url", ""))).hostname or "").lower()
-    base_domain = str((cfg.get("dns") or {}).get("base_domain") or "").lower()
-    magic = {
-        f"{str(n.get('givenName') or n.get('name') or '').lower()}.{base_domain}"
-        for n in nodes
-        if base_domain
-    }
-    for r in body.records:
-        if r.node_id and r.node_id not in known:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Ноды {r.node_id} больше нет — обновите список",
-            )
-        if server_host and r.name == server_host:
-            # Имя control-сервера, уведённое в меш, отрезает ноды от него
-            # НАВСЕГДА: обратно они узнают об исправлении только от него же.
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"{r.name} — имя control-сервера. Уведи его внутрь сети, и ноды "
-                "потеряют связь с ним без возможности узнать об отмене",
-            )
-        if r.name in magic:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"{r.name} — это MagicDNS-имя ноды, оно и так работает внутри сети",
-            )
-
-    stored = [
-        {
-            "name": r.name,
-            "node_id": r.node_id,
-            "ip": r.ip,
-            "enabled": r.enabled,
-            "cert": r.cert,
+    async with _dns_write_lock:
+        cfg = _read_hs_config(settings.headscale_config_path)
+        server_host = _control_host(cfg, settings.headscale_server_url)
+        base_domain = str((cfg.get("dns") or {}).get("base_domain") or "").lower()
+        magic = {
+            f"{str(n.get('givenName') or n.get('name') or '').lower()}.{base_domain}"
+            for n in nodes
+            if base_domain
         }
-        for r in body.records
-    ]
-    # Файл — ПЕРВЫМ, конфиг — вторым: headscale не поднимется, если путь в конфиге
-    # есть, а файла нет (os.Stat в конструкторе его следилки за файлом).
-    try:
-        dnsrecords.write_file(
-            settings.headscale_extra_records_path,
-            dnsrecords.entries_for(stored, nodes),
-        )
-    except OSError as e:
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            f"Не удалось записать файл имён: {e}",
-        ) from e
-    if not dnsrecords.hs_path_configured(
-        cfg, settings.headscale_extra_records_path_in_hs
-    ):
-        try:
-            _write_extra_records_path(
-                settings.headscale_config_path,
-                settings.headscale_extra_records_path_in_hs,
-            )
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                f"Не удалось записать config.yaml: {e}",
-            ) from e
-        cfg = _read_hs_config(settings.headscale_config_path)
-    # Изолированная зона может остаться локальной после удаления ее последней
-    # записи. У публичного имени удаляем маршрут, чтобы вернуть обычный DNS.
-    base, upstreams, have_routes = _dns_routes_in(cfg)
-    previous = await settings_store.get_dns_records(session)
-    want_routes = dnsrecords.merge_split_routes(
-        have_routes,
-        dnsrecords.routes_for_split(previous, base, upstreams),
-        dnsrecords.routes_for_split(stored, base, upstreams),
-        keep_unused_private=True,
-    )
-    if want_routes != have_routes:
-        try:
-            _write_split_routes(settings.headscale_config_path, want_routes)
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                f"Не удалось записать маршруты зон в config.yaml: {e}",
-            ) from e
-        cfg = _read_hs_config(settings.headscale_config_path)
+        for r in body.records:
+            if r.node_id and r.node_id not in known:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Ноды {r.node_id} больше нет — обновите список",
+                )
+            if server_host and r.name == server_host:
+                # Имя control-сервера, уведённое в меш, отрезает ноды от него
+                # НАВСЕГДА: обратно они узнают об исправлении только от него же.
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"{r.name} — имя control-сервера. Уведи его внутрь сети, и ноды "
+                    "потеряют связь с ним без возможности узнать об отмене",
+                )
+            if r.name in magic:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"{r.name} — это MagicDNS-имя ноды, оно и так работает внутри сети",
+                )
 
-    await settings_store.set_dns_records(session, stored)
-    await audit.record(
-        session,
-        user.username,
-        "dns_records_set",
-        "",
-        ", ".join(r.name if r.enabled else f"{r.name} (выкл)" for r in body.records)
-        or "пусто",
-    )
-    # сертификаты имён, которых больше нет (или у которых сняли галочку), панели
-    # незачем держать: они всё равно не обновятся, а в списке будут врать
-    await certs.forget(session, {r.name for r in body.records if r.cert})
-    return await _records_out(session, stored, nodes, cfg, settings.headscale_config_path)
+        stored = [
+            {
+                "name": r.name,
+                "node_id": r.node_id,
+                "ip": r.ip,
+                "enabled": r.enabled,
+                "cert": r.cert,
+            }
+            for r in body.records
+        ]
+        # Изолированная зона может остаться локальной после удаления ее последней
+        # записи. У публичного имени удаляем маршрут, чтобы вернуть обычный DNS.
+        base, upstreams, have_routes = _dns_routes_in(cfg)
+        previous = await settings_store.get_dns_records(session)
+        want_routes = dnsrecords.merge_split_routes(
+            have_routes,
+            dnsrecords.routes_for_split(previous, base, upstreams),
+            dnsrecords.routes_for_split(stored, base, upstreams),
+            keep_unused_private=True,
+        )
+        _guard_control_routes(server_host, want_routes)
+        # Файл — ПЕРВЫМ, конфиг — вторым: headscale не поднимется, если путь в конфиге
+        # есть, а файла нет (os.Stat в конструкторе его следилки за файлом).
+        try:
+            dnsrecords.write_file(
+                settings.headscale_extra_records_path,
+                dnsrecords.entries_for(stored, nodes),
+            )
+        except OSError as e:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Не удалось записать файл имён: {e}",
+            ) from e
+        if not dnsrecords.hs_path_configured(
+            cfg, settings.headscale_extra_records_path_in_hs
+        ):
+            try:
+                _write_extra_records_path(
+                    settings.headscale_config_path,
+                    settings.headscale_extra_records_path_in_hs,
+                    want_routes,
+                )
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    f"Не удалось записать config.yaml: {e}",
+                ) from e
+            cfg = _read_hs_config(settings.headscale_config_path)
+        elif want_routes != have_routes:
+            try:
+                _write_split_routes(settings.headscale_config_path, want_routes)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    f"Не удалось записать маршруты зон в config.yaml: {e}",
+                ) from e
+            cfg = _read_hs_config(settings.headscale_config_path)
+
+        await settings_store.set_dns_records(session, stored)
+        await audit.record(
+            session,
+            user.username,
+            "dns_records_set",
+            "",
+            ", ".join(r.name if r.enabled else f"{r.name} (выкл)" for r in body.records)
+            or "пусто",
+        )
+        # сертификаты имён, которых больше нет (или у которых сняли галочку), панели
+        # незачем держать: они всё равно не обновятся, а в списке будут врать
+        await certs.forget(session, {r.name for r in body.records if r.cert})
+        return await _records_out(session, stored, nodes, cfg, settings.headscale_config_path)
 
 
 @router.put("/hs-info/network", response_model=HsInfoOut)
@@ -762,7 +800,5 @@ async def hs_info(_: CurrentUser) -> HsInfoOut:
         allocation=str(pref.get("allocation", "") or ""),
         # флаг снимает хостовый помощник, перезапустив headscale; если он всё ещё
         # здесь — правка записана, но в силу не вступила
-        restart_pending=os.path.exists(
-            _restart_flag_path(settings.headscale_config_path)
-        ),
+        restart_pending=_restart_pending(settings.headscale_config_path),
     )

@@ -1,13 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
-  deleteNode,
   expireNode,
   getAgent,
-  getPolicyRules,
-  putPolicyRules,
   updateAgent,
-  type AclRule,
   type AclSelector,
   type AgentCfg,
   type Node,
@@ -21,6 +17,7 @@ import { RoutesModal } from './RoutesModal'
 import { CountryFlag } from './CountryFlag'
 import { OsIcon } from './OsIcon'
 import { useI18n } from './i18n'
+import { useAclRules } from './useAclRules'
 
 const EXIT_CIDRS = ['0.0.0.0/0', '::/0']
 
@@ -36,6 +33,7 @@ type Props = {
   nodes: Node[]
   onBack: () => void
   onChanged: () => void
+  onDelete: () => void
   onUnauthorized: () => void
   embedded?: boolean
 }
@@ -45,16 +43,17 @@ export function NodeDetail({
   nodes,
   onBack,
   onChanged,
+  onDelete,
   onUnauthorized,
   embedded = false,
 }: Props) {
   const { t } = useI18n()
-  const [rules, setRules] = useState<AclRule[] | null>(null)
+  const { rules, loading: rulesLoading, saving, error: rulesError, reload: reloadRules, save: saveRules } =
+    useAclRules(onUnauthorized)
   const [editOpen, setEditOpen] = useState(false)
   const [routesOpen, setRoutesOpen] = useState(false)
   const [reconnectOpen, setReconnectOpen] = useState(false)
   const [addRole, setAddRole] = useState<'target' | 'source' | null>(null)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   // Состояние агента показываем прямо здесь: раньше оно жило только в окне
@@ -105,19 +104,6 @@ export function NodeDetail({
     }
   }
 
-  const loadRules = useCallback(async () => {
-    try {
-      setRules((await getPolicyRules()).rules)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onUnauthorized()
-      else setRules([])
-    }
-  }, [onUnauthorized])
-
-  useEffect(() => {
-    loadRules()
-  }, [loadRules])
-
   // «Кто может подключаться сюда» (входящие, dst=нода) и «Куда ходит эта нода» (исходящие, src=нода).
   const inRows = useMemo(
     () => groupGrants(rules ?? [], 'server').find((g) => g.entity.kind === 'node' && g.entity.value === node.id)?.rows ?? [],
@@ -133,26 +119,12 @@ export function NodeDetail({
     else setError(err instanceof Error ? err.message : t('Ошибка'))
   }
 
-  async function saveRules(next: AclRule[]) {
-    const prev = rules
-    setRules(next)
-    setSaving(true)
-    setError(null)
-    try {
-      setRules((await putPolicyRules(next)).rules)
-    } catch (err) {
-      setRules(prev ?? [])
-      handle(err)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   // role 'target' — вход (src=other, dst=нода); 'source' — исход (src=нода, dst=other).
   function removePair(other: AclSelector, port: string, role: 'target' | 'source') {
+    if (rules === null) return
     const self: AclSelector = { kind: 'node', value: node.id }
     const [src, dst] = role === 'target' ? [other, self] : [self, other]
-    saveRules(toggleRule(rules ?? [], src, dst, port, false))
+    void saveRules(toggleRule(rules, src, dst, port, false))
   }
 
   // редактируемые строки доступа (порт → чипы «×»); role задаёт стрелку и удаление
@@ -167,7 +139,7 @@ export function NodeDetail({
               {selLabel(o, nodes, t)}
               <button
                 className="chip-x"
-                disabled={saving}
+                disabled={saving || rulesLoading}
                 aria-label={t('Убрать')}
                 onClick={() => removePair(o, row.port, role)}
               >
@@ -183,17 +155,6 @@ export function NodeDetail({
     if (!window.confirm(t('Отозвать ключ ноды «{name}»? Она отключится и не подключится обратно, пока её не переподключить заново.', { name: node.name }))) return
     try {
       await expireNode(node.id)
-      onChanged()
-    } catch (err) {
-      handle(err)
-    }
-  }
-
-  async function doDelete() {
-    if (!window.confirm(t('Удалить ноду «{name}»? Она будет удалена из тайлнета.', { name: node.name }))) return
-    try {
-      await deleteNode(node.id)
-      onBack()
       onChanged()
     } catch (err) {
       handle(err)
@@ -246,7 +207,7 @@ export function NodeDetail({
               { label: t('Переподключить'), onClick: () => setReconnectOpen(true) },
               { label: t('Отозвать ключ'), onClick: doExpire },
               { divider: true },
-              { label: t('Удалить'), danger: true, onClick: doDelete },
+              { label: t('Удалить'), danger: true, onClick: onDelete },
             ]}
           />
         </div>
@@ -440,6 +401,7 @@ export function NodeDetail({
       <div className="card">
         <h3>{t('Доступ')}</h3>
         {error && <p className="form-error">{error}</p>}
+        {rulesError && <p className="form-error" role="alert">{rulesError}</p>}
         {node.admin && (
           <>
             <p className="muted small access-admin-note">
@@ -457,7 +419,11 @@ export function NodeDetail({
           </>
         )}
         {rules === null ? (
-          <p className="muted small">{t('загрузка…')}</p>
+          rulesLoading || saving ? (
+            <p className="muted small">{t('загрузка…')}</p>
+          ) : (
+            <button className="ghost small" onClick={reloadRules}>{t('Обновить')}</button>
+          )
         ) : (
           <>
             <div className="access-block">
@@ -467,7 +433,7 @@ export function NodeDetail({
                     взаимно видимыми, поэтому такое правило означало бы, что устройства
                     видят друг друга. Движок его всё равно отбросит — не показываем кнопку. */}
                 {!node.admin && node.kind === 'server' && (
-                  <button className="ghost small" onClick={() => setAddRole('target')} disabled={saving}>
+                  <button className="ghost small" onClick={() => setAddRole('target')} disabled={saving || rulesLoading}>
                     {t('+ Разрешить')}
                   </button>
                 )}
@@ -489,7 +455,7 @@ export function NodeDetail({
             <div className="access-block">
               <div className="access-block-head">
                 <h4>{t('Куда может ходить эта нода')}</h4>
-                <button className="ghost small" onClick={() => setAddRole('source')} disabled={saving}>
+                <button className="ghost small" onClick={() => setAddRole('source')} disabled={saving || rulesLoading}>
                   {t('+ Разрешить')}
                 </button>
               </div>

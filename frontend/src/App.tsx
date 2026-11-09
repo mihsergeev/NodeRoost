@@ -6,6 +6,7 @@ import {
   getToken,
   logoutServer,
   setToken,
+  type Node,
   type PanelConfig,
 } from './api'
 import { LoginPage } from './LoginPage'
@@ -22,9 +23,20 @@ import { AlertsModal } from './AlertsModal'
 import { BackupsModal } from './BackupsModal'
 import { LogsModal } from './LogsModal'
 import { useI18n } from './i18n'
+import { useNodeDeletion } from './useNodeDeletion'
 import './App.css'
 
 type View = 'servers' | 'devices' | 'access' | 'routing' | 'dns' | 'settings'
+
+function linkedNodeId() {
+  return /^#node-(\d+)$/.exec(window.location.hash)?.[1] ?? null
+}
+
+function clearNodeLink() {
+  if (linkedNodeId()) {
+    history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
+}
 
 function App() {
   const { t, lang, setLang } = useI18n()
@@ -34,12 +46,7 @@ function App() {
   // растёт при каждом клике по навигации — используется как key, чтобы страница
   // пересоздавалась (сбрасывала внутреннее состояние, напр. открытую деталь ноды)
   const [navSeq, setNavSeq] = useState(0)
-  // Ссылка из алерта ведёт прямо в ноду: panel/#node-<id>. Роутера в панели нет,
-  // поэтому разбираем хеш один раз при загрузке и передаём id странице серверов.
-  const [deepNodeId, setDeepNodeId] = useState<string | null>(() => {
-    const m = /^#node-(\d+)$/.exec(window.location.hash)
-    return m ? m[1] : null
-  })
+  const [deepNodeId, setDeepNodeId] = useState(linkedNodeId)
   const [version, setVersion] = useState<string | null>(null)
   // статус control-сервера: раньше занимал целую карточку на страницах нод —
   // это фон, а не действие, поэтому живёт точкой в шапке
@@ -58,9 +65,23 @@ function App() {
 
   // переход по навигации: меняем раздел и всегда показываем список (не деталь)
   function go(v: View) {
+    clearNodeLink()
+    setDeepNodeId(null)
     setView(v)
     setNavSeq((s) => s + 1)
   }
+
+  useEffect(() => {
+    function onHashChange() {
+      const id = linkedNodeId()
+      if (!id) return
+      setDeepNodeId(id)
+      setView('servers')
+      setNavSeq((s) => s + 1)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
 
   function toggleTheme() {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -104,6 +125,17 @@ function App() {
     setCompanyName(null)
     setAuthed(false)
   }, [])
+  const deletions = useNodeDeletion(logout)
+  const nodePageProps = {
+    onUnauthorized: logout,
+    openNodeId: deepNodeId,
+    onOpened: () => {
+      setDeepNodeId(null)
+      clearNodeLink()
+    },
+    onOpenOtherKind: (kind: Node['kind']) => setView(kind === 'server' ? 'servers' : 'devices'),
+    deletions,
+  }
 
   useEffect(() => {
     if (!authed) return
@@ -255,18 +287,9 @@ function App() {
             onUnauthorized={logout}
           />
         ) : view === 'devices' ? (
-          <NodesPage key={navSeq} kind="device" onUnauthorized={logout} />
+          <NodesPage key={'device-' + navSeq} kind="device" {...nodePageProps} />
         ) : (
-          <NodesPage
-            key={navSeq}
-            kind="server"
-            onUnauthorized={logout}
-            openNodeId={deepNodeId}
-            onOpened={() => {
-              setDeepNodeId(null)
-              history.replaceState(null, '', window.location.pathname)
-            }}
-          />
+          <NodesPage key={'server-' + navSeq} kind="server" {...nodePageProps} />
         )
       ) : (
         <LoginPage onLogin={() => setAuthed(true)} />

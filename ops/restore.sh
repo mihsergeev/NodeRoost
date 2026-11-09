@@ -27,10 +27,40 @@ APP="${2:-$APP_ROOT}"
 cd "$APP"
 
 TMP=$(mktemp -d)
-# В $APP/data/_restore_panel.json лежит дамп панели (учётки, TOTP-секреты,
-# настройки алертов с токенами). Чистим его тем же trap'ом: при падении любой из
-# команд ниже (set -eu) файл иначе остаётся на диске и уезжает в следующий бэкап.
-trap 'rm -rf "$TMP"; rm -f "$APP/data/_restore_panel.json"' EXIT INT TERM
+STOPPED=0
+REPLACED=0
+HS_DATA="$APP/data/headscale"
+
+# Перечень путей, которые заменяем. WAL/SHM у старой базы тоже нужны для отката.
+headscale_files() {
+    printf '%s\n' lib/db.sqlite lib/db.sqlite-wal lib/db.sqlite-shm \
+        config/config.yaml config/extra-records.json
+    for key in "$TMP"/headscale/lib/*.key; do
+        [ ! -f "$key" ] || printf 'lib/%s\n' "${key##*/}"
+    done
+}
+
+cleanup() {
+    rc=$?
+    if [ "$STOPPED" = 1 ]; then
+        if [ "$REPLACED" = 1 ] && ! headscale_files | while IFS= read -r name; do
+            rm -f "$HS_DATA/$name" || exit 1
+            [ ! -e "$TMP/before/$name" ] || cp -a "$TMP/before/$name" "$HS_DATA/$name" || exit 1
+        done; then
+            echo "откат файлов не завершен, исходные файлы сохранены в $TMP/before" >&2
+            exit 1
+        fi
+        if ! docker compose start headscale backend; then
+            echo "не удалось снова запустить сервисы, исходные файлы в $TMP/before" >&2
+            exit 1
+        fi
+    fi
+    rm -rf "$TMP"
+    exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 # Распаковываем ДО остановки контейнеров: битый файл не должен ронять живую
 # панель. Своё сообщение — вместо «gzip: stdin: not in gzip format».
 if ! tar -xzf "$ARCHIVE" --no-same-owner -C "$TMP" 2>/dev/null; then
@@ -44,12 +74,14 @@ fi
 # скопировал бы содержимое этих файлов туда, откуда их видит контейнер.
 # Поэтому: каждый нужный путь обязан быть обычным файлом, и копируем с -P.
 check_plain() {
-    [ -e "$1" ] || return 0
-    if [ -L "$1" ] || [ ! -f "$1" ]; then
+    if [ -L "$1" ] || { [ -e "$1" ] && [ ! -f "$1" ]; }; then
         echo "в архиве подменён путь (симлинк или не файл): ${1#$TMP/}" >&2
         exit 1
     fi
 }
+for dir in "$TMP/headscale" "$TMP/headscale/lib"; do
+    [ ! -L "$dir" ] || { echo "в архиве каталог подменен симлинком: ${dir#$TMP/}" >&2; exit 1; }
+done
 check_plain "$TMP/panel.json"
 check_plain "$TMP/headscale/db.sqlite"
 check_plain "$TMP/headscale/config.yaml"
@@ -63,8 +95,22 @@ for _k in "$TMP"/headscale/lib/*.key; do check_plain "$_k"; done
 head -c 16 "$TMP/headscale/db.sqlite" | grep -q "SQLite format 3" \
   || { echo "db.sqlite в архиве повреждён" >&2; exit 1; }
 
+# Дамп читается через stdin от имени пользователя backend. На общем томе
+# не появляется файл с учетными данными, созданный от root.
+docker compose run -T --rm --no-deps backend python -m app.restore_panel --check - < "$TMP/panel.json"
+
+# Не даем хостовому помощнику перезапустить Headscale посреди восстановления.
+exec 9>/run/noderoost-hs-apply.lock
+flock 9
+
 echo ">> останавливаю backend + headscale (db оставляю для импорта)…"
+STOPPED=1
 docker compose stop backend headscale
+install -d "$TMP/before/lib" "$TMP/before/config"
+headscale_files | while IFS= read -r name; do
+    [ ! -e "$HS_DATA/$name" ] || cp -a "$HS_DATA/$name" "$TMP/before/$name" || exit 1
+done
+REPLACED=1
 
 echo ">> восстанавливаю файлы headscale…"
 install -d "$APP/data/headscale/lib" "$APP/data/headscale/config"
@@ -73,10 +119,12 @@ rm -f "$APP/data/headscale/lib/db.sqlite" \
       "$APP/data/headscale/lib/db.sqlite-wal" \
       "$APP/data/headscale/lib/db.sqlite-shm"
 cp -P "$TMP/headscale/db.sqlite" "$APP/data/headscale/lib/db.sqlite"
-[ -f "$TMP/headscale/config.yaml" ] && \
-  cp -P "$TMP/headscale/config.yaml" "$APP/data/headscale/config/config.yaml" || true
-[ -f "$TMP/headscale/extra-records.json" ] && \
-  cp -P "$TMP/headscale/extra-records.json" "$APP/data/headscale/config/extra-records.json" || true
+if [ -f "$TMP/headscale/config.yaml" ]; then
+    cp -P "$TMP/headscale/config.yaml" "$HS_DATA/config/config.yaml"
+fi
+if [ -f "$TMP/headscale/extra-records.json" ]; then
+    cp -P "$TMP/headscale/extra-records.json" "$HS_DATA/config/extra-records.json"
+fi
 # С extra_records_path в конфиге headscale не стартует, если файла нет: архив мог
 # быть снят до появления имён внутри сети, а конфиг в нём — уже с путём.
 if grep -q '^ *extra_records_path:' "$APP/data/headscale/config/config.yaml" 2>/dev/null \
@@ -85,18 +133,20 @@ if grep -q '^ *extra_records_path:' "$APP/data/headscale/config/config.yaml" 2>/
     echo '[]' > "$APP/data/headscale/config/extra-records.json"
 fi
 for k in "$TMP"/headscale/lib/*.key; do
-  [ -f "$k" ] && cp -P "$k" "$APP/data/headscale/lib/" || true
+  if [ -f "$k" ]; then cp -P "$k" "$HS_DATA/lib/"; fi
 done
 
 echo ">> прогоняю миграции (на случай пустой БД) + импортирую panel.json в Postgres…"
-cp -P "$TMP/panel.json" "$APP/data/_restore_panel.json"
-chmod 600 "$APP/data/_restore_panel.json"   # учётки/TOTP — не под umask 0644
+docker compose run -T --rm --no-deps --pull never headscale configtest
 docker compose run --rm --no-deps backend alembic upgrade head
-docker compose run --rm --no-deps backend python -m app.restore_panel /data/_restore_panel.json
-rm -f "$APP/data/_restore_panel.json"
+docker compose run -T --rm --no-deps backend python -m app.restore_panel - < "$TMP/panel.json"
+# После коммита panel.json оставляем восстановленную пару баз. При ошибке
+# запуска cleanup повторит start, не возвращая только половину состояния.
+REPLACED=0
 
 echo ">> поднимаю стек…"
 docker compose up -d
+STOPPED=0
 
 # ── Ключ панели к восстановленному headscale ────────────────────────────────
 # В архиве приехала БАЗА headscale, а вместе с ней и его список API-ключей.

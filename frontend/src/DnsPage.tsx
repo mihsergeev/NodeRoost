@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   downloadCa,
@@ -13,6 +13,7 @@ import {
   type Node,
 } from './api'
 import { useI18n } from './i18n'
+import { useHeadscaleRestart } from './useHeadscaleRestart'
 
 type Props = { onUnauthorized: () => void }
 
@@ -41,17 +42,13 @@ function rowsOf(r: DnsRecords): RecRow[] {
   }))
 }
 
-// Сообщение, когда правку записали, а перезапустить headscale некому.
-const HELPER_MISSING =
-  'Изменения записаны, но headscale не перезапущен: на хосте нет помощника. Выполните на сервере `sudo ops/update.sh` (он его поставит) или перезапустите вручную: `docker compose restart headscale`.'
-
 export function DnsPage({ onUnauthorized }: Props) {
   const { t } = useI18n()
   const [recs, setRecs] = useState<DnsRecords | null>(null)
   const [rows, setRows] = useState<RecRow[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [caErr, setCaErr] = useState<string | null>(null)
   // перевыпуск корня: открывается по кнопке и требует подтверждения — он
@@ -67,20 +64,17 @@ export function DnsPage({ onUnauthorized }: Props) {
   const [override, setOverride] = useState(false)
   const [domain, setDomain] = useState('')
   const [servers, setServers] = useState('')
-  // Отложенная перепроверка после перезапуска control-сервера: держим
-  // таймер, чтобы снять его при уходе со страницы - иначе он срабатывал
-  // уже на размонтированном экране.
-  const recheck = useRef<number | null>(null)
-  useEffect(
-    () => () => {
-      if (recheck.current !== null) window.clearTimeout(recheck.current)
-    },
-    [],
-  )
   const [srvLocked, setSrvLocked] = useState(true)
   const [srvBusy, setSrvBusy] = useState(false)
-  const [srvMsg, setSrvMsg] = useState<string | null>(null)
+  const [srvSaved, setSrvSaved] = useState(false)
   const [srvErr, setSrvErr] = useState<string | null>(null)
+  const pending = !!(recs?.restart_pending || info?.restart_pending)
+
+  const markApplied = useCallback(() => {
+    setInfo((prev) => prev && { ...prev, restart_pending: false })
+    setRecs((prev) => prev && { ...prev, restart_pending: false })
+  }, [])
+  useHeadscaleRestart(pending && !busy && !srvBusy, markApplied, onUnauthorized)
 
   const handle = useCallback(
     (err: unknown) => {
@@ -154,21 +148,13 @@ export function DnsPage({ onUnauthorized }: Props) {
   }
 
   async function save() {
-    // Первое имя прописывает путь к файлу в config.yaml — только это и требует
-    // перезапуска. Дальше headscale перечитывает файл сам, предупреждать не о чем.
-    if (
-      recs &&
-      !recs.active &&
-      !window.confirm(
-        t(
-          'Первое имя нужно один раз показать headscale: он перезапустится (~10–15 c), на это время регистрация нод приостановится. Дальнейшие правки применяются без перезапуска.',
-        ),
-      )
-    )
-      return
+    if (!recs || busy || srvBusy) return
+    if (!window.confirm(t(
+      'Сохранить имена? При первой настройке или изменении маршрутов DNS headscale перезапустится. На это время регистрация нод приостановится.',
+    ))) return
     setBusy(true)
     setError(null)
-    setMsg(null)
+    setSaved(false)
     try {
       const updated = await setDnsRecords(
         rows
@@ -183,11 +169,8 @@ export function DnsPage({ onUnauthorized }: Props) {
       )
       setRecs(updated)
       setRows(rowsOf(updated))
-      setMsg(
-        updated.restart_pending
-          ? t('Сохранено. headscale перезапускается…')
-          : t('Сохранено — имена уже раздаются нодам'),
-      )
+      setInfo((prev) => prev && { ...prev, restart_pending: updated.restart_pending })
+      setSaved(true)
     } catch (err) {
       handle(err)
     } finally {
@@ -208,13 +191,14 @@ export function DnsPage({ onUnauthorized }: Props) {
       parsedServers.join(',') !== info.dns.nameservers.join(','))
 
   async function saveServers() {
+    if (busy || srvBusy) return
     // Единственная настройка, которой можно отнять у нод их DNS: спрашиваем о ней
     // прямо, а не надеемся, что человек прочитал пояснение под полем.
     if (
       override &&
       parsedServers.length > 0 &&
       info &&
-      !info.dns.override_local_dns &&
+      (!info.dns.override_local_dns || parsedServers.join(',') !== info.dns.nameservers.join(',')) &&
       !window.confirm(
         t(
           'Свои DNS-серверы заберут у ВСЕХ нод весь DNS: сервер со своим резолвером (корпоративный, облачный, локальный) перестанет видеть внутренние имена, а там, где эти серверы из его сети недоступны, потеряет резолв целиком. Имена внутри сети работают и без этого поля. Всё равно задать?',
@@ -232,7 +216,7 @@ export function DnsPage({ onUnauthorized }: Props) {
       return
     setSrvBusy(true)
     setSrvErr(null)
-    setSrvMsg(null)
+    setSrvSaved(false)
     try {
       const updated = await setHsDns({
         magic_dns: magic,
@@ -241,21 +225,10 @@ export function DnsPage({ onUnauthorized }: Props) {
         nameservers: parsedServers,
       })
       setInfo(updated)
+      setRecs((prev) => prev && { ...prev, restart_pending: updated.restart_pending })
       seed(updated)
       setSrvLocked(true)
-      setSrvMsg(t('Сохранено. headscale перезапускается…'))
-      recheck.current = window.setTimeout(() => {
-        getHsInfo()
-          .then((i) => {
-            setInfo(i)
-            seed(i)
-            // Перезапускает headscale хостовый помощник. Если флаг ещё на месте,
-            // значит помощника нет (или он сломан): правка записана, но не
-            // действует — и сказать об этом должна панель, а не тишина.
-            if (i.restart_pending) setSrvErr(t(HELPER_MISSING))
-          })
-          .catch(() => {})
-      }, 9000)
+      setSrvSaved(true)
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
       else setSrvErr(err instanceof Error ? err.message : t('Ошибка'))
@@ -264,7 +237,7 @@ export function DnsPage({ onUnauthorized }: Props) {
     }
   }
 
-  const status = !recs || !recs.active ? 'none' : recs.restart_pending ? 'wait' : 'live'
+  const status = pending ? 'wait' : recs === null ? null : recs.active ? 'active' : 'none'
 
   return (
     <>
@@ -275,13 +248,15 @@ export function DnsPage({ onUnauthorized }: Props) {
       <section className="card settings-section">
         <div className="clients-head">
           <h3>{t('Имена внутри сети')}</h3>
-          <span className={status === 'live' ? 'pill-ok' : 'pill-muted'}>
-            {status === 'live'
-              ? t('раздаётся нодам')
-              : status === 'wait'
-                ? t('записано, ждёт перезапуска headscale')
-                : t('пока не настроено')}
-          </span>
+          {status && (
+            <span className={status === 'active' ? 'pill-ok' : 'pill-muted'} aria-live="polite">
+              {status === 'active'
+                ? t('настроено')
+                : status === 'wait'
+                  ? t('записано, ждёт перезапуска headscale')
+                  : t('пока не настроено')}
+            </span>
+          )}
         </div>
 
         <p className="muted small">
@@ -315,6 +290,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                   type="checkbox"
                   className="field-checkbox"
                   checked={r.enabled}
+                  disabled={busy}
                   title={t('Вести внутрь сети')}
                   onChange={(e) => update(i, { enabled: e.target.checked })}
                 />
@@ -322,6 +298,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                   type="text"
                   className="dns-rec-name mono"
                   value={r.name}
+                  disabled={busy}
                   placeholder="panel.example.com"
                   onChange={(e) => update(i, { name: e.target.value })}
                 />
@@ -330,11 +307,12 @@ export function DnsPage({ onUnauthorized }: Props) {
                 </span>
                 <select
                   value={r.node_id || 'ip'}
+                  disabled={busy}
                   onChange={(e) =>
                     update(
                       i,
                       e.target.value === 'ip'
-                        ? { node_id: '', ip: '' }
+                        ? { node_id: '', ip: '', cert: false }
                         : { node_id: e.target.value, ip: '' },
                     )
                   }
@@ -361,6 +339,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                     type="text"
                     className="mono"
                     value={r.ip}
+                    disabled={busy}
                     placeholder="192.168.1.10"
                     onChange={(e) => update(i, { ip: e.target.value })}
                   />
@@ -378,7 +357,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                   <input
                     type="checkbox"
                     className="field-checkbox"
-                    disabled={!r.node_id}
+                    disabled={busy || !r.node_id}
                     checked={r.cert}
                     onChange={(e) => update(i, { cert: e.target.checked })}
                   />
@@ -387,6 +366,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                 <button
                   className="dns-rec-drop"
                   title={t('Убрать')}
+                  disabled={busy}
                   onClick={() => setRows(rows.filter((_, j) => j !== i))}
                 >
                   ×
@@ -456,7 +436,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                   setCaErr(null)
                   try {
                     const info = await setCa({ auto })
-                    setRecs({ ...recs, ca: info })
+                    setRecs((prev) => prev && { ...prev, ca: info })
                   } catch (err) {
                     setCaErr(err instanceof Error ? err.message : t('Ошибка'))
                   } finally {
@@ -529,7 +509,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                           reissue: true,
                           years,
                         })
-                        setRecs({ ...recs, ca: info })
+                        setRecs((prev) => prev && { ...prev, ca: info })
                         setRotOpen(false)
                       } catch (err) {
                         setCaErr(err instanceof Error ? err.message : t('Ошибка'))
@@ -585,11 +565,12 @@ export function DnsPage({ onUnauthorized }: Props) {
         )}
 
         {error && <p className="form-error">{error}</p>}
-        {msg && <p className="form-ok">{msg}</p>}
+        {saved && !pending && <p className="form-ok">{t('Сохранено')}</p>}
 
         <div className="dns-actions">
           <button
             className="ghost small"
+            disabled={busy}
             onClick={() =>
               // новая строка целится в ноду: имя на адрес ноды — обычный случай,
               // ручной адрес нужен для того, что стоит ЗА нодой
@@ -607,14 +588,14 @@ export function DnsPage({ onUnauthorized }: Props) {
           >
             {t('Добавить имя')}
           </button>
-          <button onClick={save} disabled={busy || !dirty}>
+          <button onClick={save} disabled={busy || srvBusy || !dirty}>
             {busy ? t('Сохранение…') : t('Сохранить')}
           </button>
         </div>
 
         <p className="muted small settings-note">
           {t(
-            'Галочка слева переключает имя между «внутрь сети» и «как снаружи» — снятая оставляет запись в списке, но нодам её не раздаёт. Переключается для всей сети сразу: адресно, по машинам, headscale раздавать имена не умеет. Имя получают и те машины, которым доступ к этому серверу не открыт: у них оно перестанет открываться совсем, наружу за ним они больше не пойдут. Правки применяются без перезапуска headscale; исключение — самое первое имя.',
+            'Галочка слева переключает имя между «внутрь сети» и «как снаружи» для всех нод. Имя внутри сети получат и ноды без доступа к указанному серверу. У них адрес перестанет открываться. Первая настройка имен и изменения маршрутов DNS требуют перезапуска headscale.',
           )}
         </p>
       </section>
@@ -630,6 +611,7 @@ export function DnsPage({ onUnauthorized }: Props) {
             ) : (
               <button
                 className="ghost small"
+                disabled={srvBusy}
                 onClick={() => {
                   seed(info)
                   setSrvLocked(true)
@@ -650,7 +632,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                 type="checkbox"
                 className="field-checkbox"
                 checked={magic}
-                disabled={srvLocked}
+                disabled={srvLocked || srvBusy}
                 onChange={(e) => setMagic(e.target.checked)}
               />
               <span>MagicDNS</span>
@@ -659,7 +641,7 @@ export function DnsPage({ onUnauthorized }: Props) {
               <span>{t('Базовый домен')}</span>
               <input
                 value={domain}
-                disabled={srvLocked}
+                disabled={srvLocked || srvBusy}
                 onChange={(e) => setDomain(e.target.value)}
                 placeholder="noderoost.internal"
               />
@@ -668,7 +650,7 @@ export function DnsPage({ onUnauthorized }: Props) {
               <span>{t('DNS-серверы (через запятую)')}</span>
               <input
                 value={servers}
-                disabled={srvLocked}
+                disabled={srvLocked || srvBusy}
                 onChange={(e) => setServers(e.target.value)}
                 placeholder="1.1.1.1, 1.0.0.1"
               />
@@ -683,7 +665,7 @@ export function DnsPage({ onUnauthorized }: Props) {
                 type="checkbox"
                 className="field-checkbox"
                 checked={override}
-                disabled={srvLocked || parsedServers.length === 0}
+                disabled={srvLocked || srvBusy || parsedServers.length === 0}
                 onChange={(e) => setOverride(e.target.checked)}
               />
               <span>{t('Использовать только эти серверы')}</span>
@@ -698,9 +680,13 @@ export function DnsPage({ onUnauthorized }: Props) {
             <p className="muted small settings-note">{t('Примените настройки, чтобы обновить старые маршруты DNS.')}</p>
           )}
           {srvErr && <p className="form-error">{srvErr}</p>}
-          {srvMsg && <p className="form-ok">{srvMsg}</p>}
+          {srvSaved && (
+            <p className={pending ? 'muted small' : 'form-ok'} aria-live="polite">
+              {pending ? t('записано, ждёт перезапуска headscale') : t('Сохранено')}
+            </p>
+          )}
           <div className="dns-actions">
-            <button onClick={saveServers} disabled={srvBusy || srvLocked || !srvDirty}>
+            <button onClick={saveServers} disabled={busy || srvBusy || srvLocked || !srvDirty}>
               {srvBusy ? t('Применение…') : t('Применить')}
             </button>
           </div>

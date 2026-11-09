@@ -265,16 +265,16 @@ export type AclSelector = {
   value: string
 }
 export type AclRule = { src: AclSelector; dst: AclSelector; ports: string }
-export type AclRules = { rules: AclRule[]; generated: string }
+export type AclRules = { rules: AclRule[]; generated: string; revision: string }
 
 export function getPolicyRules(): Promise<AclRules> {
   return api<AclRules>('/api/policy/rules')
 }
 
-export function putPolicyRules(rules: AclRule[]): Promise<AclRules> {
+export function putPolicyRules(rules: AclRule[], revision: string): Promise<AclRules> {
   return api<AclRules>('/api/policy/rules', {
     method: 'PUT',
-    body: JSON.stringify({ rules }),
+    body: JSON.stringify({ rules, revision }),
   })
 }
 

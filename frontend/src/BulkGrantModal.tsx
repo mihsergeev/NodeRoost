@@ -309,7 +309,7 @@ export function BulkGrantModal({
                   value={dest}
                   autoFocus
                   onChange={(e) => setDest(e.target.value)}
-                  placeholder="8.8.8.8, 10.0.0.0/8, myip.ru"
+                  placeholder="8.8.8.8, 10.0.0.0/8, service.example.com"
                 />
                 <span className="muted small">
                   {t('Работает, только если какая-то нода раздаёт маршрут к этому адресу — тогда правило решает, кому этим маршрутом можно пользоваться. Свой выход ноды в интернет ACL не контролирует: туда она ходит напрямую в любом случае. Нужен маршрут — заведите направление в «Маршрутизации».')}

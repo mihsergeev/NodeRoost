@@ -1,6 +1,6 @@
 # база пинуется по дайджесту: плавающий тег переносит сборку на другой образ
 # незаметно для нас — и то, что проверено, перестаёт быть тем, что выкачено
-FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6
+FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
 
 WORKDIR /srv
 
@@ -29,4 +29,5 @@ USER 10001
 EXPOSE 8000
 # Проверка записи в /data до миграций: без нее панель поднимается как обычно, а
 # непонятные отказы приходят потом по одному - бэкап, DNS, зеркало пакетов.
-CMD ["sh", "-c", "if [ ! -w /data ]; then echo \"FATAL: /data is not writable for uid $(id -u). Run 'sudo ops/data-owner.sh' on the host.\" >&2; exit 1; fi; alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Access log пишет nginx, где пути с токенами маскируются.
+CMD ["sh", "-c", "if [ ! -w /data ]; then echo \"FATAL: /data is not writable for uid $(id -u). Run 'sudo ops/data-owner.sh' on the host.\" >&2; exit 1; fi; alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log"]

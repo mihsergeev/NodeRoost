@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import ipaddress
+import json
 import socket
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -81,6 +83,11 @@ async def put_policy(
 # --- визуальный конструктор ACL (правила → HuJSON) ---
 
 
+def _rules_revision(rules: list[dict]) -> str:
+    encoded = json.dumps(rules, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
 @router.get("/rules", response_model=AclRulesOut)
 async def get_rules(_: CurrentUser, session: SessionDep) -> AclRulesOut:
     settings = get_settings()
@@ -90,7 +97,10 @@ async def get_rules(_: CurrentUser, session: SessionDep) -> AclRulesOut:
     nodes = await hs_call(client.get_nodes())
     return AclRulesOut(
         rules=[AclRule(**r) for r in rules],
-        generated=await policy_apply.build_policy(session, client, settings, nodes) or "",
+        generated=await policy_apply.build_policy(
+            session, client, settings, nodes, rules_override=rules
+        ) or "",
+        revision=_rules_revision(rules),
     )
 
 
@@ -150,29 +160,41 @@ async def put_rules(
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
-    nodes = await hs_call(client.get_nodes())
-    meta = await settings_store.get_node_meta(session)
-    await _refuse_inert_rules(body.rules, nodes, meta)
     rules_dicts = [r.model_dump() for r in body.rules]
-    # Сохраняем, пушим ЕДИНЫМ сборщиком и откатываем при отказе headscale — так
-    # запушенное всегда совпадает с хранимым и с кэшем _last_pushed (иначе
-    # самоисцеление считает, что всё в порядке, и расхождение живёт до следующей
-    # правки). Порядок «сохранить → запушить → откатить» тот же, что у направлений.
     async with policy_apply.write_lock():
-        prev = await settings_store.get_acl_rules(session)
-        await settings_store.set_acl_rules(session, rules_dicts)
-        err = await policy_apply.push_policy(session, client, settings)
-        if err:
-            await settings_store.set_acl_rules(session, prev)
-            await policy_apply.apply_policy(session, client, settings)
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
+        push_started = False
+        try:
+            async with settings_store.atomic_update(session):
+                prev = await settings_store.get_acl_rules(session)
+                if body.revision != _rules_revision(prev):
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        "Правила доступа изменились или версия не указана. "
+                        "Обновите страницу и повторите.",
+                    )
+                nodes = await hs_call(client.get_nodes())
+                meta = await settings_store.get_node_meta(session)
+                await _refuse_inert_rules(body.rules, nodes, meta)
+                await settings_store.set_acl_rules(session, rules_dicts)
+                push_started = True
+                err = await policy_apply.push_policy(session, client, settings)
+                if err:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
+        except BaseException:
+            # Ответ о пуше или commit мог потеряться после успешной записи.
+            # Из уже завершённой транзакции берём то, что реально сохранено.
+            if push_started:
+                await policy_apply.apply_policy(session, client, settings)
+            raise
         generated = (
-            await policy_apply.build_policy(session, client, settings, nodes) or ""
+            await policy_apply.build_policy(
+                session, client, settings, nodes, rules_override=rules_dicts
+            ) or ""
         )
     await audit.record(
         session, user.username, "acl_rules_set", "", f"{len(rules_dicts)} правил"
     )
-    return AclRulesOut(rules=body.rules, generated=generated)
+    return AclRulesOut(rules=body.rules, generated=generated, revision=_rules_revision(rules_dicts))
 
 
 @router.post("/resolve-host", response_model=ResolveHostOut)

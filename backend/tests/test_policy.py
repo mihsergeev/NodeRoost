@@ -222,23 +222,40 @@ async def test_parallel_rule_writes_end_up_consistent(client, monkeypatch):
                           json={"username": "admin", "password": ADMIN_PASSWORD})
     h = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
-    def body(port):
-        return {"rules": [{"src": {"kind": "node", "value": "1"},
-                           "dst": {"kind": "node", "value": "2"}, "ports": port}]}
+    loaded = (await client.get("/api/policy/rules", headers=h)).json()
+    assert len(loaded["revision"]) == 64
 
-    await asyncio.gather(*[
+    def body(port):
+        return {"revision": loaded["revision"], "rules": [
+            {"src": {"kind": "node", "value": "1"},
+             "dst": {"kind": "node", "value": "2"}, "ports": port}
+        ]}
+
+    missing = await client.put("/api/policy/rules", json={"rules": []}, headers=h)
+    assert missing.status_code == 409
+    assert "Обновите" in missing.json()["detail"]
+    assert not pushed
+    results = await asyncio.gather(*[
         client.put("/api/policy/rules", json=body(p), headers=h)
         for p in ("111", "222", "333")
     ])
-    stored = (await client.get("/api/policy/rules", headers=h)).json()["rules"]
-    assert pushed[-1] == stored[0]["ports"]   # в сети ровно то, что в панели
+    assert sorted(r.status_code for r in results) == [200, 409, 409]
+    stored = (await client.get("/api/policy/rules", headers=h)).json()
+    assert pushed == [stored["rules"][0]["ports"]]
+    assert stored["revision"] == next(r.json()["revision"] for r in results if r.status_code == 200)
+    assert stored["revision"] != loaded["revision"]
 
 
 async def _rules_put(client, tok, src, dst, ports="22"):
+    headers = {"Authorization": f"Bearer {tok}"}
+    loaded = await client.get("/api/policy/rules", headers=headers)
+    assert loaded.status_code == 200, loaded.text
     return await client.put(
         "/api/policy/rules",
-        json={"rules": [{"src": src, "dst": dst, "ports": ports}]},
-        headers={"Authorization": f"Bearer {tok}"},
+        json={"revision": loaded.json()["revision"], "rules": [
+            {"src": src, "dst": dst, "ports": ports}
+        ]},
+        headers=headers,
     )
 
 

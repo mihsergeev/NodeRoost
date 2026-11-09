@@ -9,6 +9,7 @@ Description=NodeRoost: watch headscale apply-config flag
 
 [Path]
 PathExists=/app/noderoost/data/headscale/.restart-request
+PathExists=/app/noderoost/data/headscale/.restart-in-progress
 Unit=noderoost-hs-apply.service
 
 [Install]

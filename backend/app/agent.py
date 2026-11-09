@@ -70,6 +70,10 @@ TOK="$AGENT_TOKEN"
 SELF_URL="$STATE_URL"
 # Заголовок с токеном одной строкой, чтобы не повторять его у каждого curl.
 AUTH="X-NodeRoost-Agent: \$TOK"
+# Читаем заголовок через stdin curl: секрет не виден в argv и журналах.
+agent_curl() {
+  printf 'header = "%s"\\n' "\$AUTH" | curl -K - "\$@"
+}
 # Публичный ключ подписи релизов и номер установленного релиза. Ключ вшивается
 # ОДИН РАЗ — сейчас, когда установку запустил человек. Дальше нода принимает
 # обновление, только если оно подписано этим ключом: захваченная панель своего
@@ -96,11 +100,11 @@ systemctl is-active --quiet tailscaled 2>/dev/null || {
 # Панель недоступна — молча выходим: это её дело, а не ноды. Но 404 значит другое:
 # такого узла панель больше не знает (его удалили). Тогда сообщаем по-человечески,
 # а не сыплем в журнал сырым «curl: (22) … 404» каждую минуту.
-CODE=\$(curl -sS --max-time 15 --max-filesize 262144 -H "\$AUTH" -o "\$TMP" -w '%{http_code}' "\$API" 2>/dev/null || echo 000)
+CODE=\$(agent_curl -sS --max-time 15 --max-filesize 262144 -o "\$TMP" -w '%{http_code}' "\$API" 2>/dev/null || echo 000)
 if [ "\$CODE" = 404 ]; then
   rm -f "\$TMP"
   echo "NodeRoost: панель больше не знает этот узел — агент можно удалить:" >&2
-  echo "  curl -fsSL -H '\$AUTH' \$API/remove | sh" >&2
+  echo "  Остановить опрос: systemctl disable --now noderoost-agent.timer" >&2
   exit 0
 fi
 [ "\$CODE" = 200 ] || { rm -f "\$TMP"; exit 0; }
@@ -126,9 +130,9 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
   echo "\$NOW" > "\$STAMP"; echo "\$WANT_REL" > "$DIR/.update-rel"
   UPD=\$(mktemp -d)
   printf '%s' "\$AGENT_PUB_B64" | base64 -d > "\$UPD/agent.pub" 2>/dev/null
-  curl -fsS --max-time 30 --max-filesize 65536 -H "\$AUTH" -o "\$UPD/manifest.json" "\$API/manifest" 2>/dev/null
-  curl -fsS --max-time 30 --max-filesize 65536 -H "\$AUTH" -o "\$UPD/manifest.sig" "\$API/manifest.sig" 2>/dev/null
-  curl -fsS --max-time 60 --max-filesize 2097152 -H "\$AUTH" -o "\$UPD/setup.tmpl" "\$API/setup.tmpl" 2>/dev/null
+  agent_curl -fsS --max-time 30 --max-filesize 65536 -o "\$UPD/manifest.json" "\$API/manifest" 2>/dev/null
+  agent_curl -fsS --max-time 30 --max-filesize 65536 -o "\$UPD/manifest.sig" "\$API/manifest.sig" 2>/dev/null
+  agent_curl -fsS --max-time 60 --max-filesize 2097152 -o "\$UPD/setup.tmpl" "\$API/setup.tmpl" 2>/dev/null
   if ! openssl dgst -sha256 -verify "\$UPD/agent.pub" -signature "\$UPD/manifest.sig" \
        "\$UPD/manifest.json" >/dev/null 2>&1; then
     echo "NodeRoost: ПОДПИСЬ ОБНОВЛЕНИЯ НЕВЕРНА — отказ (панель могла быть подменена)" >&2
@@ -229,34 +233,103 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
     [ -f "\$CA_DST" ] && { rm -f "\$CA_DST"; \$CA_UPD >/dev/null 2>&1; \\
       echo "NodeRoost: сертификат CA панели убран из доверенных" >&2; }
   elif [ "\$WANT_CA" != "\$HAVE" ]; then
-    if curl -fsS --max-time 30 --max-filesize 1048576 -H "\$AUTH" -o "\$TMPD/ca" "\$API/ca" 2>/dev/null; then
+    if agent_curl -fsS --max-time 30 --max-filesize 1048576 -o "\$TMPD/ca" "\$API/ca" 2>/dev/null; then
       GOT=\$(openssl x509 -in "\$TMPD/ca" -noout -fingerprint -sha256 2>/dev/null \\
         | tr -d ':' | cut -d= -f2 | tr 'A-Z' 'a-z')
-      # Корень панели ставится в СИСТЕМНОЕ хранилище доверенных, то есть ему
-      # начинает верить вообще всё на машине: apt, pip, curl. Отпечаток тут не
-      # защита: его называет та же панель, что присылает корень. Защита - только
-      # ограничения имён, и проверять их надо по существу. Раньше хватало слова
-      # «Excluded» где-нибудь в расширении: корень, которому запрещён один
-      # выдуманный домен, проходил проверку и дальше годился для ЛЮБОГО сайта -
-      # то есть захваченная панель получала на каждой ноде полный перехват TLS.
-      # Теперь требуем либо белый список имён, либо запрет всего публичного
-      # пространства: обоих диапазонов IP и полутора тысяч доменов верхнего
-      # уровня, которые панель туда и кладёт.
-      NCALL=\$(openssl x509 -in "\$TMPD/ca" -noout -text 2>/dev/null \\
-        | awk '/X509v3 Name Constraints/{f=1;next} f && /X509v3 /{f=0} f')
-      PERM=\$(printf '%s\n' "\$NCALL" | awk '/Permitted:/{p=1;next} /Excluded:/{p=0} p')
-      EXCL=\$(printf '%s\n' "\$NCALL" | awk '/Excluded:/{p=1;next} /Permitted:/{p=0} p')
+      # Проверяем байты расширения, чтобы поддельные имена не могли
+      # имитировать строки вывода openssl x509 -text.
+      PUBLIC_TLDS="@@PUBLIC_TLDS@@"
       NC=0
-      if [ -n "\$PERM" ] && printf '%s\n' "\$PERM" | grep -q 'DNS:[a-z0-9]'; then
-        NC=1   # белый список: такой корень годится только для перечисленных имён
-      else
+      if openssl x509 -in "\$TMPD/ca" -outform DER -out "\$TMPD/ca.der" 2>/dev/null &&
+         od -An -v -tu1 "\$TMPD/ca.der" | LC_ALL=C awk -v public="\$PUBLIC_TLDS" '
+        { for (i = 1; i <= NF; i++) bytes[++count] = \$i }
+        # Границы одного DER-элемента. Вход ограничен размером ответа curl.
+        function item(at, limit,    size, n) {
+          if (at + 2 > limit) exit 1
+          tag = bytes[at++]
+          size = bytes[at++]
+          if (size >= 128) {
+            n = size - 128
+            if (n < 1 || n > 3 || at + n > limit) exit 1
+            size = 0
+            while (n--) size = size * 256 + bytes[at++]
+          }
+          start = at
+          end = at + size
+          if (end > limit) exit 1
+        }
+        function verify_constraints(at, limit,    group, group_end, subtree, subtree_end, name, j, zeros) {
+          item(at, limit)
+          if (tag != 48 || end != limit) exit 1
+          for (at = start; at < limit; at = group_end) {
+            item(at, limit)
+            group = tag
+            group_end = end
+            if ((group != 160 && group != 161) || seen_group[group]++) exit 1
+            for (subtree = start; subtree < group_end; subtree = subtree_end) {
+              item(subtree, group_end)
+              if (tag != 48) exit 1
+              subtree_end = end
+              item(start, subtree_end)
+              if (end != subtree_end) exit 1
+              if (tag == 130) {
+                name = ""
+                for (j = start; j < end; j++) name = name sprintf("%c", bytes[j])
+                name = tolower(name)
+                if (name !~ /^\\.?[a-z0-9-]+(\\.[a-z0-9-]+)*\$/) exit 1
+                if (group == 160) {
+                  scoped = 1
+                  sub(/^.*\\./, "", name)
+                  if (name in known) exit 1
+                } else {
+                  excluded[name] = 1
+                }
+              } else if (tag == 135 && group == 161) {
+                zeros = 1
+                for (j = start; j < end; j++) if (bytes[j]) zeros = 0
+                if (zeros && end - start == 8) ipv4 = 1
+                if (zeros && end - start == 32) ipv6 = 1
+              } else {
+                exit 1
+              }
+            }
+          }
+        }
+        END {
+          n = split(public, tld, " ")
+          for (i = 1; i <= n; i++) known[tld[i]] = 1
+          item(1, count + 1)
+          if (tag != 48 || end != count + 1) exit 1
+          item(start, end)
+          if (tag != 48) exit 1
+          tbs_end = end
+          for (at = start; at < tbs_end; at = end) {
+            item(at, tbs_end)
+            if (tag == 163) break
+          }
+          if (tag != 163 || end != tbs_end) exit 1
+          item(start, end)
+          if (tag != 48 || end != tbs_end) exit 1
+          for (at = start; at < tbs_end; at = ext_end) {
+            item(at, tbs_end)
+            if (tag != 48) exit 1
+            ext_end = end
+            item(start, ext_end)
+            if (tag != 6) exit 1
+            # OID 2.5.29.30 (nameConstraints).
+            if (end - start != 3 || bytes[start] != 85 || bytes[start+1] != 29 || bytes[start+2] != 30) continue
+            if (found++) exit 1
+            item(end, ext_end)
+            if (tag != 1 || end - start != 1 || bytes[start] != 255) exit 1
+            item(end, ext_end)
+            if (tag != 4 || end != ext_end) exit 1
+            verify_constraints(start, end)
+          }
+          if (!found || !ipv4 || !ipv6) exit 1
+          if (!scoped) for (name in known) if (!(name in excluded)) exit 1
+        }
+      ' && [ "\$(grep -c '^-----BEGIN CERTIFICATE-----\$' "\$TMPD/ca")" = 1 ]; then
         NC=1
-        printf '%s\n' "\$EXCL" | grep -qF 'IP:0.0.0.0/0.0.0.0' || NC=0
-        printf '%s\n' "\$EXCL" | grep -qF 'IP:0:0:0:0:0:0:0:0' || NC=0
-        [ "\$(printf '%s\n' "\$EXCL" | grep -c 'DNS:')" -ge 1000 ] || NC=0
-        for D in com net org ru io dev app cloud online site; do
-          printf '%s\n' "\$EXCL" | grep -q "DNS:\$D\$" || NC=0
-        done
       fi
       if [ "\$NC" != "1" ]; then
         echo "NodeRoost: сертификат CA не поставлен - корень не ограничен именами" >&2
@@ -264,7 +337,9 @@ if [ -n "\$CA_DST" ] && command -v openssl >/dev/null 2>&1; then
         echo "   для имён внутри сети)" >&2
         rm -f "\$TMPD/ca"
       elif [ -n "\$GOT" ] && [ "\$GOT" = "\$WANT_CA" ]; then
-        cat "\$TMPD/ca" > "\$CA_DST"; chmod 644 "\$CA_DST"
+        # Устанавливаем только проверенный сертификат, в каноническом PEM.
+        openssl x509 -in "\$TMPD/ca" -out "\$TMPD/verified-ca"
+        install -m 644 "\$TMPD/verified-ca" "\$CA_DST"
         \$CA_UPD >/dev/null 2>&1 \\
           && echo "NodeRoost: сертификат CA панели добавлен в доверенные (\$CA_DST)" >&2 \\
           || echo "NodeRoost: не удалось обновить хранилище корней (\$CA_UPD)" >&2
@@ -316,8 +391,8 @@ if [ -n "\$CERTS" ]; then
       if [ "\$NEED" = "1" ] || [ ! -f "\$KEY" ] || [ ! -f "\$CRT" ]; then
         [ -f "\$KEY" ] || { openssl ecparam -genkey -name prime256v1 -out "\$KEY" 2>/dev/null && chmod 600 "\$KEY"; }
         openssl req -new -key "\$KEY" -subj "/CN=\$NAME" -addext "subjectAltName=DNS:\$NAME" -out "\$TMPD/csr" 2>/dev/null
-        CODE=\$(curl -sS --max-time 120 --max-filesize 262144 -X POST --data-binary @"\$TMPD/csr" -o "\$TMPD/crt" \
-          -w '%{http_code}' -H "\$AUTH" "\$API/csr?name=\$NAME" 2>/dev/null || echo 000)
+        CODE=\$(agent_curl -sS --max-time 120 --max-filesize 262144 -X POST --data-binary @"\$TMPD/csr" -o "\$TMPD/crt" \
+          -w '%{http_code}' "\$API/csr?name=\$NAME" 2>/dev/null || echo 000)
         if [ "\$CODE" = 200 ]; then
           mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
           CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
@@ -326,8 +401,8 @@ if [ -n "\$CERTS" ]; then
         fi
         rm -f "\$TMPD/csr" "\$TMPD/crt"
       elif [ -n "\$FP" ] && [ "\$FP" != "\$LOCAL" ]; then
-        CODE=\$(curl -sS --max-time 30 --max-filesize 262144 -o "\$TMPD/crt" -w '%{http_code}' \
-          -H "\$AUTH" "\$API/cert?name=\$NAME" 2>/dev/null || echo 000)
+        CODE=\$(agent_curl -sS --max-time 30 --max-filesize 262144 -o "\$TMPD/crt" -w '%{http_code}' \
+          "\$API/cert?name=\$NAME" 2>/dev/null || echo 000)
         [ "\$CODE" = 200 ] && {
           mv "\$TMPD/crt" "\$CRT"; chmod 644 "\$CRT"
           CHANGED=1; CHANGED_NAMES="\$CHANGED_NAMES \$NAME"
@@ -388,7 +463,7 @@ rm -f "\$TMP"
 # агента от ноды, которая просто дёргает свой URL и ничего не делает. Шлём хеш
 # применённого состояния — по нему видно и то, что нода отстала от задания.
 HASH=\$(sha256sum "$DIR/state" 2>/dev/null | cut -d' ' -f1)
-[ -n "\$HASH" ] && curl -fsS --max-time 10 -H "\$AUTH" -X POST "\$API/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
+[ -n "\$HASH" ] && agent_curl -fsS --max-time 10 -X POST "\$API/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
 EOF
 chmod 700 "$DIR/apply.sh"
 
@@ -430,9 +505,10 @@ bad() { echo "  [FAIL] $1" >&2; fail=1; }
 
 systemctl is-active --quiet noderoost-agent.timer && ok "агент запущен (раз в минуту)" \
   || bad "таймер агента не активен (systemctl status noderoost-agent.timer)"
-curl -fsS --max-time 15 -H "X-NodeRoost-Agent: $AGENT_TOKEN" "$API_URL" >/dev/null 2>&1 \
+printf 'header = "X-NodeRoost-Agent: %s"\n' "$AGENT_TOKEN" \
+  | curl -K - -fsS --max-time 15 "$API_URL" >/dev/null 2>&1 \
   && ok "панель отвечает, состояние забирается" \
-  || bad "не достучаться до панели: $STATE_URL (DNS/сеть/токен)"
+  || bad "не достучаться до панели: $API_URL (DNS/сеть/токен)"
 [ -f "$DIR/state" ] && ok "состояние применено" || bad "состояние не получено"
 
 echo
@@ -443,6 +519,14 @@ else
   exit 1
 fi
 """
+# Подписывается вместе со скриптом. Панель не может ослабить проверку CA.
+with open(os.path.join(os.path.dirname(__file__), "data", "public_tlds.txt"),
+          encoding="utf-8") as _tlds:
+    TEMPLATE = TEMPLATE.replace(
+        "@@PUBLIC_TLDS@@", " ".join(line.strip().lower() for line in _tlds
+                                    if line.strip() and not line.startswith("#"))
+    )
+
 
 _REMOVE = r"""#!/bin/sh
 # NodeRoost — снять агента (нода перестанет получать маршруты из панели).

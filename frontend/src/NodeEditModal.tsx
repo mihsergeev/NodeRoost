@@ -21,6 +21,11 @@ type Props = {
   onUnauthorized: () => void
 }
 
+type MetaPatch = Partial<Pick<Node,
+  'description' | 'kind' | 'admin' | 'muted' | 'hidden' | 'exit_gateway' |
+  'exit_via' | 'force_exit' | 'group' | 'subgroup'
+>>
+
 const bare = (t: string) => t.replace(/^tag:/, '')
 
 export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }: Props) {
@@ -49,6 +54,11 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
   const [newRole, setNewRole] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [partial, setPartial] = useState(false)
+  // Снимок формы и результаты её собственных сохранений. Фоновый опрос может
+  // менять props, пока окно открыто, но это не правки пользователя.
+  const applied = useRef(node)
+  const appliedClients = useRef([...exitClients].sort().join(','))
 
   // уже заведённые группы/подгруппы — подсказками в datalist, чтобы не плодить
   // опечатки вроде «Acme» / «acme » разными записями
@@ -129,73 +139,61 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
     }
   }
 
-  // имя, которое уже успели применить в этом сеансе окна
-  const renamedTo = useRef<string | null>(null)
   const suggestion = suggestNodeName(name)
   const nameOk = name.trim() === '' || NODE_NAME_RE.test(name.trim().toLowerCase())
 
   async function save() {
+    if (busy) return
     setBusy(true)
     setError(null)
+    let changed = false
     try {
-      const newName = name.trim()
-      // Переименование не повторяем: сохранение идёт в три шага (имя, мета,
-      // теги), и падение на втором оставляло имя уже применённым - повторное
-      // «Сохранить» слало переименование ещё раз, теперь уже с 409 про занятое
-      // имя, хотя занято оно самой этой нодой.
-      if (newName && newName !== node.name && newName !== renamedTo.current) {
-        await renameNode(node.id, newName)
-        renamedTo.current = newName
+      const newName = name.trim().toLowerCase()
+      if (newName && newName !== applied.current.name.toLowerCase()) {
+        const renamed = await renameNode(node.id, newName)
+        applied.current = { ...applied.current, name: renamed.name }
+        changed = true
       }
+      const before = applied.current
       const effAdmin = kind === 'device' && admin
-      // exit-поля осмысленны только для своего типа: сервер — шлюз, устройство —
-      // список шлюзов. Чужие поля обнуляем, чтобы смена типа не оставила висеть
-      // старое (напр. сервер стал устройством, а флаг шлюза остался).
       const effGateway = kind === 'server' && exitGateway
-      // принудительный выход бессмыслен на самом шлюзе (сам себя не форсит)
       const effForce = effGateway ? '' : forceExit
-      // источник форса должен иметь этот шлюз в «разрешённых» (для ACL-гранта)
-      const viaSet = new Set(kind === 'device' ? exitVia : [])
-      if (effForce) viaSet.add(effForce)
-      const effVia = [...viaSet].sort()
-      const oldVia = [...node.exit_via].sort()
-      if (
-        kind !== node.kind ||
-        effAdmin !== node.admin ||
-        muted !== node.muted ||
-        hidden !== node.hidden ||
-        effGateway !== node.exit_gateway ||
-        effVia.join(',') !== oldVia.join(',') ||
-        effForce !== (node.force_exit || '') ||
-        description.trim() !== (node.description ?? '').trim() ||
-        group.trim() !== (node.group ?? '').trim() ||
-        subgroup.trim() !== (node.subgroup ?? '').trim()
-      ) {
-        await setNodeMeta(node.id, {
-          description: description.trim(),
-          kind,
-          admin: effAdmin,
-          muted,
-          hidden,
-          exit_gateway: effGateway,
-          exit_via: effVia,
-          force_exit: effForce,
-          group: group.trim(),
-          subgroup: subgroup.trim(),
-        })
+      const kindChanged = kind !== before.kind
+      const gatewayChanged = (kind === 'server' || kindChanged) && effGateway !== before.exit_gateway
+      const forceChanged = (!effGateway || gatewayChanged) && effForce !== before.force_exit
+      const patch: MetaPatch = {}
+      if (kindChanged) patch.kind = kind
+      if ((kind === 'device' || kindChanged) && effAdmin !== before.admin) patch.admin = effAdmin
+      if (muted !== before.muted) patch.muted = muted
+      if (hidden !== before.hidden) patch.hidden = hidden
+      if (gatewayChanged) patch.exit_gateway = effGateway
+      if (forceChanged) patch.force_exit = effForce
+      const beforeVia = [...before.exit_via].sort().join(',')
+      const viaChanged = kind === 'device' && [...exitVia].sort().join(',') !== beforeVia
+      if (kindChanged || gatewayChanged || forceChanged || viaChanged) {
+        const viaSet = new Set(kind === 'device' ? exitVia : [])
+        if (effForce) viaSet.add(effForce)
+        const via = [...viaSet].sort()
+        if (via.join(',') !== beforeVia) patch.exit_via = via
+      }
+      if (description.trim() !== (before.description ?? '').trim()) patch.description = description.trim()
+      if (group.trim() !== (before.group ?? '').trim()) patch.group = group.trim()
+      if (subgroup.trim() !== (before.subgroup ?? '').trim()) patch.subgroup = subgroup.trim()
+      if (Object.keys(patch).length > 0) {
+        await setNodeMeta(node.id, patch)
+        applied.current = { ...before, ...patch }
+        changed = true
       }
       // Серверная сторона выбора выхода: обновляем, каким устройствам разрешён
       // выход через этот шлюз (правит их exit_via). Идёт ПОСЛЕ set_node_meta —
       // сервер уже помечен шлюзом и его тег объявлен. Снятие галки отдельно не
       // чистим: генератор и так отбрасывает выход через non-gateway.
       if (effGateway) {
-        const initialClients = nodes
-          .filter((n) => n.exit_via.includes(node.id))
-          .map((n) => n.id)
-          .sort()
         const nowClients = [...exitClients].sort()
-        if (nowClients.join(',') !== initialClients.join(',')) {
+        if (nowClients.join(',') !== appliedClients.current) {
           await setExitClients(node.id, nowClients)
+          appliedClients.current = nowClients.join(',')
+          changed = true
         }
       }
       // Роль, набранная в поле и НЕ подтверждённая кнопкой «+ роль», всё равно
@@ -205,7 +203,7 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
       const pending = bare(newRole.trim())
       const effRoles = pending ? new Set(roles).add(pending) : roles
       const newTags = [...effRoles].map((r) => `tag:${r}`)
-      const oldTags = [...node.forced_tags].sort().join(',')
+      const oldTags = [...applied.current.forced_tags].sort().join(',')
       if (newTags.slice().sort().join(',') !== oldTags) {
         await setNodeTags(node.id, newTags)
       }
@@ -215,6 +213,7 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
         onUnauthorized()
         return
       }
+      if (changed) setPartial(true)
       setError(err instanceof Error ? err.message : t('Ошибка'))
     } finally {
       setBusy(false)
@@ -374,6 +373,7 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
                       key={g.id}
                       type="button"
                       className={`role-chip${exitVia.has(g.id) ? ' role-chip-on' : ''}`}
+                      disabled={g.id === forceExit}
                       onClick={() => toggleVia(g.id)}
                     >
                       {g.name}
@@ -390,7 +390,7 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
           </div>
         )}
 
-        {forceOpts.length > 0 && (
+        {forceOpts.length > 0 && !(kind === 'server' && exitGateway) && (
           <label className="field">
             <span>{t('Принудительно весь трафик через шлюз')}</span>
             <select
@@ -512,6 +512,9 @@ export function NodeEditModal({ node, nodes, onClose, onSaved, onUnauthorized }:
         </div>
 
         {error && <p className="form-error">{error}</p>}
+        {partial && (
+          <p className="muted small">{t('Часть изменений уже сохранена. Проверьте значения перед повтором.')}</p>
+        )}
         <div className="modal-actions">
           <button className="ghost" onClick={onClose}>
             {t('Отмена')}
