@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import {
   ApiError,
   downloadCa,
@@ -83,6 +83,7 @@ export function DnsPage({ onUnauthorized }: Props) {
     },
     [onUnauthorized, t],
   )
+  const handleLoadError = useEffectEvent(handle)
 
   function seed(i: HsInfo) {
     setMagic(i.dns.magic_dns)
@@ -92,24 +93,34 @@ export function DnsPage({ onUnauthorized }: Props) {
   }
 
   useEffect(() => {
+    let active = true
     listNodes()
-      .then(setNodes)
+      .then((next) => {
+        if (active) setNodes(next)
+      })
       .catch(() => {
         /* без списка нод останется только ручной адрес */
       })
     getDnsRecords()
       .then((r) => {
+        if (!active) return
         setRecs(r)
         setRows(rowsOf(r))
       })
-      .catch(handle)
+      .catch((err) => {
+        if (active) handleLoadError(err)
+      })
     getHsInfo()
       .then((i) => {
+        if (!active) return
         setInfo(i)
         seed(i)
       })
       .catch(() => {})
-  }, [handle])
+    return () => {
+      active = false
+    }
+  }, [])
 
   const dirty = !!recs && JSON.stringify(rows) !== JSON.stringify(rowsOf(recs))
 

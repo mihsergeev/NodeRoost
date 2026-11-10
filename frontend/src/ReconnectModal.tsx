@@ -2,10 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   enrollStatus,
+  getToken,
   OS_TABS,
   reconnectNode,
-  setNodeMeta,
-  setNodeTags,
   type EnrollResult,
   type Node,
   type NodeOs,
@@ -34,29 +33,27 @@ export function ReconnectModal({ node, onClose, onDone, onUnauthorized }: Props)
   useEffect(() => {
     if (!result || newIp) return
     let alive = true
+    let pending = false
+    const token = getToken()
     const tick = async () => {
+      if (!alive || pending || getToken() !== token) return
+      pending = true
       try {
-        const s = await enrollStatus(result.key_id, result.hostname)
-        if (alive && s.connected && s.node) {
-          // переносим классификацию со старой ноды на новую (у неё новый id)
-          const nid = s.node.id
-          try {
-            await setNodeMeta(nid, {
-              description: node.description,
-              kind: node.kind,
-              admin: node.admin,
-              group: node.group,
-              subgroup: node.subgroup,
-            })
-            if (node.forced_tags.length) await setNodeTags(nid, node.forced_tags)
-          } catch {
-            /* восстановление меты best-effort */
-          }
+        const s = await enrollStatus(result.key_id, result.hostname, AbortSignal.timeout(10000))
+        if (alive && getToken() === token && s.connected && s.node) {
+          // Сервер переносит настройки по ключу подключения. Запись из
+          // старой карточки здесь могла бы перезаписать более свежую правку.
+          alive = false
           setNewIp(s.node.ip_addresses.find((ip) => !ip.includes(':')) ?? '—')
           onDone()
         }
-      } catch {
-        /* временная ошибка — повторим */
+      } catch (err) {
+        if (alive && getToken() === token && err instanceof ApiError && err.status === 401) {
+          alive = false
+          onUnauthorized()
+        }
+      } finally {
+        pending = false
       }
     }
     pollRef.current = setInterval(tick, 4000)
@@ -65,7 +62,7 @@ export function ReconnectModal({ node, onClose, onDone, onUnauthorized }: Props)
       alive = false
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [result, newIp, onDone])
+  }, [result, newIp, onDone, onUnauthorized])
 
   async function start() {
     if (

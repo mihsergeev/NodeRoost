@@ -1,8 +1,9 @@
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app import devices
 from app.config import Settings
 from app.models import User
 from app.security import hash_password
@@ -35,10 +36,16 @@ async def ensure_admin(
             )
             await session.commit()
         elif settings.admin_password_reset:
-            user.password_hash = hash_password(settings.admin_password)
-            user.totp_enabled = False
-            user.totp_secret = ""
-            user.token_version += 1  # инвалидируем все старые токены
+            await session.execute(
+                update(User).where(User.id == user.id).values(
+                    password_hash=hash_password(settings.admin_password),
+                    totp_enabled=False,
+                    totp_secret="",
+                    totp_last_counter=0,
+                    token_version=User.token_version + 1,  # инвалидируем старые токены
+                )
+            )
+            await devices.revoke_all(session, user.username)
             await session.commit()
             log.warning(
                 "АВАРИЙНЫЙ СБРОС пароля админа выполнен — удалите "

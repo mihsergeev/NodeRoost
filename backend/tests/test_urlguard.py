@@ -5,6 +5,11 @@ import pytest
 from app import urlguard
 
 
+async def test_blocks_shared_mesh_address():
+    with pytest.raises(urlguard.UrlNotAllowed, match="внутренних сетей"):
+        await urlguard.check_outbound_url("https://100.64.0.42/hook")
+
+
 async def test_empty_is_allowed():
     """Пустая строка — это «канал выключен», а не плохой адрес."""
     await urlguard.check_outbound_url("")

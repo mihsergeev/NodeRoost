@@ -558,6 +558,7 @@ tailscale set --exit-node=`}</pre>
           role={addRole}
           nodes={nodes}
           rules={rules}
+          onUnauthorized={onUnauthorized}
           onClose={() => setAddRole(null)}
           onApply={(next) => {
             setAddRole(null)

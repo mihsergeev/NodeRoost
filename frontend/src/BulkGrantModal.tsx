@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { resolveHost, type AclRule, type AclSelector, type Node } from './api'
+import { ApiError, type AclRule, type AclSelector, type Node } from './api'
 import { PORT_OPTS, parseSel, portHint, roleList, toggleRule } from './aclui'
 import { useI18n } from './i18n'
+import { useHostResolution } from './useHostResolution'
 import { useModalDismiss } from './useModalDismiss'
 
 // Массовая выдача: мультивыбор «кому» (юзеры/ноды/любой) × мультивыбор серверов × порт.
@@ -10,14 +11,17 @@ export function BulkGrantModal({
   rules,
   onClose,
   onApply,
+  onUnauthorized,
 }: {
   nodes: Node[]
   rules: AclRule[]
   onClose: () => void
   onApply: (next: AclRule[]) => void
+  onUnauthorized: () => void
 }) {
   const { t } = useI18n()
-  useModalDismiss(onClose)
+  const { close, resolve } = useHostResolution(onClose)
+  useModalDismiss(close)
 
   const [who, setWho] = useState<Set<string>>(new Set())
   const [targets, setTargets] = useState<Set<string>>(new Set())
@@ -184,7 +188,8 @@ export function BulkGrantModal({
       } else if (destKind === 'servers') {
         dsts.push(...[...targets].map((k) => parseSel(k)))
       } else {
-        const r = await resolveHost(dest.trim())
+        const r = await resolve(dest.trim())
+        if (r === undefined) return
         if (!r.ips.length) {
           setDestErr(r.note || t('Не удалось разрешить адрес'))
           return
@@ -200,6 +205,9 @@ export function BulkGrantModal({
         }
       }
       onApply(next)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else setDestErr(err instanceof Error ? err.message : t('Не удалось разрешить адрес'))
     } finally {
       setBusy(false)
     }
@@ -210,7 +218,7 @@ export function BulkGrantModal({
       <div className="card modal grant-modal" onClick={(e) => e.stopPropagation()}>
         <div className="clients-head">
           <h3>{t('Выдать доступ')}</h3>
-          <button className="ghost" onClick={onClose}>
+          <button className="ghost" onClick={close}>
             {t('Закрыть')}
           </button>
         </div>
@@ -380,7 +388,7 @@ export function BulkGrantModal({
         )}
 
         <div className="modal-actions">
-          <button className="ghost" onClick={onClose}>
+          <button className="ghost" onClick={close}>
             {t('Отмена')}
           </button>
           <button onClick={apply} disabled={!canApply}>

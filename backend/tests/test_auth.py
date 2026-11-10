@@ -1,6 +1,33 @@
 from tests.conftest import ADMIN_PASSWORD
 
 
+def test_access_token_survives_small_clock_step_without_extending_expiry(monkeypatch):
+    from datetime import datetime, timezone
+
+    import jwt
+
+    from app import security
+
+    clock = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock.astimezone(tz)
+
+    monkeypatch.setattr(jwt.api_jwt, "datetime", FrozenDateTime)
+    monkeypatch.setattr(security, "datetime", FrozenDateTime)
+    now = int(clock.timestamp())
+    secret = "x" * 40
+
+    def issue(iat, exp):
+        return jwt.encode({"sub": "fixture-user", "iat": iat, "exp": exp}, secret, algorithm="HS256")
+
+    assert security.decode_access_token(issue(now + 1, now + 60), secret) is not None
+    assert security.decode_access_token(issue(now + 3, now + 60), secret) is None
+    assert security.decode_access_token(issue(now - 60, now), secret) is None
+
+
 async def _login(client, password=ADMIN_PASSWORD):
     return await client.post(
         "/api/auth/login", json={"username": "admin", "password": password}
@@ -96,6 +123,7 @@ async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
     Механизм есть с самого начала, но о нём нигде не было написано: запертый
     администратор о нём не узнавал.
     """
+    from app import devices
     from app.bootstrap import ensure_admin
     from app.config import Settings
     from app.models import User
@@ -113,8 +141,11 @@ async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
     user.password_hash = hash_password("forgotten")
     user.totp_enabled = True
     user.totp_secret = "ABCDEFGHIJKLMNOP"
+    user.totp_last_counter = 12345
     before = user.token_version
     await session.commit()
+    await devices.remember(session, user.username, "test-browser", "192.0.2.8")
+    await devices.remember(session, "another-user", "test-browser", "192.0.2.8")
 
     class _Factory:
         def __call__(self):
@@ -136,6 +167,9 @@ async def test_break_glass_reset_unlocks_a_locked_out_admin(session):
     assert verify_password("fakepass-from-env", user.password_hash)
     assert user.totp_enabled is False and user.totp_secret == ""
     assert user.token_version == before + 1      # старые сессии больше не годятся
+    assert await devices.listing(session, user.username) == []
+    assert len(await devices.listing(session, "another-user")) == 1
+    assert user.totp_last_counter == 0
 
 
 async def test_2fa_setup_needs_the_password(client):

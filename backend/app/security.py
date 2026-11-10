@@ -47,8 +47,16 @@ def create_access_token(
 def decode_access_token(token: str, secret: str) -> dict | None:
     """Возвращает payload (sub/ver/…) при валидной подписи и сроке, иначе None."""
     try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        payload = jwt.decode(
+            token, secret, algorithms=["HS256"],
+            options={"verify_iat": False, "require": ["iat", "exp"]},
+        )
     except jwt.PyJWTError:
+        return None
+    # A small backward clock correction must not invalidate a freshly issued
+    # token. Apply the tolerance only to iat; PyJWT still checks exp without it.
+    issued_at = payload["iat"]
+    if type(issued_at) is not int or issued_at > datetime.now(timezone.utc).timestamp() + 2:
         return None
     if not isinstance(payload.get("sub"), str):
         return None

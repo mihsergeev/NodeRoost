@@ -26,7 +26,9 @@ MIN_GAP="${NODEROOST_HS_APPLY_GAP:-20}"
 CONFIG="$APP_DIR/data/headscale/config/config.yaml"
 
 exec 9>/run/noderoost-hs-apply.lock
-flock -n 9 || exit 0
+# Если restore держит замок, ждём: выход с оставшимся флагом немедленно
+# вызвал бы сервис снова, пока systemd не отключит path-юнит по лимиту.
+flock 9
 [ -f "$FLAG" ] || [ -f "$IN_PROGRESS" ] || exit 0
 
 # Systemd повторит обработку, пока есть запрос. Пауза ограничивает частоту

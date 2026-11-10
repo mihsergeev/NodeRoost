@@ -57,28 +57,24 @@ async def collect_once(
     if not settings.headscale_api_key:
         return 0
     client = get_client(settings)
-    raw = await client.get_nodes()
-    if not raw and await _had_nodes(session_factory):
-        # Пустой список при непустой сети - это не «все ноды исчезли», а сбой:
-        # ответ 200 без поля nodes (смена схемы, прокси, наполовину поднятый
-        # control-сервер). Пройти такой цикл до конца значило бы запушить пустую
-        # политику (в Tailscale пустой acls = запрещено всё), стереть файл имён
-        # внутри сети и снести всю историю статусов - молча, без единого алерта,
-        # потому что удаление статуса переходом не считается.
-        log.warning("control-сервер вернул пустой список нод - цикл пропущен")
-        return 0
-    nodes = [_fields(n) for n in raw]
-    total = len(nodes)
-    online = sum(1 for n in nodes if n["online"])
+    async with policy_apply.write_lock(), session_factory() as session:
+        raw = await client.get_nodes()
+        if not raw and await _had_nodes(session_factory):
+            # Пустой список при непустой сети - это не «все ноды исчезли», а сбой:
+            # ответ 200 без поля nodes (смена схемы, прокси, наполовину поднятый
+            # control-сервер). Пройти такой цикл до конца значило бы запушить пустую
+            # политику (в Tailscale пустой acls = запрещено всё), стереть файл имён
+            # внутри сети и снести всю историю статусов - молча, без единого алерта,
+            # потому что удаление статуса переходом не считается.
+            log.warning("control-сервер вернул пустой список нод - цикл пропущен")
+            return 0
 
-    async with session_factory() as session:
+        nodes = [_fields(n) for n in raw]
+        total = len(nodes)
+        online = sum(1 for n in nodes if n["online"])
         session.add(NodeMetricSample(total=total, online=online))
         await session.commit()
 
-    online_map = {n["id"]: n["online"] for n in nodes}
-    names = {n["id"]: n["name"] for n in nodes}
-    # тип ноды (server/device) — алертим только серверы (устройства гасят на ночь)
-    async with session_factory() as session:
         async def prepare_gateway(node: dict) -> bool:
             nid = str(node["id"])
             try:
@@ -104,10 +100,12 @@ async def collect_once(
                 return False
 
         # Привязки вступают в силу только после установки тега нового шлюза.
-        async with policy_apply.write_lock():
-            if await settings_store.claim_pending_meta(session, raw, prepare_gateway):
-                await policy_apply.apply_policy(session, client, settings)
+        if await settings_store.claim_pending_meta(session, raw, prepare_gateway):
+            await policy_apply.apply_policy(session, client, settings)
         meta = await settings_store.get_node_meta(session)
+
+    online_map = {n["id"]: n["online"] for n in nodes}
+    names = {n["id"]: n["name"] for n in nodes}
     kinds = {str(n.get("id", "")): effective_kind(n, meta) for n in raw}
     # «не беспокоить»: помеченные ноды наблюдаем как обычно, но не уведомляем
     # Скрытая нода молчит так же, как заглушённая: её убрали из списка сознательно
@@ -141,7 +139,7 @@ async def collect_once(
             log.info("сертификаты исчезнувших имён убраны")
     # маршруты, заказанные в панели, одобряем без участия человека
     try:
-        await _auto_approve_requested(session_factory, settings, raw)
+        await _auto_approve_requested(session_factory, settings)
     except Exception:  # noqa: BLE001 — не роняем цикл сбора
         log.exception("не удалось одобрить заказанные маршруты")
     # одноразовые ключи enroll-флоу копятся вечно — сметаем отработавшие
@@ -173,60 +171,10 @@ async def collect_once(
 async def _auto_approve_requested(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
-    raw: list[dict],
 ) -> None:
-    """Приводит одобренные маршруты к тому, что панель СЕЙЧАС хочет от ноды:
-    заказанное админом одобряет, а собственные прошлые одобрения, которые больше
-    не нужны, СНИМАЕТ.
-
-    Раньше набор только рос («target = approved | …»), и это было дырой: админ
-    удаляет направление — маршрут перестаёт анонсироваться и выпадает из активных,
-    но одобрение остаётся навсегда. Скомпрометированной ноде достаточно одной
-    команды `tailscale set --advertise-routes=…` (разрешения на анонс не нужно),
-    чтобы отозванный маршрут снова стал активным — и трафик к этому адресу со
-    всех нод (они подключаются с --accept-routes) пошёл через неё.
-
-    Ручные одобрения админа (модалка «Маршруты») при этом не трогаем: снимаем
-    только то, что одобрила сама панель, — для этого и храним panel_approved.
-    """
+    """Сверить одобрения со свежими настройками и состоянием Headscale."""
     async with session_factory() as session:
-        agents = await settings_store.get_agent_all(session)
-        # направления тоже задают маршруты ноды-выхода — без них панель считала бы
-        # их «чужими» и никогда не снимала (а при удалении направления — не сняла бы)
-        derived = routing.routes_by_node(await settings_store.get_routing(session))
-    if not agents:
-        return
-    client = get_client(settings)
-    for n in raw:
-        nid = str(n.get("id", ""))
-        cfg = agents.get(nid)
-        if not cfg:
-            continue
-        want = set(cfg.get("routes") or []) | set(derived.get(nid, []))
-        if cfg.get("exit"):
-            want |= {"0.0.0.0/0", "::/0"}
-        avail = set(n.get("availableRoutes") or [])
-        approved = set(n.get("approvedRoutes") or [])
-        mine = set(cfg.get("panel_approved") or [])  # что одобряла сама панель
-        # снимаем ровно своё и ровно то, чего больше не хотим; чужое (ручное
-        # одобрение админа в модалке «Маршруты») остаётся нетронутым
-        stale = mine - want
-        target = (approved - stale) | (want & avail)
-        if target != approved:
-            await client.approve_routes(nid, sorted(target))
-            added, removed = sorted(target - approved), sorted(approved - target)
-            if added:
-                log.info("нода %s: одобрены заказанные маршруты %s", nid, added)
-            if removed:
-                log.info("нода %s: снято одобрение (панель больше не просит) %s", nid, removed)
-        new_mine = (mine | (want & avail)) - stale
-        if new_mine != mine:
-            async with session_factory() as session:
-                all_cfg = await settings_store.get_agent_all(session)
-                entry = all_cfg.get(nid)
-                if entry is not None:  # ноду могли удалить, пока мы ходили в headscale
-                    entry["panel_approved"] = sorted(new_mine)
-                    await settings_store.set_agent_all(session, all_cfg)
+        await routing.reconcile_approvals(session, get_client(settings))
 
 
 def _keys_to_prune(

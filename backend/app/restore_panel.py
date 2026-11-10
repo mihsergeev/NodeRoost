@@ -8,18 +8,22 @@ ops/restore.sh — у бэкенда нет доступа к их рестар�
 
 Идемпотентен: upsert по ключу настройки и по имени пользователя. Существующие
 настройки/юзеры, которых нет в бэкапе, НЕ удаляются (безопасно для частичного
-восстановления). totp_last_counter сбрасывается в 0 (в бэкапе не хранится)."""
+восстановления). Счётчик TOTP сбрасывается только при смене секрета."""
 
 import asyncio
+import base64
+import ipaddress
 import json
+import socket
 import sys
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.db import create_engine_and_factory
-from app.models import AppSetting, User
+from app.models import AppSetting, TrustedDevice, User
+from app.urlguard import is_public_ip
 
 
 def _sanitize_setting(key: str, value: str) -> str:
@@ -38,7 +42,9 @@ def _sanitize_setting(key: str, value: str) -> str:
     try:
         data = json.loads(value or "{}")
     except (ValueError, TypeError):
-        return value
+        raise ValueError("Неверный формат настроек alerts в panel.json") from None
+    if not isinstance(data, dict):
+        raise ValueError("Неверный формат настроек alerts в panel.json")
     for field in ("webhook", "telegram_api"):
         url = str(data.get(field) or "")
         if url and not _looks_public(url):
@@ -51,23 +57,23 @@ def _looks_public(url: str) -> bool:
 
     try:
         u = urlparse(url)
+        _ = u.port
     except ValueError:
         return False
     if u.scheme != "https" or not u.hostname:
         return False
-    host = u.hostname.lower()
+    host = u.hostname.lower().rstrip(".")
     if host in ("localhost",) or host.endswith(".localhost") or host.endswith(".internal"):
         return False
     try:
-        import ipaddress
-
         addr = ipaddress.ip_address(host)
     except ValueError:
-        return True  # имя — проверит urlguard с резолвом при сохранении
-    return not (
-        addr.is_private or addr.is_loopback or addr.is_link_local
-        or addr.is_reserved or addr.is_unspecified or addr.is_multicast
-    )
+        try:
+            # curl и libc допускают также короткие и шестнадцатеричные IPv4.
+            addr = ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return bool(host)  # имя — проверит urlguard с резолвом при сохранении
+    return is_public_ip(str(addr))
 
 
 def _read_panel_dump(path: str) -> dict:
@@ -85,6 +91,27 @@ def _read_panel_dump(path: str) -> dict:
             for row in rows
         ):
             raise ValueError(f"Неверный формат записей {name} в panel.json")
+        if len({row[fields[0]] for row in rows}) != len(rows):
+            raise ValueError(f"Повторяющиеся записи {name} в panel.json")
+    for row in data.get("app_settings", []):
+        row["value"] = _sanitize_setting(row["key"], row.get("value", ""))
+    for user in data.get("users", []):
+        enabled = user.get("totp_enabled", False)
+        secret = user.get("totp_secret", "")
+        version = user.get("token_version", 0)
+        if (
+            type(enabled) is not bool or not isinstance(secret, str) or len(secret) > 64
+            or type(version) is not int or not 0 <= version < 2**31 - 1
+            or len(user["username"]) > 64 or len(user["password_hash"]) > 128
+        ):
+            raise ValueError("Неверный формат учетной записи в panel.json")
+        if enabled:
+            try:
+                key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8))
+            except ValueError:
+                key = b""
+            if not key:
+                raise ValueError("В panel.json включена 2FA без действительного секрета")
     return data
 
 
@@ -95,38 +122,47 @@ async def restore_panel(path: str) -> dict:
     try:
         async with Session() as session:
             for row in data.get("app_settings", []):
-                value = _sanitize_setting(row["key"], row.get("value", ""))
+                value = row["value"]
                 existing = await session.get(AppSetting, row["key"])
                 if existing is not None:
                     existing.value = value
                 else:
                     session.add(AppSetting(key=row["key"], value=value))
             for u in data.get("users", []):
+                enabled = u.get("totp_enabled", False)
+                secret = u.get("totp_secret", "")
                 existing = await session.scalar(
                     select(User).where(User.username == u["username"])
                 )
                 if existing is not None:
+                    credentials_changed = existing.password_hash != u["password_hash"]
                     existing.password_hash = u["password_hash"]
-                    existing.totp_secret = u.get("totp_secret", "") or ""
-                    # Второй фактор не понижаем: архив, снятый до его включения,
-                    # иначе тихо выключил бы 2FA при восстановлении.
-                    existing.totp_enabled = bool(
-                        u.get("totp_enabled", False) or existing.totp_enabled
-                    )
+                    # Архив без 2FA не должен стереть секрет действующего фактора.
+                    if enabled or not existing.totp_enabled:
+                        credentials_changed |= (existing.totp_enabled != enabled
+                                                or existing.totp_secret != secret)
+                        if existing.totp_secret != secret:
+                            existing.totp_last_counter = 0
+                        existing.totp_secret = secret
+                        existing.totp_enabled = enabled
+                    if credentials_changed:
+                        await session.execute(delete(TrustedDevice).where(
+                            TrustedDevice.username == u["username"]
+                        ))
                     # Версию токенов двигаем только вверх и ещё на шаг: иначе
                     # старый архив вернул бы счётчик назад и оживил токены,
                     # отозванные при смене пароля, до конца их срока.
                     existing.token_version = (
-                        max(existing.token_version, int(u.get("token_version", 0))) + 1
+                        max(existing.token_version, u.get("token_version", 0)) + 1
                     )
                 else:
                     session.add(
                         User(
                             username=u["username"],
                             password_hash=u["password_hash"],
-                            totp_secret=u.get("totp_secret", "") or "",
-                            totp_enabled=bool(u.get("totp_enabled", False)),
-                            token_version=int(u.get("token_version", 0)),
+                            totp_secret=secret,
+                            totp_enabled=enabled,
+                            token_version=u.get("token_version", 0),
                         )
                     )
             await session.commit()

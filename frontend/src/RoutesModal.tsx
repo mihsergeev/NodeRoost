@@ -3,7 +3,6 @@ import {
   ApiError,
   getAgent,
   reissueAgentToken,
-  resolveHost,
   setAgent,
   setNodeRoutes,
   updateAgent,
@@ -11,6 +10,7 @@ import {
   type Node,
 } from './api'
 import { useI18n } from './i18n'
+import { useHostResolution } from './useHostResolution'
 import { useModalDismiss } from './useModalDismiss'
 
 type Props = {
@@ -24,7 +24,8 @@ const EXIT = ['0.0.0.0/0', '::/0']
 
 export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
   const { t } = useI18n()
-  const dismiss = useModalDismiss(onClose)
+  const { close, resolve } = useHostResolution(onClose)
+  const dismiss = useModalDismiss(close)
 
   const [agent, setAgentCfg] = useState<AgentCfg | null>(null)
   const [dest, setDest] = useState('')
@@ -90,14 +91,15 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
 
   async function addRoute() {
     const raw = dest.trim()
-    if (!raw || !agent) return
+    if (busy || !raw || !agent) return
     setBusy(true)
     setError(null)
     try {
       let cidr = raw
       if (!/^[\d.]+(\/\d+)?$/.test(raw)) {
         // ввели домен — резолвим в IPv4: маршруты работают по адресам, не по именам
-        const r = await resolveHost(raw)
+        const r = await resolve(raw)
+        if (r === undefined) return
         if (!r.ips.length) throw new Error(r.note || t('не удалось определить адрес'))
         cidr = r.ips[0]
       }
@@ -189,7 +191,7 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
       <div className="card modal" onClick={(e) => e.stopPropagation()}>
         <div className="clients-head">
           <h3>{t('Маршруты · {name}', { name: node.name })}</h3>
-          <button className="ghost" onClick={onClose}>
+          <button className="ghost" onClick={close}>
             {t('Закрыть')}
           </button>
         </div>
@@ -292,6 +294,7 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
             <div className="route-input-row">
               <input
                 value={dest}
+                disabled={busy}
                 onChange={(e) => setDest(e.target.value)}
                 placeholder="203.0.113.7, 10.0.0.0/24, service.example.com"
                 onKeyDown={(e) => e.key === 'Enter' && addRoute()}
@@ -350,7 +353,7 @@ export function RoutesModal({ node, onClose, onSaved, onUnauthorized }: Props) {
 
         {error && <p className="form-error">{error}</p>}
         <div className="modal-actions">
-          <button className="ghost" onClick={onClose}>
+          <button className="ghost" onClick={close}>
             {t('Закрыть')}
           </button>
         </div>

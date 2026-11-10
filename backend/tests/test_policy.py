@@ -141,8 +141,12 @@ async def test_auto_approve_revokes_only_what_the_panel_approved(monkeypatch, tm
     approved_calls = []
 
     class C:
+        async def get_nodes(self):
+            return [node]
+
         async def approve_routes(self, nid, routes):
             approved_calls.append((nid, list(routes)))
+            return {**node, "approvedRoutes": routes}
 
     monkeypatch.setattr(collector, "get_client", lambda s: C())
     store = {"agents": {"5": {"routes": [], "panel_approved": ["10.1.0.0/24"]}}, "routing": {}}
@@ -153,11 +157,12 @@ async def test_auto_approve_revokes_only_what_the_panel_approved(monkeypatch, tm
 
     monkeypatch.setattr(settings_store, "get_agent_all", lambda s: _async(store["agents"]))
     monkeypatch.setattr(settings_store, "get_routing", lambda s: _async(store["routing"]))
+    monkeypatch.setattr(settings_store, "get_node_meta", lambda s: _async({}))
     monkeypatch.setattr(settings_store, "set_agent_all", lambda s, d: _async(None))
 
     node = {"id": "5", "availableRoutes": ["10.1.0.0/24", "10.9.9.0/24"],
             "approvedRoutes": ["10.1.0.0/24", "192.168.5.0/24"]}
-    await collector._auto_approve_requested(lambda: Sess(), SimpleNamespace(), [node])
+    await collector._auto_approve_requested(lambda: Sess(), SimpleNamespace())
     assert approved_calls, "одобрения не пересчитаны"
     got = set(approved_calls[-1][1])
     assert "10.1.0.0/24" not in got, "своё устаревшее одобрение должно сниматься"

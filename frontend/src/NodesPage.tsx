@@ -431,21 +431,8 @@ export function NodesPage({
       )
     )
       return
-    if (retry) {
-      try {
-        const current = await listNodes()
-        const found = current.find((x) => x.id === n.id)
-        if (found && !matchesDeletionTarget(n, found)) {
-          setNodes(current)
-          return
-        }
-      } catch (err) {
-        handleErr(err)
-        return
-      }
-    }
-    if (await deletions.remove(n)) {
-      setNodes((prev) => (prev ?? []).filter((x) => x.id !== n.id))
+    if (await deletions.remove(n, retry)) {
+      setNodes((prev) => (prev ?? []).filter((x) => x.id !== n.id || !matchesDeletionTarget(n, x)))
     }
     await load()
   }

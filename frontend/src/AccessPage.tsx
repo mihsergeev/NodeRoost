@@ -128,6 +128,7 @@ export function AccessPage({ onUnauthorized }: { onUnauthorized: () => void }) {
         <BulkGrantModal
           nodes={nodes}
           rules={rules}
+          onUnauthorized={onUnauthorized}
           onClose={() => setAddOpen(false)}
           onApply={(next) => {
             setAddOpen(false)

@@ -408,11 +408,11 @@ def test_approved_routes_reject_mesh_but_allow_exit():
     assert NodeRoutesIn(routes=["10.0.0.0/24"]).routes == ["10.0.0.0/24"]
 
 
-async def test_direction_approval_is_marked_as_the_panel_s(monkeypatch):
+async def test_direction_approval_is_marked_as_the_panel_s(session):
     """Направление одобряет свой маршрут сразу, не дожидаясь агента. Раньше это
     шло мимо panel_approved, и коллектор считал маршрут одобренным вручную —
     после удаления направления /32 оставался на ноде-выходе навсегда."""
-    from app import routing
+    from app import routing, settings_store
 
     approved: dict[str, list[str]] = {}
 
@@ -422,13 +422,48 @@ async def test_direction_approval_is_marked_as_the_panel_s(monkeypatch):
 
         async def approve_routes(self, nid, routes):
             approved[nid] = routes
+            return {"id": nid, "approvedRoutes": routes}
 
     directions = {"d1": {"src": ["4"], "dst": "example.test", "via": "2",
                          "ips": ["203.0.113.9"], "ports": "*"}}
-    done = await routing.approve_for(FakeClient(), directions)
+    await settings_store.set_routing(session, directions)
+    await routing.reconcile_approvals(session, FakeClient())
     # маршрут одобрен в headscale И возвращён вызывающему для отметки
     assert "203.0.113.9/32" in approved["2"]
-    assert done == {"2": ["203.0.113.9/32"]}
+    agents = await settings_store.get_agent_all(session)
+    assert agents["2"]["panel_approved"] == ["203.0.113.9/32"]
+
+
+async def test_reconcile_keeps_manual_route_and_revokes_both_auto_exit_routes(session):
+    from app import routing, settings_store
+
+    manual = "203.0.113.9/32"
+    node = {"id": "2", "availableRoutes": ["0.0.0.0/0"], "approvedRoutes": [manual]}
+
+    class Control:
+        async def get_nodes(self):
+            return [node]
+
+        async def approve_routes(self, nid, routes):
+            node["approvedRoutes"] = routes
+            return node
+
+    hs = Control()
+    await settings_store.set_routing(session, {
+        "d1": {"src": ["4"], "dst": "example.test", "via": "2", "ips": ["203.0.113.9"]},
+    })
+    await settings_store.set_agent_all(session, {"2": {"exit": True}})
+    await routing.reconcile_approvals(session, hs)
+    agents = await settings_store.get_agent_all(session)
+    assert agents["2"]["panel_approved"] == ["0.0.0.0/0", "::/0"]
+    assert set(node["approvedRoutes"]) == {"0.0.0.0/0", "::/0", manual}
+
+    agents["2"]["exit"] = False
+    await settings_store.set_agent_all(session, agents)
+    await settings_store.set_routing(session, {})
+    await routing.reconcile_approvals(session, hs)
+    assert node["approvedRoutes"] == [manual]
+    assert not (await settings_store.get_agent_all(session))["2"]["panel_approved"]
 
 
 def test_machine_local_addresses_are_never_a_destination():

@@ -24,10 +24,13 @@ class UrlNotAllowed(ValueError):
     """Адрес не годится для исходящего запроса панели."""
 
 
-def _is_global(ip: str) -> bool:
+def is_public_ip(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
+        return False
+    # Shared address space (CGNAT) is neither private nor global in ipaddress.
+    if not addr.is_global:
         return False
     return not (
         addr.is_private
@@ -36,6 +39,7 @@ def _is_global(ip: str) -> bool:
         or addr.is_reserved
         or addr.is_multicast
         or addr.is_unspecified
+        or (isinstance(addr, ipaddress.IPv6Address) and addr.is_site_local)
     )
 
 
@@ -45,7 +49,11 @@ async def check_outbound_url(raw: str) -> None:
     url = (raw or "").strip()
     if not url:
         return
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        port = parsed.port or 443
+    except ValueError:
+        raise UrlNotAllowed("Некорректный адрес") from None
     if parsed.scheme != "https":
         raise UrlNotAllowed("Адрес должен начинаться с https:// — иначе алерты уйдут открытым текстом")
     host = parsed.hostname
@@ -58,13 +66,13 @@ async def check_outbound_url(raw: str) -> None:
     except ValueError:
         pass
     else:
-        if not _is_global(host):
+        if not is_public_ip(host):
             raise UrlNotAllowed("Адреса внутренних сетей недопустимы")
         return
 
     loop = asyncio.get_running_loop()
     try:
-        infos = await loop.getaddrinfo(host, parsed.port or 443)
+        infos = await loop.getaddrinfo(host, port)
     except OSError as exc:
         raise UrlNotAllowed(f"Имя «{host}» не резолвится: {exc.strerror or exc}") from exc
     if not infos:
@@ -72,7 +80,7 @@ async def check_outbound_url(raw: str) -> None:
     # ВСЕ адреса имени должны быть публичными: иначе имя, отдающее и публичный,
     # и внутренний адрес, проехало бы проверку по счастливой случайности
     for info in infos:
-        if not _is_global(info[4][0]):
+        if not is_public_ip(info[4][0]):
             raise UrlNotAllowed(
                 f"Имя «{host}» указывает на внутренний адрес {info[4][0]}"
             )

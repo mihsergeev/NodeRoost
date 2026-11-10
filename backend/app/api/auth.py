@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request, Response, status
-from sqlalchemy import select
 from urllib.parse import urlparse
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import alerts, audit, devices, ratelimit, totp
 from app.clientip import client_ip
@@ -37,7 +39,15 @@ def _stepup_key(request: Request) -> str:
     return f"stepup:{_client_key(request)}"
 
 
-def _require_password(request: Request, user, password: str) -> None:
+def _require_attempt(key: str) -> None:
+    if ratelimit.is_locked(key):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Слишком много неверных попыток — подождите немного.",
+        )
+
+
+def _require_password(request: Request, user: User, password: str) -> None:
     """Подтверждение текущим паролем перед операцией с доступом в панель.
 
     Один токен не должен быть достаточным условием: его можно угнать, а срок
@@ -45,14 +55,49 @@ def _require_password(request: Request, user, password: str) -> None:
     здесь не был бесплатным.
     """
     key = _stepup_key(request)
-    if ratelimit.is_locked(key):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Слишком много неверных попыток — подождите немного.",
-        )
+    _require_attempt(key)
     if not verify_password(password, user.password_hash):
         ratelimit.record_failure(key)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный текущий пароль")
+    ratelimit.clear(key)
+
+
+async def _update_auth_user(
+    session: AsyncSession, user: User, *, consume_counter: int | None = None, **values,
+) -> bool:
+    """Меняем ровно то состояние учётных данных, которое проверил запрос."""
+    stmt = update(User).where(
+        User.id == user.id,
+        User.password_hash == user.password_hash,
+        User.token_version == user.token_version,
+        User.totp_enabled == user.totp_enabled,
+        User.totp_secret == user.totp_secret,
+    )
+    if consume_counter is not None:
+        # Условие должно проверяться в самой БД: два запроса могут прочитать
+        # одинаковый старый счётчик. Счётчик не может уменьшиться в этой гонке.
+        stmt = stmt.where(User.totp_last_counter < consume_counter)
+        values["totp_last_counter"] = consume_counter
+    result = await session.execute(stmt.values(**values).execution_options(synchronize_session=False))
+    return result.rowcount == 1
+
+
+async def _consume_totp(session: AsyncSession, user: User, otp: str, **values) -> bool:
+    counter = totp.matched_counter(user.totp_secret, otp)
+    if counter is None or counter <= user.totp_last_counter:
+        return False
+    return await _update_auth_user(session, user, consume_counter=counter, **values)
+
+
+async def _consume_stepup_totp(
+    session: AsyncSession, request: Request, user: User, otp: str, **values,
+) -> None:
+    # Угадывание кода ограничено отдельно: верный пароль не сбрасывает этот счётчик.
+    key = f"stepup-otp:{_client_key(request)}"
+    _require_attempt(key)
+    if not await _consume_totp(session, user, otp, **values):
+        ratelimit.record_failure(key)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный код")
     ratelimit.clear(key)
 
 
@@ -136,29 +181,23 @@ async def login(
             # detail — машиночитаемый маркер для фронта (показать поле кода)
             if not body.otp:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "2fa_required")
-            counter = totp.matched_counter(user.totp_secret, body.otp)
             # отвергаем неверный код И уже использованный (защита от replay)
-            if counter is None or counter <= user.totp_last_counter:
+            if not await _consume_totp(session, user, body.otp):
                 await _record_failure(
                     session, settings, key, body.username, "login_2fa_fail"
                 )
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "2fa_invalid")
-            user.totp_last_counter = counter
-            await session.commit()  # фиксируем счётчик ДО audit (у audit свой rollback)
-    ratelimit.clear(key)
-    token = create_access_token(
-        user.username, settings.jwt_secret, settings.jwt_ttl_minutes,
-        user.token_version,
-    )
     # Просьбу запомнить устройство выполняем только после пройденной 2FA: иначе
     # доверие выдавалось бы тем же знанием пароля, которое оно и подстраховывает.
-    if body.remember and user.totp_enabled and not trusted:
-        made = await devices.remember(
-            session,
-            user.username,
-            request.headers.get("user-agent", ""),
-            key,
-        )
+    if user.totp_enabled and not trusted:
+        made = None
+        if body.remember:
+            made = await devices.remember(
+                session, user.username, request.headers.get("user-agent", ""), key,
+                commit=False,
+            )
+        # Счётчик и новое устройство фиксируются вместе, до выдачи токена и audit.
+        await session.commit()
         if made is not None:
             secret, max_age = made
             _set_device_cookie(request, response, secret, max_age)
@@ -166,6 +205,11 @@ async def login(
                 session, user.username, "device_trusted", key,
                 devices.label_from_agent(request.headers.get("user-agent", "")),
             )
+    ratelimit.clear(key)
+    token = create_access_token(
+        user.username, settings.jwt_secret, settings.jwt_ttl_minutes,
+        user.token_version,
+    )
     await audit.record(
         session, user.username, "login_ok", key,
         "без кода, устройство запомнено" if trusted else "",
@@ -179,13 +223,16 @@ async def change_password(
 ) -> TokenResponse:
     """Смена пароля из UI: проверяет текущий, инвалидирует все старые токены."""
     _require_password(request, user, body.current_password)
-    user.password_hash = hash_password(body.new_password)
-    user.token_version += 1  # все ранее выданные токены становятся недействительны
-    await session.commit()
+    version = user.token_version + 1
+    if not await _update_auth_user(
+        session, user, password_hash=hash_password(body.new_password), token_version=version,
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Учётные данные изменились, повторите запрос")
     # Пароль меняют в том числе когда подозревают, что его узнали. Оставить при
     # этом устройства, которым код 2FA не нужен, - значит оставить дверь, ради
     # закрытия которой всё и затевалось.
-    await devices.forget_all(session, user.username)
+    await devices.revoke_all(session, user.username)
+    await session.commit()
     await audit.record(session, user.username, "password_change", user.username)
     settings = get_settings()
     await alerts.security_alert(
@@ -195,7 +242,7 @@ async def change_password(
     )
     token = create_access_token(
         user.username, settings.jwt_secret, settings.jwt_ttl_minutes,
-        user.token_version,
+        version,
     )
     return TokenResponse(access_token=token)
 
@@ -208,7 +255,10 @@ async def logout(request: Request, user: CurrentUser, session: SessionDep) -> No
     этого копия работала ещё до конца срока жизни (12 часов). Поднимаем версию
     токенов: все ранее выданные перестают проходить проверку.
     """
-    user.token_version += 1
+    await session.execute(
+        update(User).where(User.id == user.id, User.token_version == user.token_version)
+        .values(token_version=User.token_version + 1)
+    )
     await session.commit()
     await audit.record(session, user.username, "logout", user.username, _client_key(request))
 
@@ -282,9 +332,11 @@ async def twofa_setup(
             "2FA уже включена — сначала отключите её",
         )
     secret = totp.random_secret()
-    user.totp_secret = secret  # ожидающий подтверждения секрет (enabled ещё False)
-    await audit.record(session, user.username, "2fa_setup", user.username)
+    # Новый ожидающий подтверждения секрет имеет свой счётчик.
+    if not await _update_auth_user(session, user, totp_secret=secret, totp_last_counter=0):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Настройки 2FA изменились, повторите запрос")
     await session.commit()
+    await audit.record(session, user.username, "2fa_setup", user.username)
     return TwoFASetupOut(
         secret=secret,
         otpauth_uri=totp.provisioning_uri(secret, user.username),
@@ -305,11 +357,7 @@ async def twofa_enable(
     # Код засчитываем ТАК ЖЕ, как при входе: одноразово. Иначе код, введённый
     # при включении, оставался годным ещё полминуты — и подсмотренный через
     # плечо (или снятый вместе с QR на скриншот) пускал в панель.
-    counter = totp.matched_counter(user.totp_secret, body.otp)
-    if counter is None or counter <= user.totp_last_counter:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный код")
-    user.totp_last_counter = counter
-    user.totp_enabled = True
+    await _consume_stepup_totp(session, request, user, body.otp, totp_enabled=True)
     await session.commit()
     await audit.record(session, user.username, "2fa_enable", user.username)
     return TwoFAStatusOut(enabled=True)
@@ -322,15 +370,12 @@ async def twofa_disable(
     _require_password(request, user, body.password)
     if not user.totp_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA не включена")
-    counter = totp.matched_counter(user.totp_secret, body.otp)
-    if counter is None or counter <= user.totp_last_counter:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверный код")
-    user.totp_last_counter = counter
-    user.totp_enabled = False
-    user.totp_secret = ""
-    await session.commit()
+    await _consume_stepup_totp(
+        session, request, user, body.otp, totp_enabled=False, totp_secret="",
+    )
     # Без 2FA доверять устройству нечему: записи стали бы тихо ждать включения
     # и пропустили бы вход без кода сразу после него.
-    await devices.forget_all(session, user.username)
+    await devices.revoke_all(session, user.username)
+    await session.commit()
     await audit.record(session, user.username, "2fa_disable", user.username)
     return TwoFAStatusOut(enabled=False)

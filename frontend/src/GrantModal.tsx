@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { resolveHost, type AclRule, type AclSelector, type Node } from './api'
+import { ApiError, type AclRule, type AclSelector, type Node } from './api'
 import { PORT_OPTS, parseSel, portHint, roleList, toggleRule } from './aclui'
 import { useI18n } from './i18n'
+import { useHostResolution } from './useHostResolution'
 import { useModalDismiss } from './useModalDismiss'
 
 // Одна сторона зафиксирована = текущая нода. role='target' — нода-получатель
@@ -13,6 +14,7 @@ export function GrantModal({
   rules,
   onClose,
   onApply,
+  onUnauthorized,
 }: {
   node: Node
   role: 'target' | 'source'
@@ -20,9 +22,11 @@ export function GrantModal({
   rules: AclRule[]
   onClose: () => void
   onApply: (next: AclRule[]) => void
+  onUnauthorized: () => void
 }) {
   const { t } = useI18n()
-  useModalDismiss(onClose)
+  const { close, resolve } = useHostResolution(onClose)
+  useModalDismiss(close)
 
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [port, setPort] = useState('22')
@@ -95,7 +99,8 @@ export function GrantModal({
       }
       // назначение по IP/подсети/сайту: резолвим (сайт → IP), пиним каждый IP
       if (hasDest) {
-        const r = await resolveHost(dest.trim())
+        const r = await resolve(dest.trim())
+        if (r === undefined) return
         if (!r.ips.length) {
           setDestErr(r.note || t('Не удалось разрешить адрес'))
           return
@@ -105,6 +110,9 @@ export function GrantModal({
         }
       }
       onApply(next)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      else setDestErr(err instanceof Error ? err.message : t('Не удалось разрешить адрес'))
     } finally {
       setBusy(false)
     }
@@ -119,7 +127,7 @@ export function GrantModal({
               ? t('Разрешить доступ к «{name}»', { name: node.name })
               : t('Куда может ходить «{name}»', { name: node.name })}
           </h3>
-          <button className="ghost" onClick={onClose}>
+          <button className="ghost" onClick={close}>
             {t('Закрыть')}
           </button>
         </div>
@@ -190,7 +198,7 @@ export function GrantModal({
         )}
 
         <div className="modal-actions">
-          <button className="ghost" onClick={onClose}>
+          <button className="ghost" onClick={close}>
             {t('Отмена')}
           </button>
           <button onClick={apply} disabled={!canApply}>

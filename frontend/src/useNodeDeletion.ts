@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ApiError, deleteNode, type Node } from './api'
+import { ApiError, deleteNode, getToken, listNodes, type Node } from './api'
 import { useI18n } from './i18n'
 
 export type NodeDeletionTarget = Pick<Node, 'id' | 'name' | 'kind' | 'created_at'>
@@ -45,18 +45,26 @@ export function useNodeDeletion(onUnauthorized: () => void) {
     }
   }
 
-  async function remove(target: NodeDeletionTarget) {
+  async function remove(target: NodeDeletionTarget, retry: boolean) {
     const { id, name, kind, created_at } = target
     if (latest.current.some((n) => n.id === id && n.busy)) return false
     const entry = { id, name, kind, created_at }
+    const token = getToken()
     update(id, { ...entry, busy: true })
     try {
+      if (retry) {
+        const current = (await listNodes()).find((n) => n.id === id)
+        if (getToken() !== token || (current && !matchesDeletionTarget(entry, current))) {
+          update(id, entry)
+          return false
+        }
+      }
       await deleteNode(id)
       update(id)
       return true
     } catch (err) {
       update(id, { ...entry, error: err instanceof Error ? err.message : t('Ошибка') })
-      if (err instanceof ApiError && err.status === 401) onUnauthorized()
+      if (err instanceof ApiError && err.status === 401 && getToken() === token) onUnauthorized()
       return false
     }
   }

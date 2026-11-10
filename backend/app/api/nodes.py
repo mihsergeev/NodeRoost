@@ -3,12 +3,13 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
+from anyio import CancelScope
 from fastapi import APIRouter, HTTPException, Request, status
 
 from app import aclgen, audit, ca, enroll, exitvia, geoip, hostinfo, routing, settings_store
 from app.clientip import client_ip
 from app.config import get_settings
-from app.deps import CurrentUser, SessionDep
+from app.deps import CurrentUser, NodeIdPath, SessionDep
 from app.hs_client import HeadscaleError, get_client
 from app.hs_util import hs_call, norm_ts, require_hs
 from app.nodekind import editable_tags, effective_kind, is_online, node_tags
@@ -148,7 +149,7 @@ async def list_nodes(_: CurrentUser, session: SessionDep) -> list[NodeOut]:
 
 
 @router.get("/{node_id}", response_model=NodeOut)
-async def get_node(node_id: str, _: CurrentUser, session: SessionDep) -> NodeOut:
+async def get_node(node_id: NodeIdPath, _: CurrentUser, session: SessionDep) -> NodeOut:
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
@@ -202,9 +203,27 @@ async def _restore_node_policy(session, client, settings, node_id, previous_tags
     await apply_policy(session, client, settings)
 
 
+async def _require_server_for_routes(session, node, meta, gateway):
+    if effective_kind(node, meta) == "server":
+        return
+    if gateway:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Шлюзом выхода в интернет может быть только сервер. "
+            "Сначала снимите «Шлюз выхода в интернет» у этой ноды.",
+        )
+    directions = await settings_store.get_routing(session)
+    if any(str(d.get("via") or "") == str(node["id"]) for d in directions.values()):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Нода служит выходом в разделе «Маршрутизация». "
+            "Сначала уберите эти направления или задайте тип «Сервер».",
+        )
+
+
 @router.post("/{node_id}/meta", response_model=NodeOut)
 async def set_meta(
-    node_id: str,
+    node_id: NodeIdPath,
     body: NodeMetaIn,
     user: CurrentUser,
     session: SessionDep,
@@ -225,21 +244,10 @@ async def set_meta(
                 stored = meta.get(node_id) or {}
                 was_gateway = bool(stored.get("exit_gateway"))
                 gateway = was_gateway if body.exit_gateway is None else body.exit_gateway
-                kind = effective_kind(node, _kind_ctx(meta, node_id, body.kind))
-                if kind != "server" and gateway:
-                    raise HTTPException(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Шлюзом выхода в интернет может быть только сервер. "
-                        "Сначала снимите «Шлюз выхода в интернет» у этой ноды.",
+                if body.kind is not None or gateway:
+                    await _require_server_for_routes(
+                        session, node, _kind_ctx(meta, node_id, body.kind), gateway
                     )
-                if body.kind is not None and kind != "server":
-                    directions = await settings_store.get_routing(session)
-                    if any(str(d.get("via") or "") == node_id for d in directions.values()):
-                        raise HTTPException(
-                            status.HTTP_400_BAD_REQUEST,
-                            "Нода служит выходом в разделе «Маршрутизация». "
-                            "Сначала уберите эти направления.",
-                        )
 
                 via = body.exit_via
                 force = body.force_exit
@@ -326,7 +334,7 @@ async def set_meta(
 
 @router.post("/{node_id}/exit-clients", response_model=NodeOut)
 async def set_exit_clients(
-    node_id: str,
+    node_id: NodeIdPath,
     body: ExitClientsIn,
     user: CurrentUser,
     session: SessionDep,
@@ -376,7 +384,7 @@ async def _set_agent_exit(session, node_id: str, on: bool) -> None:
 
 @router.post("/{node_id}/reconnect", response_model=EnrollOut)
 async def reconnect_node(
-    node_id: str,
+    node_id: NodeIdPath,
     body: ReconnectIn,
     request: Request,
     user: CurrentUser,
@@ -412,8 +420,10 @@ async def _reconnect_node(
             "переименуйте ноду и повторите.",
         ) from None
 
-    # все ноды под одним техническим владельцем headscale (сущности «пользователь»
-    # в панели нет); ключ без тегов → владельцем станет именно он
+    # Обычные роли принадлежат ноде и переживают переподключение. Тег
+    # шлюза привязан к старому id — новый назначит коллектор.
+    roles = [t for t in node_tags(node) if not t.startswith(exitvia.GATEWAY_TAG_PREFIX)]
+    await hs_call(declare_tags(session, client, settings, roles))
     hs_user = await hs_call(client.ensure_user(settings.default_user))
     exp = datetime.now(timezone.utc) + timedelta(minutes=settings.enroll_key_ttl_minutes)
     exp_iso = exp.isoformat().replace("+00:00", "Z")
@@ -423,6 +433,7 @@ async def _reconnect_node(
             reusable=False,
             ephemeral=False,
             expiration=exp_iso,
+            acl_tags=roles,
         )
     )
     key_id = str(key.get("id") or "")
@@ -440,11 +451,29 @@ async def _reconnect_node(
     # останется на связи. Старая мета удаляется при подтверждении нового id.
     async with settings_store.atomic_update(session):
         meta = await settings_store.get_node_meta(session)
+        note = dict(meta.get(node_id) or {})
+        directions = await settings_store.get_routing(session)
+        if not note.get("kind") and effective_kind(node, meta) == "server" and (
+            note.get("exit_gateway")
+            or any(str(d.get("via") or "") == node_id for d in directions.values())
+        ):
+            note["kind"] = "server"
         await settings_store.stash_node_meta(
-            session, name, dict(meta.get(node_id) or {}), old_id=node_id, key_id=key_id
+            session, name, note, old_id=node_id, key_id=key_id
         )
         url, cmd = await _join_link(session, settings, script, body.os, exp_iso)
-    await hs_call(client.delete_node(node_id))
+    try:
+        await hs_call(_delete_if_present(client, node_id))
+    except HTTPException:
+        # Удаление могло выполниться, хотя ответ потерялся. Выдаем уже
+        # подготовленное подключение только после подтвержденного 404.
+        try:
+            await client.get_node(node_id)
+        except HeadscaleError as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+        else:
+            raise
     await audit.record(session, user.username, "node_reconnect", node_id, name)
     await apply_policy(session, client, settings)
     return EnrollOut(
@@ -461,7 +490,7 @@ async def _reconnect_node(
 
 @router.post("/{node_id}/rename", response_model=NodeOut)
 async def rename_node(
-    node_id: str,
+    node_id: NodeIdPath,
     body: NodeRenameIn,
     request: Request,
     user: CurrentUser,
@@ -490,7 +519,7 @@ async def rename_node(
 
 @router.post("/{node_id}/tags", response_model=NodeOut)
 async def set_tags(
-    node_id: str,
+    node_id: NodeIdPath,
     body: NodeTagsIn,
     request: Request,
     user: CurrentUser,
@@ -523,6 +552,11 @@ async def set_tags(
         want = exitvia.keep_tagged(tags + keep)
         node = current
         if set(want) != set(previous):
+            meta = await settings_store.get_node_meta(session)
+            tag_field = "tags" if isinstance(current.get("tags"), list) else "forcedTags"
+            await _require_server_for_routes(
+                session, {**current, tag_field: want}, meta, node_id in exitvia.gateways(meta)
+            )
             try:
                 node = await _set_policy_tags(session, client, settings, node_id, previous, want)
                 await hs_call(require_policy(session, client, settings))
@@ -537,7 +571,7 @@ async def set_tags(
 
 @router.post("/{node_id}/routes", response_model=NodeOut)
 async def set_routes(
-    node_id: str,
+    node_id: NodeIdPath,
     body: NodeRoutesIn,
     request: Request,
     user: CurrentUser,
@@ -547,42 +581,79 @@ async def set_routes(
     settings = get_settings()
     require_hs(settings)
     client = get_client(settings)
-    routes = [r.strip() for r in body.routes if r.strip()]
+    routes = sorted(routing.approved_route_set(body.routes))
     # Снятая галка должна означать «маршрута больше нет», а не «нет до
     # следующего цикла»: коллектор заново одобряет всё, что панель держит в
     # конфиге агента или выводит из направлений. Раньше запрос отвечал 200, в
     # интерфейсе маршрут исчезал, а через минуту возвращался в сеть.
-    async with settings_store.write_lock():
-        all_cfg = await settings_store.get_agent_all(session)
-        cfg = all_cfg.get(node_id) or {}
-        derived = routing.routes_by_node(await settings_store.get_routing(session))
-        dropped = (set(cfg.get("routes") or []) | set(derived.get(node_id, []))) - set(routes)
-        from_directions = dropped & set(derived.get(node_id, []))
-        if from_directions:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Маршрут{'ы' if len(from_directions) > 1 else ''} "
-                f"{', '.join(sorted(from_directions))} задан"
-                f"{'ы' if len(from_directions) > 1 else ''} направлением в разделе "
-                "«Маршрутизация» - снимите там, иначе панель одобрит их снова.",
-            )
-        if dropped and cfg:
-            cfg["routes"] = [r for r in (cfg.get("routes") or []) if r not in dropped]
-            cfg["panel_approved"] = [
-                r for r in (cfg.get("panel_approved") or []) if r not in dropped
-            ]
-            all_cfg[node_id] = cfg
-            await settings_store.set_agent_all(session, all_cfg)
-    node = await hs_call(client.approve_routes(node_id, routes))
+    async with write_lock(), settings_store.write_lock():
+        node = await hs_call(client.get_node(node_id))
+        if not node:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
+        previous = node.get("approvedRoutes") or []
+        meta = await settings_store.get_node_meta(session)
+        gateway = node_id in exitvia.gateways(meta)
+        proposed = {**node, "approvedRoutes": routes}
+        kind_changed = False
+        approval_started = False
+        updated_cfg = None
+        try:
+            async with settings_store.atomic_update(session):
+                all_cfg = await settings_store.get_agent_all(session)
+                cfg = all_cfg.get(node_id) or {}
+                derived = routing.routes_by_node(await settings_store.get_routing(session))
+                from_directions = set(derived.get(node_id, [])) - set(routes)
+                if from_directions:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Маршруты {', '.join(sorted(from_directions))} заданы "
+                        "в разделе «Маршрутизация» — снимите их там.",
+                    )
+                # Галочки модалки относятся к subnet-маршрутам. Exit-маршруты
+                # агента управляются отдельно и сохраняются при правке галочек.
+                if cfg.get("exit"):
+                    routes = list(dict.fromkeys([*routes, *(r for r in previous if r in EXIT_ROUTES)]))
+                    proposed["approvedRoutes"] = routes
+                await _require_server_for_routes(session, proposed, meta, gateway)
+                kind_changed = effective_kind(node, meta) != effective_kind(proposed, meta)
+                if cfg:
+                    desired = {**cfg}
+                    for key in ("routes", "panel_approved"):
+                        if key in cfg:
+                            desired[key] = [r for r in (cfg[key] or []) if r in routes]
+                    if desired != cfg:
+                        updated_cfg = desired
+                        all_cfg[node_id] = desired
+                        await settings_store.set_agent_all(session, all_cfg)
+                if set(routes) != set(previous):
+                    approval_started = True
+                    node = await hs_call(routing.set_approved_routes(client, node_id, routes))
+                    if kind_changed:
+                        await hs_call(require_policy(session, client, settings))
+        except BaseException:
+            if approval_started:
+                with CancelScope(shield=True):
+                    try:
+                        committed = updated_cfg is not None and (
+                            await settings_store.get_agent_all(session)
+                        ).get(node_id) == updated_cfg
+                        if not committed:
+                            current = await client.get_node(node_id)
+                            if current and set(current.get("approvedRoutes") or []) != set(previous):
+                                await routing.set_approved_routes(client, node_id, previous)
+                        if kind_changed:
+                            await apply_policy(session, client, settings)
+                    except Exception:
+                        log.exception("Не удалось восстановить одобрения маршрутов ноды %s", node_id)
+            raise
     await audit.record(session, user.username, "node_routes", node_id, ", ".join(routes))
-    meta = await settings_store.get_node_meta(session)
     hinfo = await hostinfo.read_all_async(get_settings().headscale_db_path)
     return _map_node(node or {}, meta, hinfo)
 
 
 @router.post("/{node_id}/expire", response_model=NodeOut)
 async def expire_node(
-    node_id: str, request: Request, user: CurrentUser, session: SessionDep
+    node_id: NodeIdPath, request: Request, user: CurrentUser, session: SessionDep
 ) -> NodeOut:
     settings = get_settings()
     require_hs(settings)
@@ -606,7 +677,7 @@ async def _delete_if_present(client, node_id: str) -> None:
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_node(
-    node_id: str, request: Request, user: CurrentUser, session: SessionDep
+    node_id: NodeIdPath, request: Request, user: CurrentUser, session: SessionDep
 ) -> None:
     settings = get_settings()
     require_hs(settings)

@@ -112,8 +112,12 @@ async def build_policy(
         server_node_ids = [
             str(n.get("id", "")) for n in nodes if effective_kind(n, meta) == "server"
         ]
+        directions = await settings_store.get_routing(session)
+        servers = set(server_node_ids)
         route_rules = routing.acl_rules(
-            await settings_store.get_routing(session), device_ids, server_node_ids
+            {did: d for did, d in directions.items() if str(d.get("via") or "") in servers},
+            device_ids,
+            server_node_ids,
         )
         # Теги, УЖЕ висящие на нодах, объявляем всегда — иначе следующий пуш
         # выбросил бы из tagOwners роль, которая ни в одном правиле не участвует,
@@ -124,8 +128,18 @@ async def build_policy(
         # их пока не использует (иначе тег «повиснет» и via сломается на следующем
         # устройстве).
         ip_by_id = {str(n.get("id", "")): ip for n in nodes if (ip := aclgen._ipv4(n))}
-        exit_via = exitvia.exit_via_grants(meta, ip_by_id)
-        gw_tags = [exitvia.gateway_tag(i) for i in exitvia.gateways(meta)]
+        gateways = set(exitvia.gateways(meta)) & servers
+        active_gateways = {
+            nid for n in nodes
+            if (nid := str(n.get("id", ""))) in gateways
+            and exitvia.gateway_tag(nid) in node_tags(n)
+        }
+        exit_meta = {
+            nid: ({**entry, "exit_gateway": False} if nid not in active_gateways else entry)
+            for nid, entry in meta.items() if isinstance(entry, dict)
+        }
+        exit_via = exitvia.exit_via_grants(exit_meta, ip_by_id)
+        gw_tags = [exitvia.gateway_tag(i) for i in sorted(gateways)]
         return aclgen.generate_policy(
             rules + admin_rules + route_rules,
             nodes,

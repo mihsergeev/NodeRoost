@@ -131,9 +131,9 @@ async def check(session: AsyncSession, username: str, token: str | None) -> bool
 
 
 async def remember(
-    session: AsyncSession, username: str, user_agent: str, ip: str
+    session: AsyncSession, username: str, user_agent: str, ip: str, *, commit: bool = True,
 ) -> tuple[str, int] | None:
-    """Завести доверие этому устройству. Возвращает (секрет, срок в секундах)."""
+    """Выдаёт (секрет, срок в секундах); commit=False включает выдачу в транзакцию входа."""
     days = await trust_days(session)
     if days <= 0:
         return None
@@ -151,11 +151,10 @@ async def remember(
             expires_at=now + timedelta(days=days),
         )
     )
-    await session.commit()
     extra = (await _all(session, username))[MAX_DEVICES:]
     for dev in extra:  # лишние - самые давние по последнему входу
         await session.delete(dev)
-    if extra:
+    if commit:
         await session.commit()
     return token, days * 24 * 3600
 
@@ -188,13 +187,16 @@ async def forget(session: AsyncSession, username: str, device_id: int) -> bool:
     return True
 
 
+async def revoke_all(session: AsyncSession, username: str) -> int:
+    """Отзываем доверие в той же транзакции, что меняет учётные данные."""
+    result = await session.execute(delete(TrustedDevice).where(TrustedDevice.username == username))
+    return result.rowcount
+
+
 async def forget_all(session: AsyncSession, username: str) -> int:
-    devs = await _all(session, username)
-    for dev in devs:
-        await session.delete(dev)
-    if devs:
-        await session.commit()
-    return len(devs)
+    count = await revoke_all(session, username)
+    await session.commit()
+    return count
 
 
 def current_id(devices: list[TrustedDevice], token: str | None) -> int | None:

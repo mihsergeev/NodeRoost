@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from app import settings_store
 from app.api.nodes import _map_node, _normalize_tags
 from tests.conftest import ADMIN_PASSWORD
@@ -99,6 +101,10 @@ async def _policy_nodes(client, monkeypatch):
         async def get_nodes(self):
             return list(self.nodes.values())
 
+        async def approve_routes(self, nid, routes):
+            self.nodes[nid]["approvedRoutes"] = routes
+            return self.nodes[nid]
+
         async def set_node_tags(self, nid, tags):
             assert policy_apply._write_lock.locked()
             assert set(tags) <= self.policy["tagOwners"].keys()
@@ -186,6 +192,311 @@ async def test_roles_restore_previous_tags_and_policy_after_final_push_fails(cli
     assert hs.nodes["70"]["tags"] == ["tag:replacement"]
     assert "tag:replacement" in hs.policy["tagOwners"]
     assert "tag:original" not in hs.policy["tagOwners"]
+
+
+async def test_cannot_remove_last_server_role_from_gateway(client, monkeypatch):
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    gateway = await client.post("/api/nodes/70/meta", headers=headers, json={"exit_gateway": True})
+    assert gateway.status_code == 200, gateway.text
+    removed = await client.post("/api/nodes/70/tags", headers=headers, json={"tags": []})
+    assert removed.status_code == 400, removed.text
+    assert set(hs.nodes["70"]["tags"]) == {"tag:servers", "tag:xgw-70"}
+
+
+@pytest.mark.parametrize("alias", ["0x46", "0106"])
+async def test_node_id_alias_cannot_bypass_gateway_checks(client, monkeypatch, alias):
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    gateway = await client.post("/api/nodes/70/meta", headers=headers, json={"exit_gateway": True})
+    assert gateway.status_code == 200, gateway.text
+
+    async def get_node(nid):
+        return hs.nodes.get("70" if nid == alias else nid)
+
+    set_node_tags = hs.set_node_tags
+
+    async def set_tags(nid, tags):
+        return await set_node_tags("70" if nid == alias else nid, tags)
+
+    async def delete_node(nid):
+        hs.nodes.pop("70" if nid == alias else nid)
+
+    monkeypatch.setattr(hs, "get_node", get_node)
+    monkeypatch.setattr(hs, "set_node_tags", set_tags)
+    monkeypatch.setattr(hs, "delete_node", delete_node, raising=False)
+    changed = await client.post(f"/api/nodes/{alias}/tags", headers=headers, json={"tags": []})
+    assert changed.status_code == 422, changed.text
+    deleted = await client.delete(f"/api/nodes/{alias}", headers=headers)
+    assert deleted.status_code == 422, deleted.text
+    assert set(hs.nodes["70"]["tags"]) == {"tag:servers", "tag:xgw-70"}
+
+
+async def test_route_removal_rolls_back_after_lost_headscale_response(client, monkeypatch):
+    from app.hs_client import HeadscaleError
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    route = "10.10.0.0/24"
+    hs.nodes["70"]["approvedRoutes"] = [route]
+    factory = client._transport.app.state.session_factory
+    original = {"70": {"routes": [route], "panel_approved": [route]}}
+    async with factory() as session:
+        await settings_store.set_agent_all(session, original)
+
+    approve = hs.approve_routes
+
+    async def lose_removal(nid, routes):
+        node = await approve(nid, routes)
+        if not routes:
+            raise HeadscaleError("lost response")
+        return node
+
+    monkeypatch.setattr(hs, "approve_routes", lose_removal)
+    url = "/api/nodes/70/routes"
+    failed = await client.post(url, headers=headers, json={"routes": []})
+    assert failed.status_code == 502, failed.text
+    async with factory() as session:
+        assert await settings_store.get_agent_all(session) == original
+    assert hs.nodes["70"]["approvedRoutes"] == [route]
+
+    monkeypatch.setattr(hs, "approve_routes", approve)
+    removed = await client.post(url, headers=headers, json={"routes": []})
+    assert removed.status_code == 200, removed.text
+    assert hs.nodes["70"]["approvedRoutes"] == []
+    async with factory() as session:
+        assert not (await settings_store.get_agent_all(session))["70"]["routes"]
+
+
+async def test_collector_does_not_restore_manually_revoked_route(client, monkeypatch):
+    from app import collector
+    from app.config import get_settings
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    monkeypatch.setattr(collector, "get_client", lambda _: hs)
+    route = "10.10.0.0/24"
+    hs.nodes["70"].update(availableRoutes=[route], approvedRoutes=[route])
+    factory = client._transport.app.state.session_factory
+    # Оставляем чужой ручной маршрут, которого не было в первом снимке цикла.
+    other = "10.11.0.0/24"
+    changed = await client.post("/api/nodes/70/routes", headers=headers, json={"routes": [other]})
+    assert changed.status_code == 200, changed.text
+    async with factory() as session:
+        await settings_store.set_agent_all(session, {"70": {"routes": ["10.12.0.0/24"]}})
+    hs.nodes["70"]["availableRoutes"].append("10.12.0.0/24")
+    await collector._auto_approve_requested(factory, get_settings())
+    assert hs.nodes["70"]["approvedRoutes"] == [other, "10.12.0.0/24"]
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_route_kind_and_acl_roll_back_if_policy_push_is_interrupted(client, monkeypatch, cancel):
+    from types import SimpleNamespace
+
+    from anyio import CancelScope
+    from anyio.lowlevel import checkpoint
+
+    from app.api.nodes import set_routes
+    from app.hs_client import HeadscaleError
+    from app.schemas import NodeRoutesIn
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    hs.nodes["72"] = {"id": "72", "ipAddresses": ["100.64.0.72"], "tags": []}
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        await settings_store.set_acl_rules(session, [{
+            "src": {"kind": "node", "value": "71"},
+            "dst": {"kind": "servers", "value": ""},
+            "ports": "22",
+        }])
+    push = hs.set_policy
+    previous = None
+    scope = CancelScope()
+
+    async def interrupt_first_push(policy):
+        nonlocal previous
+        await push(policy)
+        if previous is None:
+            previous = hs.policy
+            if cancel:
+                scope.cancel()
+                await checkpoint()
+            raise HeadscaleError("lost policy response")
+
+    monkeypatch.setattr(hs, "set_policy", interrupt_first_push)
+    url = "/api/nodes/72/routes"
+    body = {"routes": ["10.13.0.0/24"]}
+    if cancel:
+        async with factory() as session:
+            with scope:
+                await set_routes(
+                    "72", NodeRoutesIn(**body), None, SimpleNamespace(username="admin"), session
+                )
+        assert scope.cancelled_caught
+    else:
+        failed = await client.post(url, headers=headers, json=body)
+        assert failed.status_code == 502, failed.text
+    assert hs.nodes["72"]["approvedRoutes"] == []
+    assert "100.64.0.72:22" in previous["acls"][0]["dst"]
+    assert "100.64.0.72:22" not in hs.policy["acls"][0]["dst"]
+
+    retried = await client.post(url, headers=headers, json=body)
+    assert retried.status_code == 200 and retried.json()["kind"] == "server"
+    assert "100.64.0.72:22" in hs.policy["acls"][0]["dst"]
+
+
+async def test_single_exit_prefix_approves_both_families(client, monkeypatch):
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    resp = await client.post(
+        "/api/nodes/70/routes", headers=headers, json={"routes": ["0.0.0.0/0"]}
+    )
+    assert resp.status_code == 200, resp.text
+    assert hs.nodes["70"]["approvedRoutes"] == ["0.0.0.0/0", "::/0"]
+
+
+async def test_reconnect_returns_prepared_script_after_headscale_delete_response_is_lost(
+    client, monkeypatch,
+):
+    from app.hs_client import HeadscaleError
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    hs.nodes["73"] = {
+        "id": "73", "givenName": "gateway", "tags": ["tag:edge", "tag:xgw-73"],
+    }
+    observed_roles = []
+    get_node = hs.get_node
+
+    async def read(nid):
+        node = await get_node(nid)
+        if not node:
+            raise HeadscaleError("node not found", status_code=404)
+        return node
+
+    async def ensure_user(name):
+        return {"id": "1", "name": name}
+
+    async def create_key(uid, *, acl_tags, **options):
+        observed_roles.extend(acl_tags)
+        return {"id": "123", "key": "hskey-auth-test"}
+
+    async def delete_and_lose_response(nid):
+        hs.nodes.pop(nid)
+        raise HeadscaleError("lost delete response")
+
+    monkeypatch.setattr(hs, "get_node", read)
+    monkeypatch.setattr(hs, "ensure_user", ensure_user, raising=False)
+    monkeypatch.setattr(hs, "create_preauthkey", create_key, raising=False)
+    monkeypatch.setattr(hs, "delete_node", delete_and_lose_response, raising=False)
+    resp = await client.post("/api/nodes/73/reconnect", headers=headers, json={"os": "linux"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["key_id"] == "123"
+    assert "hskey-auth-test" in resp.json()["script"]
+    assert observed_roles == ["tag:edge"]
+
+
+async def test_direction_rechecks_gateway_kind_after_resolving_destination(client, monkeypatch):
+    from app import routing
+    from app.api import routing as api_routing
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    monkeypatch.setattr(api_routing, "get_client", lambda _: hs)
+    monkeypatch.setattr(api_routing, "require_hs", lambda _: None)
+
+    async def resolve_after_kind_changes(dst):
+        changed = await client.post("/api/nodes/70/meta", headers=headers, json={
+            "kind": "device", "exit_gateway": False,
+        })
+        assert changed.status_code == 200, changed.text
+        return ["203.0.113.9"], ""
+
+    monkeypatch.setattr(routing, "resolve_dst", resolve_after_kind_changes)
+    response = await client.post("/api/routing", headers=headers, json={
+        "src": ["71"], "via": "70", "dst": "edge.example",
+    })
+    assert response.status_code == 400, response.text
+    assert "Через устройство" in response.json()["detail"]
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        assert not await settings_store.get_routing(session)
+
+
+async def test_direction_delete_retries_after_headscale_loses_acl_response(client, monkeypatch):
+    from app.api import routing as api_routing
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    hs.nodes["75"] = {"id": "75", "ipAddresses": ["100.64.0.75"], "tags": ["tag:servers"]}
+    monkeypatch.setattr(api_routing, "get_client", lambda _: hs)
+    monkeypatch.setattr(api_routing, "require_hs", lambda _: None)
+    created = await client.post("/api/routing", headers=headers, json={
+        "src": ["71"], "via": "75", "dst": "203.0.113.8",
+    })
+    assert created.status_code == 200, created.text
+    previous = hs.policy
+    assert hs.nodes["75"]["approvedRoutes"] == ["203.0.113.8/32"]
+    did = created.json()["id"]
+
+    hs.lose_push_response = hs.pushes + 1
+    url = f"/api/routing/{did}"
+    failed = await client.delete(url, headers=headers)
+    assert failed.status_code == 502, failed.text
+    assert hs.policy == previous
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        assert did in await settings_store.get_routing(session)
+
+    removed = await client.delete(url, headers=headers)
+    assert removed.status_code == 204, removed.text
+    assert hs.nodes["75"]["approvedRoutes"] == []
+    assert "203.0.113.8" not in json.dumps(hs.policy)
+    async with factory() as session:
+        assert did not in await settings_store.get_routing(session)
+
+
+async def test_agent_config_update_keeps_concurrent_route_ownership(client, monkeypatch):
+    import asyncio
+
+    from app import routing
+    from app.api import agent as api_agent
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    monkeypatch.setattr(api_agent, "get_client", lambda _: hs)
+    monkeypatch.setattr(api_agent, "require_hs", lambda _: None)
+    monkeypatch.setattr(settings_store, "_write_lock", asyncio.Lock())
+    route, other = "10.10.0.0/24", "10.11.0.0/24"
+    hs.nodes["74"] = {"id": "74", "availableRoutes": [route], "tags": ["tag:servers"]}
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        cfg = await settings_store.get_agent_all(session)
+        cfg["74"] = {"routes": [route], "token": "test-token"}
+        await settings_store.set_agent_all(session, cfg)
+
+    reading_nodes = asyncio.Event()
+    resume_reconcile = asyncio.Event()
+    get_nodes = hs.get_nodes
+
+    async def paused_nodes():
+        reading_nodes.set()
+        await resume_reconcile.wait()
+        return await get_nodes()
+
+    async def reconcile():
+        async with factory() as session:
+            await routing.reconcile_approvals(session, hs)
+
+    monkeypatch.setattr(hs, "get_nodes", paused_nodes)
+    collect = asyncio.create_task(reconcile())
+    try:
+        await asyncio.wait_for(reading_nodes.wait(), timeout=5)
+        put = asyncio.create_task(client.put(
+            "/api/agent/74", headers=headers, json={"routes": [route, other], "exit_node": False},
+        ))
+        await asyncio.wait({put}, timeout=0.05)
+        assert not put.done()
+    finally:
+        resume_reconcile.set()
+        await asyncio.wait_for(collect, timeout=5)
+    resp = await asyncio.wait_for(put, timeout=5)
+    assert resp.status_code == 200, resp.text
+    async with factory() as session:
+        saved = (await settings_store.get_agent_all(session))["74"]
+    assert saved["routes"] == [route, other]
+    assert saved["panel_approved"] == [route]
 
 
 async def test_nodes_requires_auth(client):
@@ -376,12 +687,12 @@ async def test_reconnect_keeps_panel_notes(session):
     await settings_store.set_node_meta(session, "7", kind="server", admin=True,
                                        description="прод-сервер")
     meta = await settings_store.get_node_meta(session)
-    await settings_store.stash_node_meta(session, "db-1", meta["7"])
+    await settings_store.stash_node_meta(session, "db-1", meta["7"], key_id="100")
     await settings_store.clear_node_meta(session, "7")
 
     # нода вернулась под другим id
     moved = await settings_store.claim_pending_meta(
-        session, [{"id": "42", "givenName": "db-1"}]
+        session, [{"id": "42", "givenName": "db-1", "preAuthKey": {"id": "100"}}]
     )
     assert moved == 1
     meta = await settings_store.get_node_meta(session)
@@ -391,7 +702,7 @@ async def test_reconnect_keeps_panel_notes(session):
 
     # повторный вызов ничего не дублирует и не затирает
     assert await settings_store.claim_pending_meta(
-        session, [{"id": "42", "givenName": "db-1"}]
+        session, [{"id": "42", "givenName": "db-1", "preAuthKey": {"id": "100"}}]
     ) == 0
 
 
@@ -414,9 +725,9 @@ async def test_reconnect_repoints_rules_and_routes(session):
         "d2": {"src_kind": "node", "src": ["9"], "dst": "1.2.3.5", "via": "7"},
     })
     await settings_store.set_agent_all(session, {"7": {"token": "t", "routes": ["10.0.0.0/24"]}})
-    await settings_store.stash_node_meta(session, "db-1", {"kind": "server"}, old_id="7")
+    await settings_store.stash_node_meta(session, "db-1", {"kind": "server"}, old_id="7", key_id="100")
 
-    await settings_store.claim_pending_meta(session, [{"id": "42", "givenName": "db-1"}])
+    await settings_store.claim_pending_meta(session, [{"id": "42", "givenName": "db-1", "preAuthKey": {"id": "100"}}])
 
     rules = await settings_store.get_acl_rules(session)
     assert rules[0]["src"]["value"] == "42" and rules[0]["dst"]["value"] == "9"
@@ -436,13 +747,30 @@ async def test_claim_pending_meta_reads_old_format(session):
 
     await settings_store._set_raw(
         session, settings_store.PENDING_META_KEY,
-        '{"db-1": {"kind": "server", "admin": true}}',
+        '{"db-1": {"description": "server", "kind": "server", "admin": true}}',
     )
     assert await settings_store.claim_pending_meta(
         session, [{"id": "42", "givenName": "db-1"}]
     ) == 1
     meta = await settings_store.get_node_meta(session)
-    assert meta["42"]["kind"] == "server" and meta["42"]["admin"] is True
+    assert meta["42"] == {"description": "server"}
+
+
+async def test_keyless_reconnect_cannot_move_agent_or_permissions_by_name(session):
+    await settings_store.stash_node_meta(
+        session, "db-1", {"kind": "server", "admin": True}, old_id="7"
+    )
+    await settings_store.set_agent_all(session, {"7": {"token": "test-token"}})
+    rules = [{"src": {"kind": "node", "value": "7"},
+              "dst": {"kind": "servers", "value": ""}, "ports": "22"}]
+    await settings_store.set_acl_rules(session, rules)
+
+    assert await settings_store.claim_pending_meta(session, [
+        {"id": "42", "givenName": "db-1", "preAuthKey": {"id": "999"}},
+    ]) == 0
+    assert "42" not in await settings_store.get_node_meta(session)
+    assert await settings_store.get_agent_all(session) == {"7": {"token": "test-token"}}
+    assert await settings_store.get_acl_rules(session) == rules
 
 
 async def test_forget_node_refs_clears_rules_routes_agent(session):

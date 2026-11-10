@@ -7,12 +7,14 @@
 
 import logging
 
+from anyio import CancelScope
 from fastapi import APIRouter, HTTPException, status
 
 from app import aclgen, audit, policy_apply, routing, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import HeadscaleError, get_client
+from app.hs_util import hs_call, require_hs
 from app.nodekind import effective_kind
 from app.schemas import DirectionIn, DirectionOut, DirectionsOut
 
@@ -58,44 +60,26 @@ def _out(did: str, d: dict, nodes: dict, agents: dict) -> DirectionOut:
     )
 
 
-async def _apply(session) -> str:
-    """Перепушить политику и подтянуть одобрение маршрутов на нодах-выходах.
-    Возвращает текст отказа headscale (пустая строка = всё применилось).
-
-    Одобряем ЗАРАНЕЕ, не дожидаясь, пока нода начнёт анонсировать: одобренный,
-    но ещё не анонсируемый маршрут просто неактивен и включается сам, как только
-    агент его применит. Иначе пришлось бы ждать два цикла — агента и коллектора.
-    """
-    settings = get_settings()
-    if not settings.headscale_api_key:
-        return ""
-    client = get_client(settings)
-    err = await policy_apply.push_policy(session, client, settings)
-    if err:
-        return err
+async def _sync_approvals(session, client, settings) -> None:
     try:
-        done = await routing.approve_for(
-            client, await settings_store.get_routing(session)
-        )
-        # Отмечаем одобренное как СВОЁ: иначе коллектор не снимет маршрут, когда
-        # направление удалят, и на ноде-выходе накопятся мёртвые /32.
-        if done:
-            agents = await settings_store.get_agent_all(session)
-            changed = False
-            for nid, routes in done.items():
-                cfg = agents.get(nid)
-                if cfg is None:
-                    continue
-                mine = set(cfg.get("panel_approved") or [])
-                if not set(routes) <= mine:
-                    cfg["panel_approved"] = sorted(mine | set(routes))
-                    agents[nid] = cfg
-                    changed = True
-            if changed:
-                await settings_store.set_agent_all(session, agents)
+        if await routing.reconcile_approvals(session, client):
+            await policy_apply.apply_policy(session, client, settings)
     except HeadscaleError as exc:
-        log.warning("не удалось одобрить маршруты направлений: %s", exc)
-    return ""
+        # Коллектор повторит одобрение или отзыв по сохраненному намерению.
+        log.warning("не удалось синхронизировать маршруты направлений: %s", exc)
+
+
+async def _save_directions(session, directions, client, settings) -> None:
+    try:
+        async with settings_store.atomic_update(session):
+            await settings_store.set_routing(session, directions)
+            await hs_call(policy_apply.require_policy(session, client, settings))
+    except BaseException:
+        # Сверяем политику с БД, если подтверждение от Headscale или commit потерялось.
+        with CancelScope(shield=True):
+            await policy_apply.apply_policy(session, client, settings)
+        raise
+    await _sync_approvals(session, client, settings)
 
 
 @router.get("", response_model=DirectionsOut)
@@ -120,22 +104,6 @@ async def create_direction(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Источник и нода-выход совпадают — трафику некуда идти",
-        )
-    # Через устройство ходить НЕЛЬЗЯ. Иначе чужой трафик потечёт через личный
-    # компьютер пользователя: тот, кто выдаёт ключи, получил бы возможность
-    # выходить в интернет с чужой машины и её адреса. Проверка на бэкенде, а не
-    # только в списке на фронте: список — удобство, а запрет должен держаться и
-    # при прямом обращении к API.
-    nodes = await _nodes_map()
-    via_node = nodes.get(body.via)
-    if via_node is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нода-выход не найдена")
-    meta = await settings_store.get_node_meta(session)
-    if effective_kind(via_node, meta) != "server":
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Через устройство ходить нельзя — выберите сервер. "
-            "Иначе чужой трафик пойдёт через личную машину пользователя.",
         )
     # храним ОЧИЩЕННЫЙ адрес, а не то, что вставили: иначе в таблице висело бы
     # «https://ifconfig.me/», а резолвиться при этом стал бы «ifconfig.me»
@@ -186,22 +154,25 @@ async def create_direction(
     }
     # Замок держим до пуша: иначе параллельная правка успеет запушить между
     # нашим сохранением и нашим пушем, и в сети окажется не то, что в панели.
+    settings = get_settings()
+    require_hs(settings)
+    client = get_client(settings)
     async with policy_apply.write_lock():
+        nodes = await hs_call(client.get_nodes())
+        via_node = next((n for n in nodes if str(n.get("id")) == body.via), None)
+        if via_node is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нода-выход не найдена")
+        meta = await settings_store.get_node_meta(session)
+        if effective_kind(via_node, meta) != "server":
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Через устройство ходить нельзя — выберите сервер. "
+                "Иначе чужой трафик пойдёт через личную машину пользователя.",
+            )
         directions = await settings_store.get_routing(session)
         did = routing.new_id()
         directions[did] = entry
-        await settings_store.set_routing(session, directions)
-        # Если headscale политику не принял — откатываем сохранение. Иначе негодная
-        # запись осталась бы в хранилище и валила КАЖДУЮ следующую сборку политики,
-        # а панель показала бы, что направление создано.
-        err = await _apply(session)
-        if err:
-            directions.pop(did, None)
-            await settings_store.set_routing(session, directions)
-            await _apply(session)
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, f"headscale не принял правило: {err}"
-            )
+        await _save_directions(session, directions, client, settings)
     await audit.record(
         session,
         user.username,
@@ -218,16 +189,15 @@ async def create_direction(
 async def delete_direction(
     direction_id: str, user: CurrentUser, session: SessionDep
 ) -> None:
+    settings = get_settings()
+    require_hs(settings)
+    client = get_client(settings)
     async with policy_apply.write_lock():
         directions = await settings_store.get_routing(session)
         d = directions.pop(direction_id, None)
         if d is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Направление не найдено")
-        await settings_store.set_routing(session, directions)
-        # Маршрут на ноде-выходе снимется сам: агент получит состояние без него.
-        # Одобрение осиротеет, но неанонсируемый маршрут неактивен, а чистить чужие
-        # ручные одобрения мы не вправе — их мог поставить админ.
-        await _apply(session)
+        await _save_directions(session, directions, client, settings)
     await audit.record(session, user.username, "direction_del", str(d.get("dst", "")), "")
 
 
@@ -236,8 +206,12 @@ async def refresh_directions(user: CurrentUser, session: SessionDep) -> Directio
     """Перерезолвить адреса всех направлений прямо сейчас (не дожидаясь фонового
     цикла) — на случай «сайт переехал, а я хочу починить сразу»."""
     changed = await routing.refresh(session, force=True)
-    if changed:
-        await _apply(session)
+    settings = get_settings()
+    if changed and settings.headscale_api_key:
+        client = get_client(settings)
+        async with policy_apply.write_lock():
+            await hs_call(policy_apply.require_policy(session, client, settings))
+            await _sync_approvals(session, client, settings)
     await audit.record(
         session, user.username, "direction_refresh", "", f"обновлено: {len(changed)}"
     )

@@ -380,10 +380,11 @@ export function refreshDirections(): Promise<{ directions: Direction[] }> {
 export type ResolvedHost = { host: string; ips: string[]; note: string }
 
 // Резолвит домен «сайта» в IP (ACL умеет только IP, не URL). IP/подсеть → как есть.
-export function resolveHost(host: string): Promise<ResolvedHost> {
+export function resolveHost(host: string, signal?: AbortSignal): Promise<ResolvedHost> {
   return api<ResolvedHost>('/api/policy/resolve-host', {
     method: 'POST',
     body: JSON.stringify({ host }),
+    signal,
   })
 }
 
@@ -438,8 +439,8 @@ export function expireApiKey(prefix: string): Promise<void> {
   })
 }
 
-export function getHsInfo(): Promise<HsInfo> {
-  return api<HsInfo>('/api/hs-info')
+export function getHsInfo(signal?: AbortSignal): Promise<HsInfo> {
+  return api<HsInfo>('/api/hs-info', { signal })
 }
 
 export function setHsDns(dns: {
@@ -722,9 +723,10 @@ export function enrollNode(name: string, os: NodeOs): Promise<EnrollResult> {
 export function enrollStatus(
   keyId: string,
   hostname: string,
+  signal?: AbortSignal,
 ): Promise<EnrollStatus> {
   const q = new URLSearchParams({ key_id: keyId, hostname })
-  return api<EnrollStatus>(`/api/enroll/status?${q.toString()}`)
+  return api<EnrollStatus>(`/api/enroll/status?${q.toString()}`, { signal })
 }
 
 export function reconnectNode(id: string, os: NodeOs): Promise<EnrollResult> {

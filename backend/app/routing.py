@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import settings_store
+from app.nodekind import EXIT_ROUTES, effective_kind
 
 # Как часто перепроверять адреса доменов. Час — компромисс: TTL у сайтов обычно
 # меньше, но дёргать резолвер каждую минуту ради записи, которая меняется раз в
@@ -290,19 +291,27 @@ async def refresh(session: AsyncSession, *, force: bool = False) -> list[str]:
         # отозвать доступ) или завести новое: запись снимка целиком воскресила бы
         # удалённое и стёрла созданное — причём молча, доступ вернулся бы сам.
         # Обновляем только те записи, которые ЕЩЁ существуют, и только их поля.
-        fresh = await settings_store.get_routing(session)
-        touched = False
-        for did in {*changed, *(d for d in directions if directions[d].get("resolved_at"))}:
-            src, dst = directions.get(did), fresh.get(did)
-            if not src or dst is None:
-                continue  # направление удалили, пока мы резолвили — не воскрешаем
-            for field in ("ips", "resolved_at", "error"):
-                if field in src and dst.get(field) != src[field]:
-                    dst[field] = src[field]
-                    touched = True
-        if touched:
-            await settings_store.set_routing(session, fresh)
-        changed = [did for did in changed if did in fresh]
+        from app import policy_apply
+
+        async with policy_apply.write_lock():
+            fresh = await settings_store.get_routing(session)
+            merged = set()
+            for did, src in directions.items():
+                dst = fresh.get(did)
+                if dst is None or dst.get("dst") != src.get("dst"):
+                    continue
+                last = _parse_ts(dst.get("resolved_at"))
+                if last is not None and last >= now:
+                    continue  # другой запуск уже сохранил более свежий ответ
+                if src.get("resolved_at") != now.isoformat():
+                    continue
+                for field in ("ips", "resolved_at", "error"):
+                    if field in src and dst.get(field) != src[field]:
+                        dst[field] = src[field]
+                        merged.add(did)
+            if merged:
+                await settings_store.set_routing(session, fresh)
+            changed = [did for did in changed if did in merged]
     return changed
 
 
@@ -331,34 +340,73 @@ async def routing_loop(session_factory, settings) -> None:
                 changed = await refresh(session)
                 if changed and settings.headscale_api_key:
                     client = get_client(settings)
-                    await policy_apply.apply_policy(session, client, settings)
-                    await approve_for(client, await settings_store.get_routing(session))
+                    async with policy_apply.write_lock():
+                        await policy_apply.apply_policy(session, client, settings)
+                        if await reconcile_approvals(session, client):
+                            await policy_apply.apply_policy(session, client, settings)
                     log.info("адреса направлений обновились: %s", ", ".join(changed))
         except Exception:  # noqa: BLE001 — цикл не должен падать
             log.exception("ошибка обновления направлений")
         await asyncio.sleep(REFRESH_AFTER.total_seconds())
 
 
-async def approve_for(client, directions: dict) -> dict[str, list[str]]:
-    """Дотянуть одобрение маршрутов на нодах-выходах после смены адресов.
+def approved_route_set(routes) -> set[str]:
+    """Headscale одобряет оба exit-префикса при запросе любого из них."""
+    result = set(routes)
+    if result.intersection(EXIT_ROUTES):
+        result.update(EXIT_ROUTES)
+    return result
 
-    Возвращает {node_id: [одобренные маршруты]} — вызывающая сторона обязана
-    записать их в panel_approved агента. Без этой отметки коллектор считает
-    маршрут одобренным вручную и НИКОГДА его не снимет: удалённое направление
-    оставляло бы за собой /32 на ноде-выходе, и они копились бы.
-    """
-    wanted = routes_by_node(directions)
-    if not wanted:
-        return {}
-    nodes = {str(n.get("id", "")): n for n in await client.get_nodes()}
-    done: dict[str, list[str]] = {}
-    for node_id, routes in wanted.items():
-        node = nodes.get(node_id)
-        if node is None:
-            continue
-        approved = set(node.get("approvedRoutes") or [])
-        target = approved | set(routes)
-        if target != approved:
-            await client.approve_routes(node_id, sorted(target))
-        done[node_id] = sorted(routes)
-    return done
+
+async def set_approved_routes(client, node_id: str, routes: list[str]) -> dict:
+    from app.hs_client import HeadscaleError
+
+    expected = approved_route_set(routes)
+    node = await client.approve_routes(node_id, sorted(expected))
+    if not node or set(node.get("approvedRoutes") or []) != expected:
+        node = await client.get_node(node_id)
+    if not node or set(node.get("approvedRoutes") or []) != expected:
+        raise HeadscaleError("Headscale не подтвердил одобрения маршрутов")
+    return node
+
+
+async def reconcile_approvals(session: AsyncSession, client) -> bool:
+    """Синхронизировать одобрения, сохраняя маршруты, одобренные вручную."""
+    from app import policy_apply
+
+    async with policy_apply.write_lock(), settings_store.write_lock():
+        agents = await settings_store.get_agent_all(session)
+        derived = routes_by_node(await settings_store.get_routing(session))
+        if not agents and not derived:
+            return False
+        meta = await settings_store.get_node_meta(session)
+        kind_changed = False
+        for node in await client.get_nodes():
+            nid = str(node["id"])
+            cfg = agents.get(nid) or {}
+            requested = set(cfg.get("routes") or [])
+            if cfg.get("exit"):
+                requested.update(EXIT_ROUTES)
+            want = approved_route_set(requested & set(node.get("availableRoutes") or []))
+            # Направления одобряем заранее, до первого анонса агента.
+            kind = effective_kind(node, meta)
+            if kind == "server":
+                want.update(derived.get(nid, []))
+            approved = set(node.get("approvedRoutes") or [])
+            mine = approved_route_set(cfg.get("panel_approved") or [])
+            stale = mine - (want | requested)
+            added = want - approved
+            target = (approved - stale) | added
+            if added:
+                # Учет пишем до запроса. Если ответ потеряется после записи
+                # в Headscale, коллектор всё равно сможет отозвать маршрут.
+                cfg["panel_approved"] = sorted(mine | added)
+                agents[nid] = cfg
+                await settings_store.set_agent_all(session, agents)
+            if target != approved:
+                updated = await set_approved_routes(client, nid, sorted(target))
+                kind_changed |= effective_kind(updated, meta) != kind
+            if stale:
+                cfg["panel_approved"] = sorted((mine | added) - stale)
+                await settings_store.set_agent_all(session, agents)
+        return kind_changed

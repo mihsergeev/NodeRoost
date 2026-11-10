@@ -134,24 +134,35 @@ export function SettingsPage({
 
   useEffect(() => {
     loadKeys()
+  }, [loadKeys])
+
+  useEffect(() => {
+    let active = true
     listNodes()
-      .then(setNodes)
+      .then((next) => {
+        if (active) setNodes(next)
+      })
       .catch(() => {
         /* не смогли — просто не показываем строку про прямые соединения */
       })
     getHsInfo()
       .then((i) => {
+        if (!active) return
         setInfo(i)
         seedForms(i)
       })
       .catch(() => {})
     getTsVersion()
       .then((v) => {
+        if (!active) return
         setTsCur(v.current)
         setTsInput(v.current)
       })
       .catch(() => {})
-  }, [loadKeys])
+    return () => {
+      active = false
+    }
+  }, [])
 
   async function saveCompanyName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

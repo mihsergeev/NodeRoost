@@ -24,9 +24,12 @@ if [ ! -f "$APP_ROOT/compose.yml" ]; then
 fi
 APP="${2:-$APP_ROOT}"
 [ -f "$ARCHIVE" ] || { echo "нет архива: $ARCHIVE" >&2; exit 1; }
+case "$ARCHIVE" in /*) ;; *) ARCHIVE="$(pwd)/$ARCHIVE" ;; esac
 cd "$APP"
+APP=$(pwd)
 
 TMP=$(mktemp -d)
+ENV_TMP=
 STOPPED=0
 REPLACED=0
 HS_DATA="$APP/data/headscale"
@@ -42,6 +45,7 @@ headscale_files() {
 
 cleanup() {
     rc=$?
+    [ -z "$ENV_TMP" ] || rm -f -- "$ENV_TMP"
     if [ "$STOPPED" = 1 ]; then
         if [ "$REPLACED" = 1 ] && ! headscale_files | while IFS= read -r name; do
             rm -f "$HS_DATA/$name" || exit 1
@@ -113,12 +117,14 @@ done
 REPLACED=1
 
 echo ">> восстанавливаю файлы headscale…"
-install -d "$APP/data/headscale/lib" "$APP/data/headscale/config"
+mkdir -p "$HS_DATA/lib" "$HS_DATA/config"
 # сносим WAL/SHM старой базы, иначе headscale смешает их с новым снимком
 rm -f "$APP/data/headscale/lib/db.sqlite" \
       "$APP/data/headscale/lib/db.sqlite-wal" \
       "$APP/data/headscale/lib/db.sqlite-shm"
-cp -P "$TMP/headscale/db.sqlite" "$APP/data/headscale/lib/db.sqlite"
+# В tar права 0644. Снимок и ключи доступны только Headscale и группе панели
+# (тот же gid 10001, что в data-owner.sh). Группа нужна для следующего бэкапа.
+install -m 0640 -g 10001 "$TMP/headscale/db.sqlite" "$HS_DATA/lib/db.sqlite"
 if [ -f "$TMP/headscale/config.yaml" ]; then
     cp -P "$TMP/headscale/config.yaml" "$HS_DATA/config/config.yaml"
 fi
@@ -133,7 +139,10 @@ if grep -q '^ *extra_records_path:' "$APP/data/headscale/config/config.yaml" 2>/
     echo '[]' > "$APP/data/headscale/config/extra-records.json"
 fi
 for k in "$TMP"/headscale/lib/*.key; do
-  if [ -f "$k" ]; then cp -P "$k" "$HS_DATA/lib/"; fi
+  if [ -f "$k" ]; then
+      rm -f -- "$HS_DATA/lib/${k##*/}"
+      install -m 0640 -g 10001 "$k" "$HS_DATA/lib/${k##*/}"
+  fi
 done
 
 echo ">> прогоняю миграции (на случай пустой БД) + импортирую panel.json в Postgres…"
@@ -155,34 +164,83 @@ STOPPED=0
 # показывает «headscale: down». Проверяем и, если ключ не подходит, выпускаем
 # новый прямо здесь.
 echo ">> проверяю ключ панели к headscale…"
-for _ in $(seq 1 30); do
-    docker compose exec -T headscale headscale apikeys list >/dev/null 2>&1 && break
-    sleep 2
-done
-KEY_OK=0
-if [ -f "$APP/.env" ]; then
-    CUR="$(sed -n 's/^NODEROOST_HEADSCALE_API_KEY=//p' "$APP/.env" | head -1)"
-    if [ -n "$CUR" ]; then
-        PFX="$(printf '%s' "$CUR" | cut -c1-14)"
-        docker compose exec -T headscale headscale apikeys list 2>/dev/null \
-            | grep -q "$PFX" && KEY_OK=1
+probe_headscale_key() {
+    # Проверяем настоящую авторизацию из backend, а не префикс в таблице CLI.
+    # Возвращаем 42 только после явного отказа в авторизации. Ключ и ответ не печатаем.
+    docker compose exec -T backend python - <<'PY'
+import asyncio
+
+from app.config import get_settings
+from app.hs_client import HeadscaleClient, HeadscaleError
+
+
+async def main():
+    settings = get_settings()
+    client = HeadscaleClient(settings.headscale_url, settings.headscale_api_key, timeout=3)
+    for _ in range(12):
+        try:
+            await client.ping()
+            return 0
+        except HeadscaleError as exc:
+            if exc.status_code in (401, 403):
+                return 42
+            await asyncio.sleep(2)
+    return 1
+
+
+raise SystemExit(asyncio.run(main()))
+PY
+}
+
+KEY_STATUS=0
+probe_headscale_key || KEY_STATUS=$?
+if [ "$KEY_STATUS" = 42 ]; then
+    NEW_KEY=$(docker compose exec -T headscale headscale apikeys create --expiration 3650d 2>/dev/null) \
+        || { echo "   не удалось выпустить ключ панели" >&2; exit 1; }
+    NEW_KEY=$(printf '%s' "$NEW_KEY" | tail -1 | tr -d '\r')
+    case "$NEW_KEY" in
+        ''|*[!a-zA-Z0-9._-]*) echo "   неожиданный формат нового ключа панели" >&2; exit 1 ;;
+    esac
+    ENV_TMP=$(mktemp "$APP/.env.restore.XXXXXX")
+    if [ -f "$APP/.env" ]; then
+        awk '!/^[[:space:]]*(export[[:space:]]+)?NODEROOST_HEADSCALE_API_KEY[[:space:]]*=/' \
+            "$APP/.env" > "$ENV_TMP"
+        chown --reference="$APP/.env" "$ENV_TMP"
     fi
+    printf 'NODEROOST_HEADSCALE_API_KEY=%s\n' "$NEW_KEY" >> "$ENV_TMP"
+    mv -fT -- "$ENV_TMP" "$APP/.env"
+    ENV_TMP=
+    unset NEW_KEY
+    docker compose up -d --no-deps backend
+    probe_headscale_key || { echo "   новый ключ не подтвердился в REST API headscale" >&2; exit 1; }
+    echo "   новый ключ панели проверен через REST API headscale"
+elif [ "$KEY_STATUS" != 0 ]; then
+    echo "   не удалось проверить REST API headscale после восстановления" >&2
+    exit 1
 fi
-if [ "$KEY_OK" != "1" ]; then
-    NEW_KEY="$(docker compose exec -T headscale headscale apikeys create --expiration 3650d 2>/dev/null | tail -1 | tr -d '\r')"
-    if [ -n "$NEW_KEY" ]; then
-        sed -i "s|^NODEROOST_HEADSCALE_API_KEY=.*|NODEROOST_HEADSCALE_API_KEY=$NEW_KEY|" "$APP/.env"
-        docker compose up -d backend
-        echo "   ключ панели перевыпущен под восстановленную базу"
-    else
-        echo "   ВНИМАНИЕ: не удалось выпустить ключ — панель не увидит headscale"
-    fi
+
+if ! docker compose exec -T backend python - <<'PY'
+import time
+from urllib.error import URLError
+from urllib.request import urlopen
+
+for _ in range(20):
+    try:
+        with urlopen("http://127.0.0.1:8000/api/health", timeout=2):
+            raise SystemExit(0)
+    except (URLError, TimeoutError):
+        time.sleep(2)
+raise SystemExit(1)
+PY
+then
+    echo "   backend не прошёл проверку после восстановления" >&2
+    exit 1
 fi
 
 # Восстановленный config.yaml несёт server_url ТОЙ машины, с которой снят архив.
 # Если восстанавливаемся на другую, ноды продолжат ходить по старому адресу.
 SRV="$(sed -n 's/^server_url: *//p' "$APP/data/headscale/config/config.yaml" | head -1)"
-HSD="$(sed -n 's/^NODEROOST_HS_DOMAIN=//p' "$APP/.env" | head -1)"
+HSD="$(sed -n 's/^NODEROOST_HS_DOMAIN=//p' "$APP/.env" 2>/dev/null | head -1)"
 if [ -n "$HSD" ] && [ -n "$SRV" ] && [ "${SRV#*//}" != "$HSD" ]; then
     echo
     echo "   ВНИМАНИЕ: в восстановленном конфиге server_url = $SRV,"

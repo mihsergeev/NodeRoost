@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Path, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,8 @@ from app.security import decode_access_token
 bearer_scheme = HTTPBearer(auto_error=False)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+# Headscale's REST gateway also accepts octal and hex, but panel settings use decimal keys.
+NodeIdPath = Annotated[str, Path(pattern=r"^[1-9][0-9]{0,19}$")]
 
 
 async def get_current_user(

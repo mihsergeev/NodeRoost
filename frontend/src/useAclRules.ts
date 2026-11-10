@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getPolicyRules, putPolicyRules, type AclRule, type AclRules } from './api'
+import { ApiError, getPolicyRules, getToken, putPolicyRules, type AclRule, type AclRules } from './api'
 import { useI18n } from './i18n'
 
 function validSnapshot(snapshot: AclRules | null) {
@@ -15,6 +15,7 @@ export function useAclRules(onUnauthorized: () => void) {
   const requestInFlight = useRef(false)
 
   const read = useCallback(async (previousError?: string) => {
+    const token = getToken()
     try {
       const current = await getPolicyRules()
       if (!validSnapshot(current)) {
@@ -22,6 +23,7 @@ export function useAclRules(onUnauthorized: () => void) {
       }
       setSnapshot(current)
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401 && getToken() !== token) return
       setSnapshot(null)
       if (err instanceof ApiError && err.status === 401) onUnauthorized()
       else {
@@ -50,6 +52,7 @@ export function useAclRules(onUnauthorized: () => void) {
 
   async function save(next: AclRule[]) {
     if (!snapshot || requestInFlight.current) return
+    const token = getToken()
     requestInFlight.current = true
     setSaving(true)
     setError(null)
@@ -61,8 +64,9 @@ export function useAclRules(onUnauthorized: () => void) {
         setError(t('Не удалось загрузить правила доступа'))
       }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onUnauthorized()
-      else if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 401) {
+        if (getToken() === token) onUnauthorized()
+      } else if (err instanceof ApiError && err.status === 409) {
         const conflict = t('Правила доступа изменились. Проверьте актуальные правила и повторите правку.')
         setSnapshot(null)
         setError(conflict)

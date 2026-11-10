@@ -15,9 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app import agent, audit, ca, certs, routing, settings_store
 from app.config import get_settings
-from app.deps import CurrentUser, PublicRateLimit, SessionDep
-from app.hs_client import get_client
-from app.hs_util import hs_call, require_hs
+from app.deps import CurrentUser, NodeIdPath, PublicRateLimit, SessionDep
+from app.hs_client import HeadscaleError, get_client
+from app.hs_util import require_hs
 from app.schemas import AgentIn, AgentOut, OutdatedAgentsOut
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -125,7 +125,13 @@ async def _require_node(node_id: str) -> None:
     """
     settings = get_settings()
     require_hs(settings)
-    if not await hs_call(get_client(settings).get_node(node_id)):
+    try:
+        node = await get_client(settings).get_node(node_id)
+    except HeadscaleError as exc:
+        if exc.status_code != status.HTTP_404_NOT_FOUND:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        node = None
+    if not node:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
 
 
@@ -170,12 +176,14 @@ async def update_outdated_agents(
             "Скрипт агента не подписан этой версией панели: ноды отвергнут "
             "обновление. Подпишите релиз (agent-signing/release.py) и выкатите панель.",
         )
-    all_cfg = await settings_store.get_agent_all(session)
-    nodes = _outdated(all_cfg)
-    for node_id in nodes:
-        all_cfg[node_id]["update"] = agent.release()
+    async with settings_store.write_lock():
+        all_cfg = await settings_store.get_agent_all(session)
+        nodes = _outdated(all_cfg)
+        for node_id in nodes:
+            all_cfg[node_id]["update"] = agent.release()
+        if nodes:
+            await settings_store.set_agent_all(session, all_cfg)
     if nodes:
-        await settings_store.set_agent_all(session, all_cfg)
         await audit.record(
             session, user.username, "agent_update_all", ",".join(nodes),
             f"релиз {agent.release()}, нод: {len(nodes)}",
@@ -184,32 +192,41 @@ async def update_outdated_agents(
 
 
 @router.get("/{node_id}", response_model=AgentOut)
-async def get_agent(node_id: str, _: CurrentUser, session: SessionDep) -> AgentOut:
-    all_cfg = await settings_store.get_agent_all(session)
-    if node_id not in all_cfg:
-        await _require_node(node_id)
-    cfg = all_cfg.get(node_id, {})
-    if not cfg.get("token"):  # токен выдаём один раз и держим стабильным
-        cfg["token"] = secrets.token_urlsafe(16)
-        cfg["token_at"] = _now_iso()
-        all_cfg[node_id] = cfg
-        await settings_store.set_agent_all(session, all_cfg)
+async def get_agent(node_id: NodeIdPath, _: CurrentUser, session: SessionDep) -> AgentOut:
+    async with settings_store.write_lock():
+        all_cfg = await settings_store.get_agent_all(session)
+        if node_id not in all_cfg:
+            await _require_node(node_id)
+        cfg = all_cfg.get(node_id, {})
+        if not cfg.get("token"):  # токен выдаём один раз и держим стабильным
+            cfg["token"] = secrets.token_urlsafe(16)
+            cfg["token_at"] = _now_iso()
+            all_cfg[node_id] = cfg
+            await settings_store.set_agent_all(session, all_cfg)
     return _out(cfg, await _wanted_hash(session, node_id, cfg))
 
 
 @router.put("/{node_id}", response_model=AgentOut)
 async def put_agent(
-    node_id: str, body: AgentIn, user: CurrentUser, session: SessionDep
+    node_id: NodeIdPath, body: AgentIn, user: CurrentUser, session: SessionDep
 ) -> AgentOut:
-    all_cfg = await settings_store.get_agent_all(session)
-    cfg = all_cfg.get(node_id, {})
-    if not cfg.get("token"):
-        cfg["token"] = secrets.token_urlsafe(16)
-        cfg["token_at"] = _now_iso()
-    cfg["routes"] = [r.strip() for r in body.routes if r.strip()]
-    cfg["exit"] = body.exit_node
-    all_cfg[node_id] = cfg
-    await settings_store.set_agent_all(session, all_cfg)
+    async with settings_store.write_lock():
+        await _require_node(node_id)
+        meta = (await settings_store.get_node_meta(session)).get(node_id) or {}
+        if meta.get("exit_gateway") and not body.exit_node:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Сначала снимите «Шлюз выхода в интернет» в карточке ноды.",
+            )
+        all_cfg = await settings_store.get_agent_all(session)
+        cfg = all_cfg.get(node_id, {})
+        if not cfg.get("token"):
+            cfg["token"] = secrets.token_urlsafe(16)
+            cfg["token_at"] = _now_iso()
+        cfg["routes"] = [r.strip() for r in body.routes if r.strip()]
+        cfg["exit"] = body.exit_node
+        all_cfg[node_id] = cfg
+        await settings_store.set_agent_all(session, all_cfg)
     # Это меняет то, ЧТО НОДА ОБЪЯВЛЯЕТ ВСЕЙ СЕТИ: подсеть за ней и выход в
     # интернет через неё. Такое обязано попадать в журнал наравне с правилами
     # доступа — раньше единственное изменение, которое не оставляло следа.
@@ -225,7 +242,7 @@ async def put_agent(
 
 @router.post("/{node_id}/reissue", response_model=AgentOut)
 async def reissue_agent_token(
-    node_id: str, user: CurrentUser, session: SessionDep
+    node_id: NodeIdPath, user: CurrentUser, session: SessionDep
 ) -> AgentOut:
     """Выдать ноде НОВЫЙ токен агента, старый перестает работать сразу.
 
@@ -236,18 +253,18 @@ async def reissue_agent_token(
 
     После перевыпуска агента на ноде надо поставить заново - команда в ответе.
     """
-    all_cfg = await settings_store.get_agent_all(session)
-    if node_id not in all_cfg:
-        await _require_node(node_id)
-    cfg = all_cfg.get(node_id, {})
-    cfg["token"] = secrets.token_urlsafe(16)
-    cfg["token_at"] = _now_iso()
-    # Старый агент больше не придет, и считать его установленным нельзя:
-    # иначе карточка показывала бы живого агента там, где его уже нет.
-    for k in ("last_poll", "last_applied", "applied", "script"):
-        cfg.pop(k, None)
-    all_cfg[node_id] = cfg
-    await settings_store.set_agent_all(session, all_cfg)
+    async with settings_store.write_lock():
+        all_cfg = await settings_store.get_agent_all(session)
+        if node_id not in all_cfg:
+            await _require_node(node_id)
+        cfg = all_cfg.get(node_id, {})
+        cfg["token"] = secrets.token_urlsafe(16)
+        cfg["token_at"] = _now_iso()
+        # Старый агент больше не придет, и считать его установленным нельзя.
+        for k in ("last_poll", "last_applied", "applied", "script"):
+            cfg.pop(k, None)
+        all_cfg[node_id] = cfg
+        await settings_store.set_agent_all(session, all_cfg)
     await audit.record(
         session, user.username, "agent_token_reissue", node_id, "выдан новый токен агента"
     )
@@ -256,7 +273,7 @@ async def reissue_agent_token(
 
 @router.post("/{node_id}/update", response_model=AgentOut)
 async def request_agent_update(
-    node_id: str, user: CurrentUser, session: SessionDep
+    node_id: NodeIdPath, user: CurrentUser, session: SessionDep
 ) -> AgentOut:
     """Заказать ноде обновление агента до текущего подписанного релиза.
 
@@ -271,13 +288,14 @@ async def request_agent_update(
             "Скрипт агента не подписан этой версией панели: нода отвергнет "
             "обновление. Подпишите релиз (agent-signing/release.py) и выкатите панель.",
         )
-    all_cfg = await settings_store.get_agent_all(session)
-    cfg = all_cfg.get(node_id, {})
-    if not cfg.get("token"):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "у этой ноды нет агента")
-    cfg["update"] = agent.release()
-    all_cfg[node_id] = cfg
-    await settings_store.set_agent_all(session, all_cfg)
+    async with settings_store.write_lock():
+        all_cfg = await settings_store.get_agent_all(session)
+        cfg = all_cfg.get(node_id, {})
+        if not cfg.get("token"):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "у этой ноды нет агента")
+        cfg["update"] = agent.release()
+        all_cfg[node_id] = cfg
+        await settings_store.set_agent_all(session, all_cfg)
     await audit.record(
         session, user.username, "agent_update", node_id, f"релиз {agent.release()}"
     )

@@ -93,7 +93,11 @@ async def test_agent_change_is_written_to_the_audit_log(client, monkeypatch):
     async def fake_routes(session, node_id, cfg):
         return list(cfg.get("routes") or [])
 
+    async def existing_node(node_id):
+        assert node_id == "7"
+
     monkeypatch.setattr(api_agent, "_wanted_routes", fake_routes)
+    monkeypatch.setattr(api_agent, "_require_node", existing_node)
 
     r = await client.post("/api/auth/login",
                           json={"username": "admin", "password": ADMIN_PASSWORD})
@@ -107,6 +111,41 @@ async def test_agent_change_is_written_to_the_audit_log(client, monkeypatch):
     entry = next((e for e in log if e["action"] == "agent_set"), None)
     assert entry is not None, log
     assert entry["target"] == "7" and "10.9.0.0/24" in entry["detail"]
+
+
+async def test_agent_update_cannot_disable_a_gateway_or_create_a_missing_node(client, monkeypatch):
+    from app import settings_store
+    from app.api import agent as api_agent
+    from app.hs_client import HeadscaleError
+
+    class Control:
+        async def get_node(self, nid):
+            if nid in {"84", "0x54"}:
+                return {"id": "84"}
+            raise HeadscaleError("node not found", status_code=404)
+
+    monkeypatch.setattr(api_agent, "get_client", lambda _: Control())
+    monkeypatch.setattr(api_agent, "require_hs", lambda _: None)
+    login = await client.post(
+        "/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        await settings_store.set_node_meta(session, "84", kind="server", exit_gateway=True)
+
+    body = {"routes": ["10.9.0.0/24"], "exit_node": False}
+    missing = await client.put("/api/agent/85", headers=headers, json=body)
+    assert missing.status_code == 404, missing.text
+    denied = await client.put("/api/agent/84", headers=headers, json=body)
+    assert denied.status_code == 400, denied.text
+    alias = await client.put("/api/agent/0x54", headers=headers, json=body)
+    assert alias.status_code == 422, alias.text
+    async with factory() as session:
+        cfg = await settings_store.get_agent_all(session)
+        assert not {"84", "85", "0x54"} & cfg.keys()
+    accepted = await client.put("/api/agent/84", headers=headers, json={**body, "exit_node": True})
+    assert accepted.status_code == 200 and accepted.json()["exit_node"]
 
 
 def test_certificates_do_not_enter_the_state_hash():

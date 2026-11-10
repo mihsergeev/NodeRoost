@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from functools import wraps
 
+from anyio import CancelScope
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,7 +89,8 @@ async def atomic_update(session: AsyncSession):
             yield
             await session.commit()
         except BaseException:
-            await session.rollback()
+            with CancelScope(shield=True):
+                await session.rollback()
             raise
         finally:
             session.info.pop(_ATOMIC_UPDATE, None)
@@ -219,6 +221,7 @@ async def claim_pending_meta(
     панели первой записать тип ноды.
     """
     from app.aclgen import MESH_RANGE, _ipv4
+    from app.nodekind import effective_kind
 
     async with atomic_update(session):
         raw = await _get_raw(session, PENDING_META_KEY)
@@ -243,9 +246,21 @@ async def claim_pending_meta(
             if nid == old_id or (expected_key and expected_key != key):
                 continue
             note = entry.get("meta", entry) or {}  # старый формат: только заметка
+            if not expected_key:
+                # Имя выбирает сама нода. Старые записи без привязки к ключу
+                # не дают права на перенос ACL, агентского токена или шлюза.
+                if old_id:
+                    continue
+                note = {field: note[field] for field in ("description", "group", "subgroup") if field in note}
             merged = {**note, **(meta.get(nid) or {})}
             gateway_ip = ""
             if merged.get("exit_gateway"):
+                if not merged.get("kind"):
+                    # Сохраненный признак шлюза подтверждает прежний выбор
+                    # сервера, даже если новый id еще не имеет одобрений.
+                    merged["kind"] = "server"
+                if effective_kind(n, {nid: merged}) != "server":
+                    continue
                 gateway_ip = _ipv4(n) or ""
                 try:
                     in_mesh = bool(gateway_ip and ipaddress.ip_address(gateway_ip) in MESH_RANGE)

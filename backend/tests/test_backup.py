@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sqlite3
 import tarfile
@@ -71,10 +72,57 @@ def test_restore_drops_internal_alert_urls():
     bad = _json.dumps({"webhook": "https://127.0.0.1/x", "telegram_api": "http://10.0.0.5"})
     got = _json.loads(_sanitize_setting("alerts", bad))
     assert got["webhook"] == "" and got["telegram_api"] == ""
+    mesh = _json.dumps({"webhook": "https://100.64.0.42/hook"})
+    assert _json.loads(_sanitize_setting("alerts", mesh))["webhook"] == ""
     ok = _json.dumps({"webhook": "https://hooks.example.com/x", "telegram_api": ""})
     assert _json.loads(_sanitize_setting("alerts", ok))["webhook"] == "https://hooks.example.com/x"
     # чужие ключи не трогаем
     assert _sanitize_setting("acl_rules", "[1,2]") == "[1,2]"
+
+
+async def test_restore_pre_2fa_backup_preserves_login(tmp_path, session_factory, monkeypatch):
+    from sqlalchemy import select
+
+    from app import devices, restore_panel, totp
+    from app.models import User
+
+    secret = totp.random_secret()
+    async with session_factory() as db:
+        db.add(User(username="demo-admin", password_hash="current-test-hash",
+                    totp_secret=secret, totp_enabled=True, totp_last_counter=100,
+                    token_version=9))
+        await db.commit()
+        trust_token, _ = await devices.remember(db, "demo-admin", "test-browser", "192.0.2.8")
+
+    archive = tmp_path / "panel.json"
+    archive.write_text(json.dumps({"users": [{
+        "username": "demo-admin", "password_hash": "backup-test-hash", "token_version": 4,
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(restore_panel, "create_engine_and_factory",
+                        lambda _: (session_factory.kw["bind"], session_factory))
+    await restore_panel.restore_panel(str(archive))
+
+    async with session_factory() as db:
+        user = await db.scalar(select(User))
+        assert user.password_hash == "backup-test-hash"
+        assert user.token_version == 10
+        assert user.totp_enabled and totp.verify(user.totp_secret, totp._hotp(secret, 101), now=3030)
+        assert user.totp_last_counter == 100
+        assert not await devices.check(db, user.username, trust_token)
+
+
+@pytest.mark.parametrize("dump", [
+    {"users": [{"username": "demo", "password_hash": "fixture", "totp_enabled": True}]},
+    {"users": [{"username": "demo", "password_hash": "fixture", "token_version": "bad"}]},
+    {"app_settings": [{"key": "alerts", "value": "[]"}]},
+])
+def test_restore_check_rejects_corruption_before_stopping_services(tmp_path, dump):
+    from app.restore_panel import _read_panel_dump
+
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(dump), encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_panel_dump(str(path))
 
 
 def test_policy_comparison_ignores_formatting():
