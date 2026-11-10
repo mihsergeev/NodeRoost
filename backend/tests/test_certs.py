@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -12,7 +13,7 @@ from app.models import Certificate
 from tests.conftest import ADMIN_PASSWORD
 
 
-def _csr(*names: str) -> bytes:
+def _csr(*names: str, encoding=serialization.Encoding.DER) -> bytes:
     key = ec.generate_private_key(ec.SECP256R1())
     builder = (
         x509.CertificateSigningRequestBuilder()
@@ -23,7 +24,7 @@ def _csr(*names: str) -> bytes:
             x509.SubjectAlternativeName([x509.DNSName(n) for n in names]), critical=False
         )
     )
-    return builder.sign(key, hashes.SHA256()).public_bytes(serialization.Encoding.DER)
+    return builder.sign(key, hashes.SHA256()).public_bytes(encoding)
 
 
 def test_csr_names_reads_cn_and_san():
@@ -132,10 +133,65 @@ async def test_a_huge_csr_is_refused(client):
 async def test_a_valid_certificate_is_not_reissued(session):
     """Пока сертификат действует, повторный запрос получает ТОТ ЖЕ: иначе на одно
     имя копились бы сертификаты, и было бы не понять, какой из них где лежит."""
-    first = await certs.issue(session, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
+    request = _csr("nas.mesh")
+    first = await certs.issue(session, Settings(), "nas.mesh", "7", request)
     pem = first.cert_pem
-    again = await certs.issue(session, Settings(), "nas.mesh", "7", _csr("nas.mesh"))
+    again = await certs.issue(session, Settings(), "nas.mesh", "7", request)
     assert again.cert_pem == pem  # тот же, а не новый выпуск
+
+
+@pytest.mark.parametrize("reassigned", [False, True])
+async def test_agent_gets_a_certificate_for_its_new_private_key(client, reassigned):
+    name = "key-change.mesh"
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        await settings_store.set_agent_all(session, {
+            "7": {"token": "old-key-node"}, "8": {"token": "new-key-node"},
+        })
+        await settings_store.set_dns_records(session, [{"name": name, "node_id": "7", "cert": True}])
+    old_response = await client.post(
+        f"/agent/old-key-node/csr?name={name}",
+        content=_csr(name, encoding=serialization.Encoding.PEM),
+    )
+    assert old_response.status_code == 200, old_response.text
+
+    token = "old-key-node"
+    if reassigned:
+        token = "new-key-node"
+        async with factory() as session:
+            await settings_store.set_dns_records(session, [{"name": name, "node_id": "8", "cert": True}])
+        state = await client.get(f"/agent/{token}")
+        assert f"cert={name}||1" in state.text
+        assert (await client.get(f"/agent/{token}/cert?name={name}")).status_code == 404
+        assert (await client.get(f"/agent/old-key-node/cert?name={name}")).status_code == 403
+
+    request = _csr(name, encoding=serialization.Encoding.PEM)
+    response = await client.post(f"/agent/{token}/csr?name={name}", content=request)
+    assert response.status_code == 200
+    expected = x509.load_pem_x509_csr(request).public_key()
+    actual = x509.load_pem_x509_certificate(response.content).public_key()
+    assert actual == expected
+    assert response.content != old_response.content
+    assert (await client.get(f"/agent/{token}/cert?name={name}")).content == response.content
+    assert (await client.post(f"/agent/{token}/csr?name={name}", content=request)).content == response.content
+
+
+async def test_agent_cannot_finish_a_csr_after_its_name_was_reassigned(client):
+    name = "in-flight.mesh"
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        await settings_store.set_agent_all(session, {"7": {"token": "former-owner"}})
+        await settings_store.set_dns_records(session, [{"name": name, "node_id": "7", "cert": True}])
+
+    async def body():
+        yield _csr(name, encoding=serialization.Encoding.PEM)
+        async with factory() as session:
+            await settings_store.set_dns_records(session, [{"name": name, "node_id": "8", "cert": True}])
+
+    response = await client.post(f"/agent/former-owner/csr?name={name}", content=body())
+    assert response.status_code == 403
+    async with factory() as session:
+        assert await certs.get(session, name) is None
 
 
 def test_a_csr_with_a_broken_signature_is_refused():

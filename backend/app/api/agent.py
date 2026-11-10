@@ -448,8 +448,11 @@ async def _node_may_ask(session, token: str, name: str) -> str:
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     node_id, _ = found
-    wanted = {n for n, _, _ in await certs.wanted_for_node(session, get_settings(), node_id)}
-    if name not in wanted:
+    records = await settings_store.get_dns_records(session)
+    if not any(
+        r.get("cert") and r.get("name") == name and str(r.get("node_id") or "") == node_id
+        for r in records
+    ):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "это имя не назначено данной ноде"
         )
@@ -462,7 +465,7 @@ async def agent_csr(token: AgentToken, name: str, request: Request, session: Ses
 
     Ключ остаётся на ноде: сюда приезжает только запрос на подпись.
     """
-    node_id = await _node_may_ask(session, token, name)
+    await _node_may_ask(session, token, name)
     # Читаем с потолком: CSR — это пара килобайт, а тело запроса приходит с чужой
     # машины. Без предела нода (или тот, кто добрался до её токена) отправила бы
     # гигабайт и съела память панели одним запросом.
@@ -479,13 +482,10 @@ async def agent_csr(token: AgentToken, name: str, request: Request, session: Ses
     except Exception as e:  # noqa: BLE001 — сюда приходит текст с чужой машины
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"не похоже на CSR: {e}") from e
     try:
-        row = await certs.issue(
-            session,
-            get_settings(),
-            name,
-            node_id,
-            csr_der,
-        )
+        async with settings_store.write_lock():
+            # Назначение имени и токен могли измениться, пока загружался CSR.
+            node_id = await _node_may_ask(session, token, name)
+            row = await certs.issue(session, get_settings(), name, node_id, csr_der)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     if row.status != "ok":
@@ -499,8 +499,8 @@ async def agent_csr(token: AgentToken, name: str, request: Request, session: Ses
 @public_router.get("/agent/{token}/cert")
 async def agent_cert(token: AgentToken, name: str, session: SessionDep) -> Response:
     """Забрать уже выданный сертификат (например, если файл на ноде потерялся)."""
-    await _node_may_ask(session, token, name)
-    row = await certs.get(session, name)
+    node_id = await _node_may_ask(session, token, name)
+    row = await certs.get_for_node(session, name, node_id)
     if row is None or not row.cert_pem:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "сертификата ещё нет")
     return Response(content=row.cert_pem, media_type="application/x-pem-file")

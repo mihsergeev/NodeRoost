@@ -95,9 +95,28 @@ for _k in "$TMP"/headscale/lib/*.key; do check_plain "$_k"; done
 # минимальная комплектность
 [ -f "$TMP/panel.json" ] || { echo "в архиве нет panel.json" >&2; exit 1; }
 [ -f "$TMP/headscale/db.sqlite" ] || { echo "в архиве нет headscale/db.sqlite" >&2; exit 1; }
-# снимок sqlite должен быть настоящей базой
-head -c 16 "$TMP/headscale/db.sqlite" | grep -q "SQLite format 3" \
-  || { echo "db.sqlite в архиве повреждён" >&2; exit 1; }
+# Проверяем страницы снимка до остановки сервисов, включая старые архивы.
+if ! python3 - "$TMP/headscale/db.sqlite" <<'PY'
+import sqlite3
+import sys
+from contextlib import closing
+from pathlib import Path
+
+try:
+    snapshot = Path(sys.argv[1])
+    with snapshot.open("rb") as stream:
+        if stream.read(16) != b"SQLite format 3\0":
+            raise SystemExit(1)
+    with closing(sqlite3.connect(f"{snapshot.as_uri()}?mode=ro&immutable=1", uri=True)) as db:
+        valid = db.execute("PRAGMA quick_check(1)").fetchall() == [("ok",)]
+except (OSError, sqlite3.Error):
+    valid = False
+raise SystemExit(0 if valid else 1)
+PY
+then
+    echo "db.sqlite в архиве повреждён" >&2
+    exit 1
+fi
 
 # Дамп читается через stdin от имени пользователя backend. На общем томе
 # не появляется файл с учетными данными, созданный от root.

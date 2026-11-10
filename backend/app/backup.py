@@ -2,16 +2,22 @@
 config + ключи) и настройками панели (app_settings + учётки). Метрики/история в
 бэкап НЕ идут — они восстанавливаются сами."""
 
+import asyncio
+import gzip
 import io
 import json
-import asyncio
 import os
 import re
+import secrets
+import shutil
 import sqlite3
 import tarfile
 import tempfile
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
+from typing import BinaryIO
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,8 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.models import AppSetting, User
 
-BACKUP_RE = re.compile(r"^noderoost-backup-\d{8}-\d{6}\.tar\.gz$")
+BACKUP_RE = re.compile(r"noderoost-backup-\d{8}-\d{6}(?:-\d{6}-[0-9a-f]{16})?\.tar\.gz")
 _SQLITE_MAGIC = b"SQLite format 3\x00"
+_publish_lock = Lock()
 
 
 def backups_dir(data_dir: str) -> str:
@@ -38,7 +45,7 @@ def ensure_backups_dir(data_dir: str) -> str:
 
 
 def is_backup_name(name: str) -> bool:
-    return bool(BACKUP_RE.match(name))
+    return bool(BACKUP_RE.fullmatch(name))
 
 
 def _snapshot_sqlite(src: Path) -> bytes:
@@ -48,12 +55,12 @@ def _snapshot_sqlite(src: Path) -> bytes:
     fd, tmp_path = tempfile.mkstemp(suffix=".sqlite")
     os.close(fd)
     try:
-        srcconn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
-        dstconn = sqlite3.connect(tmp_path)
-        with dstconn:
+        uri = f"{src.resolve().as_uri()}?mode=ro"
+        with (
+            closing(sqlite3.connect(uri, uri=True)) as srcconn,
+            closing(sqlite3.connect(tmp_path)) as dstconn,
+        ):
             srcconn.backup(dstconn)
-        srcconn.close()
-        dstconn.close()
         return Path(tmp_path).read_bytes()
     finally:
         os.unlink(tmp_path)
@@ -79,6 +86,10 @@ async def build_archive(session: AsyncSession, settings: Settings) -> bytes:
             for u in await session.scalars(select(User))
         ],
     }
+    return await asyncio.to_thread(_pack_archive, panel, settings, now)
+
+
+def _pack_archive(panel: dict, settings: Settings, now: datetime) -> bytes:
     hs = Path(settings.data_dir) / "headscale"
     db_snapshot = _snapshot_sqlite(hs / "lib" / "db.sqlite")
 
@@ -111,25 +122,51 @@ async def build_archive(session: AsyncSession, settings: Settings) -> bytes:
     return buf.getvalue()
 
 
-def verify_archive(data: bytes) -> list[str]:
+def _verify_sqlite(snapshot: BinaryIO) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "db.sqlite"
+        head = snapshot.read(len(_SQLITE_MAGIC))
+        if head != _SQLITE_MAGIC:
+            raise ValueError("db.sqlite не похож на базу sqlite")
+        with path.open("wb") as out:
+            out.write(head)
+            shutil.copyfileobj(snapshot, out)
+        with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro&immutable=1", uri=True)) as db:
+            if db.execute("PRAGMA quick_check(1)").fetchall() != [("ok",)]:
+                raise ValueError("db.sqlite не прошёл SQLite quick_check")
+
+
+def verify_archive(data: bytes | BinaryIO) -> list[str]:
     """Перечитывает архив и проверяет целостность. Пустой список = бэкап годен."""
     problems: list[str] = []
     try:
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-            names = set(tar.getnames())
-            if "panel.json" not in names:
-                problems.append("нет panel.json")
-            else:
-                try:
-                    json.loads(tar.extractfile("panel.json").read())
-                except Exception:  # noqa: BLE001
-                    problems.append("panel.json не парсится")
-            if "headscale/db.sqlite" not in names:
-                problems.append("нет снимка headscale db.sqlite")
-            else:
-                head = tar.extractfile("headscale/db.sqlite").read(16)
-                if head != _SQLITE_MAGIC:
-                    problems.append("db.sqlite не похож на базу sqlite")
+        source = io.BytesIO(data) if isinstance(data, bytes) else data
+        with gzip.GzipFile(fileobj=source) as stream:
+            required = {"panel.json", "headscale/db.sqlite"}
+            with tarfile.open(fileobj=stream, mode="r|") as tar:
+                for member in tar:
+                    if member.name not in required:
+                        continue
+                    required.remove(member.name)
+                    if not member.isfile():
+                        problems.append(f"{member.name} не является обычным файлом")
+                        continue
+                    with tar.extractfile(member) as entry:
+                        if member.name == "panel.json":
+                            try:
+                                if not isinstance(json.load(entry), dict):
+                                    raise ValueError
+                            except ValueError:
+                                problems.append("panel.json не парсится как объект")
+                        else:
+                            try:
+                                _verify_sqlite(entry)
+                            except (sqlite3.Error, ValueError) as exc:
+                                problems.append(f"непригодный db.sqlite: {exc}")
+            problems.extend(f"нет {name}" for name in sorted(required))
+            # tar останавливается на конце списка файлов; CRC проверяется в конце gzip.
+            while stream.read(64 * 1024):
+                pass
     except Exception as exc:  # noqa: BLE001
         problems.append(f"архив не читается: {exc}")
     return problems
@@ -141,9 +178,12 @@ def list_backups(data_dir: str) -> list[dict]:
         return []
     out: list[dict] = []
     for fn in os.listdir(d):
-        if not BACKUP_RE.match(fn):
+        if not is_backup_name(fn):
             continue
-        st = os.stat(os.path.join(d, fn))
+        try:
+            st = os.stat(os.path.join(d, fn))
+        except FileNotFoundError:
+            continue  # архив мог исчезнуть при одновременной ротации
         out.append(
             {
                 "filename": fn,
@@ -153,57 +193,56 @@ def list_backups(data_dir: str) -> list[dict]:
                 ).isoformat(),
             }
         )
-    out.sort(key=lambda x: x["filename"], reverse=True)
+    out.sort(key=lambda x: x["filename"].removesuffix(".tar.gz"), reverse=True)
     return out
 
 
-def prune_backups(data_dir: str, keep: int) -> None:
-    d = backups_dir(data_dir)
-    if not os.path.isdir(d):
-        return
+def prune_backups(d: str, keep: int, current: str) -> None:
     files = sorted(
-        (fn for fn in os.listdir(d) if BACKUP_RE.match(fn)), reverse=True
+        (fn for fn in os.listdir(d) if fn != current and is_backup_name(fn)),
+        key=lambda fn: fn.removesuffix(".tar.gz"), reverse=True,
     )
-    for fn in files[max(keep, 1):]:
+    for fn in files[max(keep - 1, 0):]:
         try:
             os.remove(os.path.join(d, fn))
         except OSError:
             pass
 
 
-def _write_file(path: str, data: bytes) -> None:
-    with open(path, "wb") as fh:
-        fh.write(data)
-
-
-def _verify_file(path: str) -> list[str]:
-    with open(path, "rb") as fh:
-        return verify_archive(fh.read())
+def _publish_backup(d: str, archive: bytes, stamp: str, keep: int) -> tuple[str, int, list[str]]:
+    # Временный файл вне каталога, который читают панель и offsite. mkstemp
+    # сразу закрывает права до 0600. Публикация через link не заменяет существующий архив.
+    fd, staged = tempfile.mkstemp(prefix=".noderoost-backup-", dir=os.path.dirname(d))
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(archive)
+            fh.flush()
+            os.fsync(fh.fileno())
+        with open(staged, "rb") as fh:
+            problems = verify_archive(fh)
+        if problems:
+            return "", 0, problems
+        with _publish_lock:
+            while True:
+                filename = f"noderoost-backup-{stamp}-{secrets.token_hex(8)}.tar.gz"
+                path = os.path.join(d, filename)
+                try:
+                    os.link(staged, path)
+                except FileExistsError:
+                    continue
+                break
+            prune_backups(d, keep, filename)
+        return path, len(archive), []
+    finally:
+        os.unlink(staged)
 
 
 async def write_backup(
     session_factory, settings: Settings, keep: int
-) -> tuple[str, list[str]]:
-    """Пишет бэкап и тут же перечитывает с диска для self-теста."""
+) -> tuple[str, int, list[str]]:
+    """Публикует архив и запускает ротацию после проверки записанных байтов."""
     d = ensure_backups_dir(settings.data_dir)
     async with session_factory() as session:
         archive = await build_archive(session, settings)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    path = os.path.join(d, f"noderoost-backup-{stamp}.tar.gz")
-    # Запись и перечитывание архива - в поток: панель одним процессом обслуживает
-    # и интерфейс, и опрос агентов, а архив вместе с базой control-сервера легко
-    # дотягивает до десятков мегабайт.
-    await asyncio.to_thread(_write_file, path, archive)
-    # 0600, а не 0644: внутри архива секрет второго фактора открытым текстом, хеш
-    # пароля админа, токены агентов и приватные ключи control-сервера. Каталог
-    # закрыт правами, но файл живёт дольше каталога — его скачивают, копируют,
-    # кладут в хранилище, и права уезжают вместе с ним.
-    os.chmod(path, 0o600)
-    # СНАЧАЛА самопроверка, и только потом прунинг. В обратном порядке негодный
-    # бэкап удалял последнюю рабочую копию: ретеншн считал его полноценным, хотя
-    # проверка ещё не проходила. Битые архивы в счёт хранения не берём — они
-    # остаются на диске, но старые копии переживают их.
-    problems = await asyncio.to_thread(_verify_file, path)
-    if not problems:
-        prune_backups(settings.data_dir, keep)
-    return path, problems
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    return await asyncio.to_thread(_publish_backup, d, archive, stamp, keep)

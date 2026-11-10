@@ -58,6 +58,7 @@ docker compose up -d </dev/null
 # было некому — правка DNS ложилась в конфиг и не вступала в силу.
 if mkdir -p /lib65/noderoost 2>/dev/null; then
     echo ">> ставлю/обновляю помощники в /lib65/noderoost…"
+    sh ops/install-alert-helper.sh
     for f in hs-apply.sh hs-logs.sh; do
         sed "s|^APP_DIR=.*|APP_DIR=$APP|" "ops/$f" > "/lib65/noderoost/$f"
         chmod 755 "/lib65/noderoost/$f"

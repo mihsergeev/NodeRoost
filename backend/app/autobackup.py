@@ -10,25 +10,47 @@ log = logging.getLogger("noderoost.autobackup")
 
 # состояние прошлого автобэкапа — алертим только на переходах ok↔проблема
 _last_ok = True
+_config_changed = asyncio.Event()
+_START_DELAY = 30
+
+
+def configuration_changed() -> None:
+    _config_changed.set()
+
+
+async def _wait_for_config(seconds: float) -> None:
+    try:
+        await asyncio.wait_for(_config_changed.wait(), timeout=seconds)
+    except TimeoutError:
+        pass
 
 
 async def backup_loop(session_factory, settings: Settings) -> None:
-    await asyncio.sleep(30)  # не блокируем старт
+    await asyncio.sleep(_START_DELAY)
     global _last_ok
+    loop = asyncio.get_running_loop()
+    last_attempt: float | None = None
     while True:
+        _config_changed.clear()
         try:
             async with session_factory() as session:
                 cfg = await settings_store.get_backup_config(session, settings)
             interval = cfg["interval_hours"]
             keep = cfg["keep"]
             if interval <= 0:
-                await asyncio.sleep(3600)  # выключено — ждём час и перечитываем
+                last_attempt = None
+                await _wait_for_config(3600)
                 continue
+            if last_attempt is not None:
+                delay = last_attempt + interval * 3600 - loop.time()
+                if delay > 0:
+                    await _wait_for_config(min(delay, 3600))
+                    continue
 
             problems: list[str] = []
             exc: Exception | None = None
             try:
-                path, problems = await backup.write_backup(
+                path, _, problems = await backup.write_backup(
                     session_factory, settings, keep
                 )
             except Exception as e:  # noqa: BLE001 — цикл не должен падать
@@ -53,14 +75,14 @@ async def backup_loop(session_factory, settings: Settings) -> None:
                     )
                 else:
                     msg = (
-                        "⚠️ NodeRoost: бэкап создан, но self-тест НЕ пройден — "
+                        "⚠️ NodeRoost: бэкап не сохранён, self-тест НЕ пройден — "
                         + "; ".join(problems)
-                        + ". Копия может быть непригодна."
+                        + "."
                     )
                 log.error("проблема с бэкапом: %s", msg)
                 await alerts.maybe_alert(session_factory, settings, msg)
 
-            await asyncio.sleep(interval * 3600)
+            last_attempt = loop.time()
         except Exception:  # noqa: BLE001
             log.exception("ошибка цикла автобэкапа")
-            await asyncio.sleep(3600)
+            await _wait_for_config(3600)

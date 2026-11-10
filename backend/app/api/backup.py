@@ -4,7 +4,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
 
-from app import audit, backup, settings_store
+from app import audit, autobackup, backup, settings_store
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.schemas import BackupConfig, BackupFileInfo, BackupRunResult
@@ -28,7 +28,7 @@ async def run_backup(
     cfg = await settings_store.get_backup_config(session, settings)
     factory = request.app.state.session_factory
     try:
-        path, problems = await backup.write_backup(factory, settings, cfg["keep"])
+        path, size, problems = await backup.write_backup(factory, settings, cfg["keep"])
     except Exception as exc:  # noqa: BLE001
         # Бэкап не записался — админ должен узнать ПОЧЕМУ. Раньше отсюда уходило
         # голое «500 Internal Server Error»: ни места на диске, ни прав, ни пути.
@@ -46,9 +46,14 @@ async def run_backup(
         session, user.username, "backup_run", os.path.basename(path),
         "; ".join(problems) if problems else "ok",
     )
+    if problems:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Бэкап не сохранён, self-тест не пройден: " + "; ".join(problems),
+        )
     return BackupRunResult(
         filename=os.path.basename(path),
-        size=os.path.getsize(path),
+        size=size,
         problems=problems,
     )
 
@@ -83,6 +88,7 @@ async def set_config(
     body: BackupConfig, user: CurrentUser, session: SessionDep
 ) -> BackupConfig:
     await settings_store.set_backup_config(session, body.interval_hours, body.keep)
+    autobackup.configuration_changed()
     await audit.record(
         session, user.username, "backup_config", "",
         f"interval={body.interval_hours}h keep={body.keep}",

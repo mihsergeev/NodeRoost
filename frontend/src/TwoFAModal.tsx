@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import QRCode from 'qrcode'
 import {
+  ApiError,
   disable2FA,
   enable2FA,
   forgetAllDevices,
@@ -37,11 +38,22 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
   const [daysInput, setDaysInput] = useState('')
   const [devBusy, setDevBusy] = useState(false)
 
+  const handleLoadError = useEffectEvent((err: unknown) => {
+    if (err instanceof ApiError && err.status === 401) onUnauthorized()
+    else setError(err instanceof Error ? err.message : t('Ошибка'))
+  })
+
   useEffect(() => {
-    get2FA()
-      .then((s) => setEnabled(s.enabled))
-      .catch(() => onUnauthorized())
-  }, [onUnauthorized])
+    const controller = new AbortController()
+    get2FA(controller.signal)
+      .then((s) => {
+        if (!controller.signal.aborted) setEnabled(s.enabled)
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) handleLoadError(err)
+      })
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     if (!enabled) return
@@ -164,7 +176,7 @@ export function TwoFAModal({ onClose, onUnauthorized }: Props) {
         </div>
 
         {enabled === null ? (
-          <p className="muted">{t('загрузка…')}</p>
+          error ? <p className="form-error" role="alert">{error}</p> : <p className="muted">{t('загрузка…')}</p>
         ) : enabled ? (
           <>
             <p className="form-ok">

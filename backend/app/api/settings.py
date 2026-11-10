@@ -12,7 +12,7 @@ import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app import audit, ca, certs, dnsrecords, settings_store, tsmirror
+from app import audit, ca, certs, dnsrecords, policy_apply, settings_store, tsmirror
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import get_client
@@ -434,7 +434,10 @@ async def _records_out(
         note = ""
         if node_id and node is None:
             note = "нода не найдена" if nodes else "headscale недоступен"
-        cert = await certs.get(session, str(rec.get("name") or "")) if rec.get("cert") else None
+        cert = (
+            await certs.get_for_node(session, str(rec.get("name") or ""), node_id)
+            if rec.get("cert") else None
+        )
         out.append(
             DnsRecordOut(
                 name=str(rec.get("name") or ""),
@@ -538,9 +541,9 @@ async def update_dns_records(
     """
     settings = get_settings()
     require_hs(settings)
-    nodes = await hs_call(get_client(settings).get_nodes())
-    known = {str(n.get("id", "")) for n in nodes}
-    async with _dns_write_lock:
+    async with policy_apply.write_lock(), _dns_write_lock:
+        nodes = await hs_call(get_client(settings).get_nodes())
+        known = {str(n.get("id", "")) for n in nodes}
         cfg = _read_hs_config(settings.headscale_config_path)
         server_host = _control_host(cfg, settings.headscale_server_url)
         base_domain = str((cfg.get("dns") or {}).get("base_domain") or "").lower()

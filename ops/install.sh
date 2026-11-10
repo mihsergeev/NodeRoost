@@ -274,6 +274,7 @@ ok "the panel is answering"
 # в панели не работают.
 say "Installing the host helpers (DNS apply, headscale logs, watchdog)"
 install -d /lib65/noderoost
+sh ops/install-alert-helper.sh
 for f in hs-apply.sh hs-logs.sh; do
     sed "s|^APP_DIR=.*|APP_DIR=$DIR|" "ops/$f" > "/lib65/noderoost/$f"
     chmod 755 "/lib65/noderoost/$f"

@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'noderoost_token'
+let passwordChange: { token: string | null; done: Promise<void> } | null = null
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -19,6 +20,20 @@ export class ApiError extends Error {
     super(message)
     this.status = status
   }
+}
+
+async function checkUnauthorized(token: string | null, waitForPassword = true) {
+  const change = passwordChange
+  if (waitForPassword && change && change.token === token) {
+    // Между сменой пароля на сервере и получением нового токена старые GET
+    // могут вернуть 401. Дожидаемся результата смены пароля.
+    await change.done.catch(() => {})
+  }
+  checkSession(token)
+}
+
+function checkSession(token: string | null) {
+  if (getToken() !== token) throw new DOMException('Сессия изменилась', 'AbortError')
 }
 
 // Разбор тела ошибки. FastAPI отдаёт `detail` строкой, а валидация pydantic -
@@ -62,6 +77,9 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (res.status === 204) return undefined as T
 
   const body = await res.json().catch(() => null)
+  if (res.status === 401 && token) {
+    await checkUnauthorized(token, path !== '/api/auth/password' && path !== '/api/auth/logout')
+  }
   if (!res.ok) throw new ApiError(errorText(body, res.status), res.status)
   return body as T
 }
@@ -105,11 +123,20 @@ export async function changePassword(
   current_password: string,
   new_password: string,
 ): Promise<void> {
-  const r = await api<{ access_token: string }>('/api/auth/password', {
+  const token = getToken()
+  const done = api<{ access_token: string }>('/api/auth/password', {
     method: 'POST',
     body: JSON.stringify({ current_password, new_password }),
+  }).then(({ access_token }) => {
+    checkSession(token)
+    setToken(access_token)
   })
-  setToken(r.access_token)
+  passwordChange = { token, done }
+  try {
+    await done
+  } finally {
+    if (passwordChange?.done === done) passwordChange = null
+  }
 }
 
 export type PanelConfig = {
@@ -612,8 +639,8 @@ export type AlertConfig = {
   enabled: boolean
 }
 
-export function getAlerts(): Promise<AlertConfig> {
-  return api<AlertConfig>('/api/alerts')
+export function getAlerts(signal: AbortSignal): Promise<AlertConfig> {
+  return api<AlertConfig>('/api/alerts', { signal })
 }
 
 export function putAlerts(cfg: {
@@ -671,8 +698,10 @@ export async function downloadBackup(name: string): Promise<void> {
   const res = await fetch(`/api/backup/file/${encodeURIComponent(name)}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
+  if (res.status === 401) await checkUnauthorized(token)
   if (!res.ok) throw new ApiError('Не удалось скачать бэкап', res.status)
   const blob = await res.blob()
+  checkSession(token)
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -788,8 +817,8 @@ export function downloadTsMirror(): Promise<TsMirror> {
 export type TwoFAStatus = { enabled: boolean }
 export type TwoFASetup = { secret: string; otpauth_uri: string }
 
-export function get2FA(): Promise<TwoFAStatus> {
-  return api<TwoFAStatus>('/api/auth/2fa')
+export function get2FA(signal: AbortSignal): Promise<TwoFAStatus> {
+  return api<TwoFAStatus>('/api/auth/2fa', { signal })
 }
 
 // Пароль здесь обязателен: одного токена мало, иначе угнанная сессия привязывает
@@ -817,6 +846,6 @@ export function disable2FA(otp: string, password: string): Promise<TwoFAStatus> 
 
 // Выход на сервере: поднимает версию токенов, то есть снятая раньше копия
 // токена перестаёт работать сразу, а не через 12 часов.
-export function logoutServer(): Promise<void> {
-  return api<void>('/api/auth/logout', { method: 'POST' })
+export function logoutServer(signal: AbortSignal): Promise<void> {
+  return api<void>('/api/auth/logout', { method: 'POST', signal })
 }

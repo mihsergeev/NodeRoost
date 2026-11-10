@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -173,6 +174,57 @@ async def _put(client, token, records):
 
 async def test_dns_records_require_auth(client):
     assert (await client.get("/api/hs-info/dns-records")).status_code == 401
+
+
+@pytest.fixture
+def isolated_client_database(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODEROOST_DB_URL", f"sqlite+aiosqlite:///{(tmp_path / 'panel.db').as_posix()}")
+
+
+async def test_collector_keeps_dns_for_a_node_added_after_its_sample(
+    isolated_client_database, client, hs_env, monkeypatch,
+):
+    from app import collector
+
+    _, records = hs_env
+    sampled = asyncio.Event()
+    resume = asyncio.Event()
+
+    class Control:
+        def __init__(self):
+            self.nodes = [NODE]
+
+        async def get_nodes(self):
+            return self.nodes.copy()
+
+    async def pause_after_sampling(*_):
+        sampled.set()
+        await resume.wait()
+
+    async def unchanged(*_):
+        return False
+
+    control = Control()
+    monkeypatch.setattr(api_settings, "get_client", lambda _: control)
+    monkeypatch.setattr(collector, "get_client", lambda _: control)
+    monkeypatch.setattr(collector.alerts, "reconcile_nodes", pause_after_sampling)
+    monkeypatch.setattr(collector.policy_apply, "reconcile_policy", unchanged)
+    monkeypatch.setattr(collector, "_auto_approve_requested", unchanged)
+    token = await _login(client)
+    factory = client._transport.app.state.session_factory
+    settings = get_settings().model_copy(update={"headscale_api_key": "test-key", "preauth_retention_days": 0})
+    async with asyncio.TaskGroup() as tasks:
+        tasks.create_task(collector.collect_once(factory, settings))
+        try:
+            await asyncio.wait_for(sampled.wait(), timeout=5)
+            control.nodes.append({"id": "8", "givenName": "new", "ipAddresses": ["100.100.0.8"]})
+            result = await _put(client, token, [{"name": "new-service.mesh", "node_id": "8"}])
+            assert result.status_code == 200, result.text
+        finally:
+            resume.set()
+    assert dnsrecords.read_file(str(records)) == [
+        {"name": "new-service.mesh", "type": "A", "value": "100.100.0.8"}
+    ]
 
 
 async def test_first_save_wires_the_config_once(client, hs_env):

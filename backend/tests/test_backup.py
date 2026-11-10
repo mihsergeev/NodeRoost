@@ -1,8 +1,10 @@
+import asyncio
 import io
 import json
 import os
 import sqlite3
 import tarfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -35,6 +37,7 @@ async def test_build_and_verify(session, tmp_path):
         names = set(tar.getnames())
     assert {"panel.json", "headscale/db.sqlite", "headscale/config.yaml"} <= names
     assert "headscale/lib/noise_private.key" in names
+    assert backup.verify_archive(archive[:-1])  # gzip-архив без полного трейлера
 
 
 def test_verify_rejects_garbage():
@@ -43,6 +46,7 @@ def test_verify_rejects_garbage():
 
 def test_is_backup_name():
     assert backup.is_backup_name("noderoost-backup-20260717-120000.tar.gz")
+    assert backup.is_backup_name("noderoost-backup-20260717-120000-123456-0123456789abcdef.tar.gz")
     assert not backup.is_backup_name("../../etc/passwd")
     assert not backup.is_backup_name("evil.tar.gz")
 
@@ -52,15 +56,47 @@ async def test_backup_list_requires_auth(client):
     assert (await client.post("/api/backup/run")).status_code == 401
 
 
-def test_verify_runs_before_prune(tmp_path, monkeypatch):
-    """Негодный бэкап не должен уносить последнюю рабочую копию: прунинг делаем
-    только после успешной самопроверки."""
-    from app import backup
+async def test_bad_backup_does_not_replace_or_prune_a_good_copy(session_factory, tmp_path, monkeypatch):
+    _fake_headscale(tmp_path)
+    settings = Settings(data_dir=str(tmp_path))
+    good, size, problems = await backup.write_backup(session_factory, settings, keep=1)
+    assert problems == []
+    good_data = Path(good).read_bytes()
+    assert size == len(good_data)
 
-    called = []
-    monkeypatch.setattr(backup, "prune_backups", lambda *a, **k: called.append(a))
-    assert backup.verify_archive(b"not-an-archive")  # проблемы найдены
-    assert called == []  # прунинг не вызывался
+    monkeypatch.setattr(backup, "_snapshot_sqlite", lambda _: b"SQLite format 3\x00")
+    rejected, size, problems = await backup.write_backup(session_factory, settings, keep=1)
+    assert problems and rejected == "" and size == 0
+    assert Path(good).read_bytes() == good_data
+    assert [row["filename"] for row in backup.list_backups(str(tmp_path))] == [Path(good).name]
+
+
+async def test_concurrent_backups_in_the_same_second_keep_both_archives(
+    session_factory, tmp_path, monkeypatch,
+):
+    class FrozenTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 7, 17, 12, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(backup, "datetime", FrozenTime)
+    _fake_headscale(tmp_path)
+    settings = Settings(data_dir=str(tmp_path))
+    results = await asyncio.gather(*(
+        backup.write_backup(session_factory, settings, keep=2) for _ in range(2)
+    ))
+    assert len({path for path, _, _ in results}) == 2
+    for path, size, problems in results:
+        data = Path(path).read_bytes()
+        assert size == len(data)
+        assert not problems and not backup.verify_archive(data)
+    assert {row["filename"] for row in backup.list_backups(str(tmp_path))} == {
+        Path(path).name for path, _, _ in results
+    }
+    latest, _, problems = await backup.write_backup(session_factory, settings, keep=1)
+    assert not problems
+    assert latest not in {path for path, _, _ in results}
+    assert [row["filename"] for row in backup.list_backups(str(tmp_path))] == [Path(latest).name]
 
 
 def test_restore_drops_internal_alert_urls():
@@ -155,6 +191,19 @@ async def test_failed_manual_backup_says_why(client, monkeypatch):
     assert "No space left" in detail and "data/backups" in detail
 
 
+async def test_manual_backup_does_not_report_a_rejected_archive_as_created(client, tmp_path, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "data_dir", str(tmp_path))
+    login = await client.post("/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.post("/api/backup/run", json={}, headers=headers)
+    assert response.status_code == 500
+    assert "self-тест" in response.json()["detail"]
+    assert "db.sqlite" in response.json()["detail"]
+    assert (await client.get("/api/backup/list", headers=headers)).json() == []
+
+
 @pytest.mark.skipif(
     os.name != "posix",
     reason="права POSIX; на Windows chmod меняет только флаг «только чтение»",
@@ -186,7 +235,7 @@ async def test_archive_is_written_for_its_owner_only(tmp_path, monkeypatch):
             return False
 
     st = Settings(data_dir=str(tmp_path))
-    path, problems = await backup_mod.write_backup(lambda: _Ctx(), st, keep=3)
+    path, _, problems = await backup_mod.write_backup(lambda: _Ctx(), st, keep=3)
     assert problems == []
     mode = stat.S_IMODE(os.stat(path).st_mode)
     assert mode == 0o600, oct(mode)
@@ -224,3 +273,71 @@ def test_restore_script_unpacks_a_real_archive(tmp_path):
     r = subprocess.run(["tar", "-xzf", str(arc), "-C", str(out)], capture_output=True)
     assert r.returncode == 0, r.stderr
     assert (out / "panel.json").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="restore runs on a Linux host")
+@pytest.mark.parametrize("snapshot", [b"", b"SQLite format 3\0"])
+def test_restore_rejects_broken_sqlite_before_docker(tmp_path, monkeypatch, snapshot):
+    import subprocess
+
+    source = tmp_path / "source"
+    (source / "headscale").mkdir(parents=True)
+    (source / "headscale" / "db.sqlite").write_bytes(snapshot)
+    (source / "panel.json").write_text("{}", encoding="utf-8")
+    archive = tmp_path / "broken.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(source / "headscale", arcname="headscale")
+        tar.add(source / "panel.json", arcname="panel.json")
+
+    fake_docker = tmp_path / "docker"
+    fake_docker.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    fake_docker.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    script = Path(__file__).resolve().parents[2] / "ops" / "restore.sh"
+    result = subprocess.run(
+        ["sh", str(script), str(archive), str(tmp_path)], capture_output=True, check=False,
+    )
+    assert result.returncode == 1
+    assert "db.sqlite в архиве повреждён" in result.stderr.decode("utf-8")
+
+
+async def test_backup_loop_reloads_config_while_waiting(session_factory, monkeypatch):
+    from contextlib import suppress
+
+    from app import autobackup, settings_store
+
+    config = {"interval_hours": 0, "keep": 3}
+    read = asyncio.Event()
+    written = asyncio.Event()
+    writes = []
+
+    async def get_config(*_):
+        read.set()
+        return config.copy()
+
+    async def write(*args):
+        writes.append(args[-1])
+        written.set()
+        return "backup.tar.gz", 1, []
+
+    monkeypatch.setattr(settings_store, "get_backup_config", get_config)
+    monkeypatch.setattr(backup, "write_backup", write)
+    monkeypatch.setattr(autobackup, "_config_changed", asyncio.Event())
+    monkeypatch.setattr(autobackup, "_START_DELAY", 0)
+    task = asyncio.create_task(autobackup.backup_loop(session_factory, Settings()))
+    try:
+        await asyncio.wait_for(read.wait(), timeout=1)
+        config.update(interval_hours=24)
+        autobackup.configuration_changed()
+        await asyncio.wait_for(written.wait(), timeout=1)
+        await asyncio.sleep(0)
+
+        read.clear()
+        config.update(interval_hours=48, keep=2)
+        autobackup.configuration_changed()
+        await asyncio.wait_for(read.wait(), timeout=1)
+        assert writes == [3]
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task

@@ -23,7 +23,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, serialization
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,6 +84,11 @@ async def get(session: AsyncSession, name: str) -> Certificate | None:
     return await session.get(Certificate, name)
 
 
+async def get_for_node(session: AsyncSession, name: str, node_id: str) -> Certificate | None:
+    row = await get(session, name)
+    return row if row is not None and row.node_id == node_id else None
+
+
 async def wanted_for_node(
     session: AsyncSession, settings: Settings, node_id: str
 ) -> list[tuple[str, str, bool]]:
@@ -99,7 +104,7 @@ async def wanted_for_node(
         name = str(rec.get("name") or "")
         if not name:
             continue
-        cert = await get(session, name)
+        cert = await get_for_node(session, name, node_id)
         out.append(
             (
                 name,
@@ -151,15 +156,17 @@ async def issue(
         if row is None:
             row = Certificate(name=name, node_id=node_id)
             session.add(row)
-        row.node_id = node_id
+        elif row.node_id != node_id:
+            row.node_id = node_id
+            row.cert_pem = ""
+            row.not_after = None
         if (
             row.status == "ok"
             and row.cert_pem
             and not needs_renewal(row, settings.cert_renew_days)
+            and _matches_csr(row.cert_pem, csr_der)
         ):
-            # Действующий сертификат есть — отдаём его, а не выписываем новый:
-            # иначе повторный запрос плодил бы сертификаты на одно имя, и никто
-            # бы не знал, какой из них где лежит.
+            # Повтор запроса с тем же ключом возвращает уже выданный сертификат.
             return row
         row.status = "issuing"
         await session.commit()
@@ -182,6 +189,17 @@ async def issue(
         await session.commit()
         log.info("сертификат для %s выдан до %s", name, row.not_after)
         return row
+
+
+def _matches_csr(pem: str, csr_der: bytes) -> bool:
+    try:
+        cert = x509.load_pem_x509_certificate(pem.encode())
+    except ValueError:
+        return False
+    csr = x509.load_der_x509_csr(csr_der)
+    encoding = serialization.Encoding.DER
+    fmt = serialization.PublicFormat.SubjectPublicKeyInfo
+    return cert.public_key().public_bytes(encoding, fmt) == csr.public_key().public_bytes(encoding, fmt)
 
 
 # Пауза после отказа. Причина (имя вне разрешённых зон, битый CSR) сама собой не

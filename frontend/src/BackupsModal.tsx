@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   ApiError,
   downloadBackup,
   getBackupConfig,
+  getToken,
   listBackups,
   putBackupConfig,
   runBackup,
@@ -26,11 +27,13 @@ type Props = {
 export function BackupsModal({ onClose, onUnauthorized }: Props) {
   const { t } = useI18n()
   const dismiss = useModalDismiss(onClose)
-  const [files, setFiles] = useState<BackupFile[] | null>(null)
+  const [files, setFiles] = useState<BackupFile[] | 'error' | null>(null)
   const [cfg, setCfg] = useState<BackupConfig | null>(null)
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const listSequence = useRef(0)
 
   function handle(err: unknown) {
     if (err instanceof ApiError && err.status === 401) onUnauthorized()
@@ -38,32 +41,45 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
   }
 
   async function load() {
+    const sequence = ++listSequence.current
     try {
-      setFiles(await listBackups())
+      const next = await listBackups()
+      if (sequence === listSequence.current) setFiles(next)
     } catch (err) {
+      if (sequence !== listSequence.current) return
       handle(err)
-      setFiles([])
+      setFiles('error')
     }
   }
 
+  const loadInitialFiles = useEffectEvent(load)
+  const handleLoadError = useEffectEvent(handle)
   useEffect(() => {
-    load()
-    getBackupConfig().then(setCfg).catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true
+    void loadInitialFiles()
+    getBackupConfig()
+      .then((next) => { if (active) setCfg(next) })
+      .catch((err) => { if (active) handleLoadError(err) })
+    return () => {
+      active = false
+      ++listSequence.current
+    }
   }, [])
 
   async function create() {
+    const token = getToken()
     setBusy(true)
     setError(null)
     setMsg(null)
     try {
       const r = await runBackup()
+      if (getToken() !== token) return
       if (r.problems.length)
         setError(t('Бэкап создан, но self-тест: {p}', { p: r.problems.join('; ') }))
       else setMsg(t('Бэкап создан ({size}).', { size: fmtSize(r.size) }))
-      load()
+      await load()
     } catch (err) {
-      handle(err)
+      if (getToken() === token) handle(err)
     } finally {
       setBusy(false)
     }
@@ -71,6 +87,7 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
 
   async function saveCfg() {
     if (!cfg) return
+    setSaving(true)
     setError(null)
     setMsg(null)
     try {
@@ -78,6 +95,8 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
       setMsg(t('Сохранено.'))
     } catch (err) {
       handle(err)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -110,7 +129,7 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
         </p>
 
         <div className="modal-actions" style={{ justifyContent: 'flex-start' }}>
-          <button onClick={create} disabled={busy}>
+          <button onClick={create} disabled={busy || saving}>
             {busy ? t('Создание…') : t('Создать бэкап сейчас')}
           </button>
         </div>
@@ -123,6 +142,7 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
                 <span>{t('Каждые')}</span>
                 <select
                   className="select"
+                  disabled={busy || saving}
                   value={cfg.interval_hours}
                   onChange={(e) =>
                     setCfg({ ...cfg, interval_hours: Number(e.target.value) })
@@ -139,6 +159,7 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
                 <span>{t('Хранить копий')}</span>
                 <input
                   type="number"
+                  disabled={busy || saving}
                   min={1}
                   max={365}
                   style={{ width: '5rem' }}
@@ -148,8 +169,8 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
                   }
                 />
               </label>
-              <button className="ghost" onClick={saveCfg}>
-                {t('Сохранить')}
+              <button className="ghost" onClick={saveCfg} disabled={busy || saving}>
+                {saving ? t('Сохранение…') : t('Сохранить')}
               </button>
             </div>
           </div>
@@ -162,6 +183,10 @@ export function BackupsModal({ onClose, onUnauthorized }: Props) {
           <h4>{t('Копии на сервере')}</h4>
           {files === null ? (
             <p className="muted">{t('загрузка…')}</p>
+          ) : files === 'error' ? (
+            <button className="ghost" onClick={() => { setError(null); setFiles(null); void load() }}>
+              {t('Обновить')}
+            </button>
           ) : files.length === 0 ? (
             <p className="muted small">{t('Копий пока нет.')}</p>
           ) : (

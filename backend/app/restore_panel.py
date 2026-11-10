@@ -23,7 +23,7 @@ from sqlalchemy import delete, select
 from app.config import get_settings
 from app.db import create_engine_and_factory
 from app.models import AppSetting, TrustedDevice, User
-from app.urlguard import is_public_ip
+from app.urlguard import UrlNotAllowed, is_public_ip, parse_outbound_url
 
 
 def _sanitize_setting(key: str, value: str) -> str:
@@ -34,8 +34,8 @@ def _sanitize_setting(key: str, value: str) -> str:
     произвольный адрес, а по нему потом ходит и панель, и хостовый watchdog под
     root — то есть внутренние адреса запрашивались бы от их имени (SSRF). Проверка
     синхронная и офлайновая: резолв здесь недоступен, поэтому отсекаем схему и
-    литеральные приватные/локальные адреса, а полную проверку с резолвом делает
-    urlguard при следующем сохранении из UI.
+    литеральные приватные/локальные адреса. При сохранении в UI и каждой
+    отправке имена также проходят проверку DNS.
     """
     if key != "alerts":
         return value
@@ -53,16 +53,11 @@ def _sanitize_setting(key: str, value: str) -> str:
 
 
 def _looks_public(url: str) -> bool:
-    from urllib.parse import urlparse
-
     try:
-        u = urlparse(url)
-        _ = u.port
-    except ValueError:
+        _, host, _ = parse_outbound_url(url)
+    except UrlNotAllowed:
         return False
-    if u.scheme != "https" or not u.hostname:
-        return False
-    host = u.hostname.lower().rstrip(".")
+    host = host.rstrip(".")
     if host in ("localhost",) or host.endswith(".localhost") or host.endswith(".internal"):
         return False
     try:
@@ -72,7 +67,7 @@ def _looks_public(url: str) -> bool:
             # curl и libc допускают также короткие и шестнадцатеричные IPv4.
             addr = ipaddress.IPv4Address(socket.inet_aton(host))
         except OSError:
-            return bool(host)  # имя — проверит urlguard с резолвом при сохранении
+            return True  # DNS проверяется перед исходящим соединением
     return is_public_ip(str(addr))
 
 

@@ -1,4 +1,6 @@
+import hashlib
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -23,6 +25,46 @@ def test_linux_script():
     assert "tailscale up --reset --login-server=" in s
     # без --accept-routes источник молча игнорирует направления/полный туннель
     assert "--accept-routes" in s
+
+
+@pytest.mark.skipif(os.name != "posix", reason="runs the generated Linux shell script")
+@pytest.mark.parametrize("checksum_case", ["valid", "missing", "empty", "malformed", "mismatch", "no-tool"])
+def test_linux_checks_download_before_extracting(tmp_path, checksum_case):
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    for name in ("awk", "mkdir", "mktemp", "rm", "tr", "uname"):
+        (tools / name).symlink_to(shutil.which(name))
+    if checksum_case != "no-tool":
+        (tools / "sha256sum").symlink_to(shutil.which("sha256sum"))
+    curl = tools / "curl"
+    curl.write_text(
+        """#!/bin/sh
+case "$2" in
+  *.sha256) [ "$CHECKSUM_CASE" != missing ] && printf '%s\\n' "$CHECKSUM" > "$4" ;;
+  *) printf '%s' 'test archive' > "$4" ;;
+esac
+"""
+    )
+    curl.chmod(0o755)
+    tar = tools / "tar"
+    tar.write_text('#!/bin/sh\nprintf "%s\\n" extracted\nexit 42\n')
+    tar.chmod(0o755)
+    expected = hashlib.sha256(b"test archive").hexdigest()
+    checksum = {"empty": "", "malformed": "1234", "mismatch": "0" * 64}.get(checksum_case, expected.upper())
+    result = subprocess.run(
+        ["/bin/sh"], input=enroll.build_script("linux", _S, "test-key", "lab"),
+        env={**os.environ, "PATH": str(tools), "TMPDIR": str(tmp_path),
+             "CHECKSUM_CASE": checksum_case, "CHECKSUM": checksum},
+        text=True, capture_output=True, timeout=15,
+    )
+    if checksum_case == "valid":
+        assert result.returncode == 42
+        assert "extracted" in result.stdout
+    else:
+        assert result.returncode == 1
+        assert "установка остановлена" in result.stderr
+        assert "extracted" not in result.stdout
+    assert list(tmp_path.iterdir()) == [tools]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="runs the generated Linux shell script")
@@ -239,8 +281,10 @@ def test_windows_script_fails_loudly():
     assert "1603" in s and "1618" in s  # частые коды объясняются словами
     # путь к клиенту ищется, а не угадывается (32-битный PowerShell даёт x86)
     assert "ProgramFiles(x86)" in s
-    # скачанное проверяется на то, что это вообще установщик
-    assert "d0cf11e0a1b11ae1" in s
+    # Подпись и издатель проверяются до запуска скачанного установщика.
+    assert s.index("Get-AuthenticodeSignature") < s.index("Start-Process msiexec.exe")
+    assert "$signature.Status -ne 'Valid'" in s and "SERIALNUMBER=1131559-5" in s
+    assert "::SimpleName, $false) -cne 'Tailscale Inc.'" in s
     # ошибки прерывают блок, а не печатаются в никуда
     assert "Write-Error" not in s
 

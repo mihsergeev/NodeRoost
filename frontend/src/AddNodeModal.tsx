@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import {
   ApiError,
   getAgent,
+  getToken,
   enrollNode,
   enrollStatus,
   OS_TABS,
@@ -42,51 +43,65 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
   const [agentCopied, setAgentCopied] = useState(false)
   const [copied, setCopied] = useState(false)
   const [cmdCopied, setCmdCopied] = useState(false)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const enrolled = useEffectEvent(onEnrolled)
+  const unauthorized = useEffectEvent(onUnauthorized)
   // поллинг статуса подключения ноды
   useEffect(() => {
-    if (!result || connected) return
+    if (!result) return
     let alive = true
+    let request: AbortController | undefined
+    const token = getToken()
+    const active = () => alive && getToken() === token
     const tick = async () => {
+      if (!active() || request) return
+      const controller = new AbortController()
+      request = controller
+      const deadline = setTimeout(() => controller.abort(), 10000)
       try {
-        const s = await enrollStatus(result.key_id, result.hostname)
-        if (alive && s.connected) {
-          setConnected(true)
-          setReused(s.reused_from || null)
-          // Тип ноды закрепляем ДО обновления списка и ждём ответа: иначе список
-          // успевает перечитаться раньше, чем мета запишется, и свежий сервер
-          // уезжает в «Устройства» по авто-определению.
-          if (s.node) {
-            try {
-              // Шлём ТОЛЬКО тип. Пустое описание тут было командой «стереть», и
-              // при повторном подключении уже известной машины (headscale
-              // переиспользует её запись) оно сносило описание, а заодно группу
-              // с подгруппой - при том, что окно обещает сохранить настройки.
-              await setNodeMeta(s.node.id, { kind })
-            } catch {
-              /* тип проставится вручную — не мешаем показать «подключена» */
-            }
-            if (kind === 'server') {
-              try {
-                setAgentCmd((await getAgent(s.node.id)).setup_oneline)
-              } catch {
-                /* не смогли выдать токен — поставят из «Маршрутов» позже */
-              }
-            }
+        const s = await enrollStatus(result.key_id, result.hostname, controller.signal)
+        if (!active() || !s.connected) return
+        clearInterval(poll)
+        setError(null)
+        if (s.node) {
+          // Записываем только тип и ждём ответа до обновления списка. При
+          // повторном подключении описание, группа и подгруппа сохраняются.
+          try {
+            await setNodeMeta(s.node.id, { kind })
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 401) throw err
+            if (active() && err instanceof Error) setError(err.message)
           }
-          onEnrolled()
         }
-      } catch {
-        /* временная ошибка поллинга — игнорируем, попробуем снова */
+        if (!active()) return
+        setConnected(true)
+        setReused(s.reused_from || null)
+        enrolled()
+        if (kind === 'server' && s.node) {
+          try {
+            const agent = await getAgent(s.node.id)
+            if (active()) setAgentCmd(agent.setup_oneline)
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 401) throw err
+            /* токен можно получить позже из карточки ноды */
+          }
+        }
+      } catch (err) {
+        if (!active() || !(err instanceof ApiError)) return
+        if (err.status === 401) unauthorized()
+        else if (err.status === 409) setError(err.message)
+      } finally {
+        clearTimeout(deadline)
+        request = undefined
       }
     }
-    pollRef.current = setInterval(tick, 4000)
+    const poll = setInterval(tick, 4000)
     tick()
     return () => {
       alive = false
-      if (pollRef.current) clearInterval(pollRef.current)
+      request?.abort()
+      clearInterval(poll)
     }
-  }, [result, connected, kind, onEnrolled])
+  }, [result, kind])
 
   async function create() {
     setBusy(true)
@@ -196,6 +211,7 @@ export function AddNodeModal({ kind, onClose, onEnrolled, onUnauthorized }: Prop
           </>
         ) : (
           <>
+            {error && <p className="form-error" role="alert">{error}</p>}
             <p className="muted small">
               {os === 'windows'
                 ? t('Выполните скрипт на ноде в PowerShell от администратора. Ключ одноразовый.')

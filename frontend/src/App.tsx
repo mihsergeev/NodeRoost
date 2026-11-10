@@ -41,6 +41,7 @@ function clearNodeLink() {
 function App() {
   const { t, lang, setLang } = useI18n()
   const [authed, setAuthed] = useState(() => getToken() !== null)
+  const [signingOut, setSigningOut] = useState(false)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [view, setView] = useState<View>('servers')
   // растёт при каждом клике по навигации — используется как key, чтобы страница
@@ -112,22 +113,45 @@ function App() {
 
   useEffect(() => {
     if (!authed) return
+    let active = true
     getConfig()
-      .then(setCfg)
+      .then((config) => { if (active) setCfg(config) })
       .catch(() => {})
+    return () => { active = false }
   }, [authed])
 
-  const logout = useCallback(() => {
-    // Сначала просим сервер отозвать токен, потом забываем его локально.
-    // Сеть может не ответить - выйти из панели это не должно мешать.
-    logoutServer().catch(() => {})
+  const clearSession = useCallback(() => {
     setToken(null)
     setCompanyName(null)
+    setCfg(null)
+    setTwoFaOpen(false)
+    setPwOpen(false)
+    setAlertsOpen(false)
+    setBackupsOpen(false)
+    setLogsOpen(false)
     setAuthed(false)
   }, [])
-  const deletions = useNodeDeletion(logout)
+
+  async function logout() {
+    setSigningOut(true)
+    const controller = new AbortController()
+    const deadline = setTimeout(() => controller.abort(), 10000)
+    const revocation = logoutServer(controller.signal)
+    clearSession()
+    try {
+      // Не пускаем новый вход, пока сервер отзывает прежние токены.
+      await revocation
+    } catch {
+      // Локальный выход состоялся даже без ответа от сервера.
+    } finally {
+      clearTimeout(deadline)
+      setSigningOut(false)
+    }
+  }
+
+  const deletions = useNodeDeletion(clearSession)
   const nodePageProps = {
-    onUnauthorized: logout,
+    onUnauthorized: clearSession,
     openNodeId: deepNodeId,
     onOpened: () => {
       setDeepNodeId(null)
@@ -149,10 +173,10 @@ function App() {
       })
       .catch((err) => {
         if (controller.signal.aborted || getToken() !== token) return
-        if (err instanceof ApiError && err.status === 401) logout()
+        if (err instanceof ApiError && err.status === 401) clearSession()
       })
     return () => controller.abort()
-  }, [authed, logout])
+  }, [authed, clearSession])
 
   useEffect(() => {
     document.title = authed && companyName ? `${companyName} · NodeRoost` : 'NodeRoost'
@@ -275,43 +299,45 @@ function App() {
 
       {authed ? (
         view === 'access' ? (
-          <AccessPage onUnauthorized={logout} />
+          <AccessPage onUnauthorized={clearSession} />
         ) : view === 'routing' ? (
-          <RoutingPage key={navSeq} onUnauthorized={logout} />
+          <RoutingPage key={navSeq} onUnauthorized={clearSession} />
         ) : view === 'dns' ? (
-          <DnsPage key={navSeq} onUnauthorized={logout} />
+          <DnsPage key={navSeq} onUnauthorized={clearSession} />
         ) : view === 'settings' ? (
           <SettingsPage
             companyName={companyName}
             onCompanyNameChange={setCompanyName}
-            onUnauthorized={logout}
+            onUnauthorized={clearSession}
           />
         ) : view === 'devices' ? (
           <NodesPage key={'device-' + navSeq} kind="device" {...nodePageProps} />
         ) : (
           <NodesPage key={'server-' + navSeq} kind="server" {...nodePageProps} />
         )
+      ) : signingOut ? (
+        <p className="muted" role="status">{t('Выход…')}</p>
       ) : (
         <LoginPage onLogin={() => setAuthed(true)} />
       )}
 
       {twoFaOpen && (
-        <TwoFAModal onClose={() => setTwoFaOpen(false)} onUnauthorized={logout} />
+        <TwoFAModal onClose={() => setTwoFaOpen(false)} onUnauthorized={clearSession} />
       )}
 
       {pwOpen && (
-        <PasswordModal onClose={() => setPwOpen(false)} onUnauthorized={logout} />
+        <PasswordModal onClose={() => setPwOpen(false)} onUnauthorized={clearSession} />
       )}
 
       {alertsOpen && (
-        <AlertsModal onClose={() => setAlertsOpen(false)} onUnauthorized={logout} />
+        <AlertsModal onClose={() => setAlertsOpen(false)} onUnauthorized={clearSession} />
       )}
 
       {backupsOpen && (
-        <BackupsModal onClose={() => setBackupsOpen(false)} onUnauthorized={logout} />
+        <BackupsModal onClose={() => setBackupsOpen(false)} onUnauthorized={clearSession} />
       )}
 
-      {logsOpen && <LogsModal onClose={() => setLogsOpen(false)} onUnauthorized={logout} />}
+      {logsOpen && <LogsModal onClose={() => setLogsOpen(false)} onUnauthorized={clearSession} />}
     </main>
   )
 }

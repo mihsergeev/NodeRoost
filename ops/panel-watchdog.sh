@@ -11,6 +11,7 @@
 # и БД уже не отвечают. Алертит только на переходе (без спама).
 #
 # ops/install.sh ставит сторож сам (cron каждые 5 минут). Вручную — от root:
+#   ops/install-alert-helper.sh
 #   install -D -m755 ops/panel-watchdog.sh /lib65/noderoost/panel-watchdog.sh
 #   sed -i 's|^APP_ROOT=.*|APP_ROOT="/путь/к/установке"|' /lib65/noderoost/panel-watchdog.sh
 #   echo '*/5 * * * * root /lib65/noderoost/panel-watchdog.sh' > /etc/cron.d/noderoost-watchdog
@@ -37,28 +38,10 @@ NOW=$(date +%s)
 
 val(){ grep -m1 "^$1=" "$HB" 2>/dev/null | cut -d= -f2-; }
 
-# Пульс пишет контейнер панели, а этот скрипт идёт от root на ХОСТЕ: всё, что
-# пришло из файла, считаем недоверенным. Адрес берём только если это http(s), и
-# отдаём curl через --url, иначе значение с дефиса разбирается как опция (-K
-# читает конфиг curl, то есть даёт произвольные запросы и запись файлов).
-url_or(){ case "$1" in https://*|http://*) printf '%s' "$1";; *) printf '%s' "$2";; esac; }
-
 send(){
-  local msg="$1" token chat api hook
-  token=$(val tg_token); chat=$(val tg_chat); api=$(val tg_api); hook=$(val webhook)
-  api=$(url_or "$api" "https://api.telegram.org")
-  hook=$(url_or "$hook" "")
-  # В токене бота бывают только эти символы; остальное - мусор или попытка
-  # дописать к адресу лишнее.
-  case "$token" in *[!A-Za-z0-9:_-]*) token="";; esac
-  if [ -n "$token" ] && [ -n "$chat" ]; then
-    curl -s --max-time 15 --url "$api/bot$token/sendMessage" \
-      --data-urlencode "chat_id=$chat" --data-urlencode "text=$msg" \
-      --data-urlencode "disable_web_page_preview=true" >/dev/null 2>&1
-  fi
-  [ -n "$hook" ] && curl -s --max-time 15 -H 'Content-Type: application/json' \
-    --data "{\"text\": \"$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}" \
-    --url "$hook" >/dev/null 2>&1
+  local helper=/lib65/scripts/noderoost/send-host-alert.py
+  [ ! -f "$(dirname "$0")/send-host-alert.py" ] || helper="$(dirname "$0")/send-host-alert.py"
+  printf '%s' "$1" | timeout 30s python3 -Es "$helper" "$HB"
 }
 
 problem=""
@@ -90,14 +73,12 @@ strikes=$(sed -n 2p "$STATE" 2>/dev/null); case "$strikes" in ''|*[!0-9]*) strik
 if [ -n "$problem" ]; then
   strikes=$((strikes + 1))
   if [ "$alerted" != "problem" ] && [ "$strikes" -ge "$STRIKES" ]; then
-    send "$tag: $problem"
-    alerted=problem
+    if send "$tag: $problem"; then alerted=problem; fi
   fi
 else
   strikes=0
   if [ "$alerted" = "problem" ]; then
-    send "✅ NodeRoost watchdog [$panel]: панель снова в норме."
-    alerted=ok
+    if send "✅ NodeRoost watchdog [$panel]: панель снова в норме."; then alerted=ok; fi
   fi
 fi
 mkdir -p "$(dirname "$STATE")"

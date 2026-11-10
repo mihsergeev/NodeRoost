@@ -9,8 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import settings_store
+from app.alert_http import alert_request
 from app.config import Settings
 from app.models import NodeStatus
+from app.urlguard import telegram_url
 
 log = logging.getLogger("noderoost.alerts")
 
@@ -69,7 +71,7 @@ def _err_text(exc: Exception, *secrets: str) -> str:
     контейнера — поэтому строим сообщение сами и дополнительно затираем секреты.
     """
     if isinstance(exc, httpx.HTTPStatusError):
-        body = (exc.response.text or "").strip()[:200]
+        body = _redact((exc.response.text or "").strip(), *secrets)[:200]
         msg = f"HTTP {exc.response.status_code}" + (f": {body}" if body else "")
     else:
         msg = f"{type(exc).__name__}: {exc}"
@@ -85,8 +87,8 @@ async def send_alert(cfg: dict, text: str, link: str | None = None) -> list[str]
     if token and chat:
         # базовый адрес Bot API настраиваемый: для регионов, где api.telegram.org
         # заблокирован, можно указать зеркало/прокси (напр. https://api-tg.example.com)
-        base = (cfg.get("telegram_api") or "https://api.telegram.org").rstrip("/")
-        url = f"{base}/bot{token}/sendMessage"
+        base = cfg.get("telegram_api") or ""
+        url = ""
         payload: dict = {"chat_id": chat, "disable_web_page_preview": True}
         if link:
             payload["text"] = _tg_html(text, link)
@@ -94,9 +96,9 @@ async def send_alert(cfg: dict, text: str, link: str | None = None) -> list[str]
         else:
             payload["text"] = text
         try:
-            async with httpx.AsyncClient(timeout=10) as http:
-                r = await http.post(url, json=payload)
-                r.raise_for_status()
+            url = telegram_url(base, token, "sendMessage")
+            response = await alert_request("POST", url, json=payload, read_body=True)
+            response.raise_for_status()
         except Exception as exc:  # noqa: BLE001 — алерт не должен ронять цикл
             msg = _err_text(exc, token, url, base)
             errors.append(f"Telegram: {msg}")
@@ -107,9 +109,8 @@ async def send_alert(cfg: dict, text: str, link: str | None = None) -> list[str]
             body: dict = {"text": text}
             if link:
                 body["link"] = link
-            async with httpx.AsyncClient(timeout=10) as http:
-                r = await http.post(cfg["webhook"], json=body)
-                r.raise_for_status()
+            response = await alert_request("POST", cfg["webhook"], json=body)
+            response.raise_for_status()
         except Exception as exc:  # noqa: BLE001
             msg = _err_text(exc, cfg["webhook"])
             errors.append(f"Webhook: {msg}")

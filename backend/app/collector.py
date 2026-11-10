@@ -103,6 +103,16 @@ async def collect_once(
         if await settings_store.claim_pending_meta(session, raw, prepare_gateway):
             await policy_apply.apply_policy(session, client, settings)
         meta = await settings_store.get_node_meta(session)
+        # Список нод и настройки DNS читаем и публикуем под тем же замком,
+        # что и сохранение DNS в панели. Алерты могут задержать остальной цикл.
+        try:
+            if await dnsrecords.sync(session, settings, raw):
+                log.info("имена внутри сети обновлены (изменился состав нод)")
+        except OSError:
+            log.exception("не удалось обновить файл имён внутри сети")
+        records = await settings_store.get_dns_records(session)
+        if await certs.forget(session, {r["name"] for r in records if r.get("cert")}):
+            log.info("сертификаты исчезнувших имён убраны")
 
     online_map = {n["id"]: n["online"] for n in nodes}
     names = {n["id"]: n["name"] for n in nodes}
@@ -124,19 +134,6 @@ async def collect_once(
         await alerts.reconcile_agents(session, settings, agents, names, online_map, muted)
     async with session_factory() as session:
         await _check_key_expiry(session, settings, nodes, muted)
-    # имена внутри сети: адрес берётся у ноды СЕЙЧАС, а не когда имя записали —
-    # нода после переподключения получает другой адрес, и запись начала бы врать
-    async with session_factory() as session:
-        try:
-            if await dnsrecords.sync(session, settings, raw):
-                log.info("имена внутри сети обновлены (изменился состав нод)")
-        except OSError:
-            log.exception("не удалось обновить файл имён внутри сети")
-        # имя могло уйти вместе с удалённой нодой, а не только правкой списка —
-        # тогда его сертификат больше ни к чему не относится
-        records = await settings_store.get_dns_records(session)
-        if await certs.forget(session, {r["name"] for r in records if r.get("cert")}):
-            log.info("сертификаты исчезнувших имён убраны")
     # маршруты, заказанные в панели, одобряем без участия человека
     try:
         await _auto_approve_requested(session_factory, settings)

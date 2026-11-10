@@ -48,7 +48,8 @@ esac
 
 if ! command -v tailscale >/dev/null 2>&1; then
   echo "NodeRoost: ставлю Tailscale $VER ($A)…"
-  TMP=$(mktemp -d)
+  TMP="$NRTMP/pkg"
+  mkdir "$TMP"
   # сначала наш мирор, при неудаче — официальный pkgs.tailscale.com
   PKG="tailscale_${VER}_${A}.tgz"
   SRC="@@PKGBASE@@"
@@ -56,24 +57,24 @@ if ! command -v tailscale >/dev/null 2>&1; then
     SRC="https://pkgs.tailscale.com/stable"
     curl -fsSL "$SRC/$PKG" -o "$TMP/ts.tgz"
   fi
-  # Сверяем контрольную сумму с тем же источником, откуда пришёл архив. Из него
-  # ставится tailscaled, который работает под root, а каталог зеркала панели
-  # лежит в данных контейнера - без проверки подменённый там архив давал бы
-  # root на каждой машине, подключённой после подмены. Обновление агента ровно
-  # от этого и защищено подписью, установка оставалась без эквивалента.
-  if curl -fsSL "$SRC/$PKG.sha256" -o "$TMP/ts.sha256" 2>/dev/null; then
-    WANT=$(cut -d' ' -f1 < "$TMP/ts.sha256" | tr -d '\n\r')
-    GOT=$(sha256sum "$TMP/ts.tgz" 2>/dev/null | cut -d' ' -f1)
-    if [ -n "$WANT" ] && [ -n "$GOT" ] && [ "$WANT" != "$GOT" ]; then
-      echo "NodeRoost: контрольная сумма Tailscale не сошлась - установка остановлена." >&2
-      echo "  ожидалось $WANT, получено $GOT ($SRC/$PKG)" >&2
-      rm -rf "$TMP"; exit 1
-    fi
-  else
-    echo "NodeRoost: контрольной суммы для $PKG нет - установка остановлена." >&2
+  # Сумма с того же источника обнаруживает повреждение архива. Устанавливать
+  # tailscaled под root можно только после успешной сверки полного SHA-256.
+  checksum_error() {
+    echo "NodeRoost: $1 - установка остановлена." >&2
     echo "  источник: $SRC. Обновите зеркало в панели (Настройки -> клиент Tailscale)." >&2
-    rm -rf "$TMP"; exit 1
-  fi
+    exit 1
+  }
+  curl -fsSL "$SRC/$PKG.sha256" -o "$TMP/ts.sha256" 2>/dev/null \
+    || checksum_error "контрольной суммы для $PKG нет"
+  WANT=$(awk 'NR == 1 {print $1; exit}' "$TMP/ts.sha256" | tr -d '\r')
+  case "$WANT" in
+    ''|*[!0123456789abcdefABCDEF]*) checksum_error "неверный SHA-256 для $PKG" ;;
+  esac
+  [ "${#WANT}" -eq 64 ] || checksum_error "неверный SHA-256 для $PKG"
+  WANT=$(printf '%s' "$WANT" | tr 'ABCDEF' 'abcdef')
+  GOT=$(sha256sum "$TMP/ts.tgz" 2>/dev/null) \
+    || checksum_error "не удалось вычислить SHA-256 для $PKG"
+  [ "$WANT" = "${GOT%% *}" ] || checksum_error "контрольная сумма Tailscale не сошлась"
   tar -xzf "$TMP/ts.tgz" -C "$TMP"
   D="$TMP/tailscale_${VER}_${A}"
   install -m755 "$D/tailscale" /usr/bin/tailscale
@@ -191,24 +192,32 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
   'x86'   { 'x86' }
   default { 'amd64' }
 }
-$msi = Join-Path $env:TEMP "tailscale-setup-$ver-$arch.msi"
-Write-Host "NodeRoost: скачиваю Tailscale $ver ($arch)…"
-# сначала наш мирор, при неудаче — официальный pkgs.tailscale.com
-try { Invoke-WebRequest "@@PKGBASE@@/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
-catch { Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
-# Проверяем, что скачался установщик, а не страница с ошибкой: у MSI своя
-# сигнатура (составной документ OLE), и она стоит одну строку кода.
-$head = [System.IO.File]::ReadAllBytes($msi)[0..7]
-if ((Get-Item $msi).Length -lt 1MB -or
-    (($head | ForEach-Object { $_.ToString('x2') }) -join '') -ne 'd0cf11e0a1b11ae1') {
-  throw "NodeRoost: скачанный файл не похож на установщик Tailscale ($msi). Проверьте доступ к @@PKGBASE@@ и к pkgs.tailscale.com."
-}
-
-# Установка: обязательно с проверкой кода возврата и с подробным логом. Без этого
-# провал установки выяснялся только тем, что дальше «не найден tailscale.exe».
+$work = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('noderoost-' + [Guid]::NewGuid().ToString('N')))
+$msi = Join-Path $work.FullName "tailscale-setup-$ver-$arch.msi"
 $log = Join-Path $env:TEMP 'noderoost-tailscale-install.log'
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
-  '/i', "`"$msi`"", '/quiet', '/norestart', '/l*v', "`"$log`""
+try {
+  Write-Host "NodeRoost: скачиваю Tailscale $ver ($arch)…"
+  # Сначала наше зеркало, при ошибке загрузки - официальный pkgs.tailscale.com.
+  try { Invoke-WebRequest "@@PKGBASE@@/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
+  catch { Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-$ver-$arch.msi" -OutFile $msi }
+  # Формат MSI ничего не говорит об издателе. Проверяем Authenticode и
+  # регистрацию Tailscale Inc. в Канаде, не закрепляя сменяемый сертификат.
+  $signature = Get-AuthenticodeSignature -LiteralPath $msi
+  $subject = $signature.SignerCertificate.Subject
+  if ($signature.Status -ne 'Valid' -or
+      $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) -cne 'Tailscale Inc.' -or
+      $subject -cnotmatch '(?:^|,\s*)CN=Tailscale Inc\.(?:,|$)' -or
+      $subject -cnotmatch '(?:^|,\s*)O=Tailscale Inc\.(?:,|$)' -or
+      $subject -cnotmatch '(?:^|,\s*)C=CA(?:,|$)' -or
+      $subject -cnotmatch '(?:^|,\s*)SERIALNUMBER=1131559-5(?:,|$)') {
+    throw "NodeRoost: не удалось подтвердить подпись установщика Tailscale ($($signature.Status)). Установка остановлена."
+  }
+  # Проверяем код возврата и сохраняем подробный лог для диагностики.
+  $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
+    '/i', "`"$msi`"", '/quiet', '/norestart', '/l*v', "`"$log`""
+} finally {
+  Remove-Item -LiteralPath $work.FullName -Recurse -Force -ErrorAction SilentlyContinue
+}
 if ($p.ExitCode -eq 3010) {
   Write-Host "NodeRoost: установщик просит перезагрузку — продолжаю, но перезагрузите машину позже."
 } elseif ($p.ExitCode -ne 0) {

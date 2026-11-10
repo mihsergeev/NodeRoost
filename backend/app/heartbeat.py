@@ -7,13 +7,15 @@
 
 import asyncio
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 
-import httpx
-
 from app import settings_store
+from app.alert_http import alert_request
 from app.config import Settings
+from app.urlguard import telegram_url
 
 log = logging.getLogger("noderoost.heartbeat")
 
@@ -38,14 +40,24 @@ async def _self_test(cfg: dict) -> bool:
     Только webhook/ничего → безопасно протестировать нечем, считаем ок."""
     token, chat = cfg.get("telegram_token"), cfg.get("telegram_chat")
     if token and chat:
-        base = (cfg.get("telegram_api") or "https://api.telegram.org").rstrip("/")
         try:
-            async with httpx.AsyncClient(timeout=8) as http:
-                r = await http.get(f"{base}/bot{token}/getMe")
-                return r.status_code == 200 and bool(r.json().get("ok"))
+            url = telegram_url(cfg.get("telegram_api"), token, "getMe")
+            response = await alert_request("GET", url, read_body=True)
+            return response.status_code == 200 and bool(response.json().get("ok"))
         except Exception:  # noqa: BLE001
             return False
     return True
+
+
+def _write_heartbeat(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, filename = tempfile.mkstemp(dir=path.parent, prefix=".heartbeat-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write("\n".join(lines) + "\n")
+        os.replace(filename, path)
+    finally:
+        Path(filename).unlink(missing_ok=True)
 
 
 async def heartbeat_loop(session_factory, settings: Settings) -> None:
@@ -65,12 +77,7 @@ async def heartbeat_loop(session_factory, settings: Settings) -> None:
                 f"webhook={_one_line(cfg.get('webhook'))}",
                 f"alerts_ok={1 if ok else 0}",
             ]
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("\n".join(lines) + "\n")
-            try:
-                path.chmod(0o600)  # содержит токен бота
-            except OSError:
-                pass
+            _write_heartbeat(path, lines)
         except Exception:  # noqa: BLE001 — heartbeat не критичен
             log.warning("не удалось записать heartbeat", exc_info=True)
         await asyncio.sleep(HEARTBEAT_INTERVAL)

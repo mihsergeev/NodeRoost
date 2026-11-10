@@ -15,6 +15,7 @@ const EN: Record<string, string> = {
   // --- шапка / навигация ---
   'Ноды': 'Nodes',
   'Выйти': 'Log out',
+  'Выход…': 'Signing out…',
   'На главную': 'Home',
   'Тема': 'Theme',
   'Язык': 'Language',
