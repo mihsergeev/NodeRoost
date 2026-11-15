@@ -435,7 +435,7 @@ def test_nothing_in_apply_runs_while_setup_writes_it():
     assert not re.findall(r"(?<!\\)\$\(", body), "подстановка $(...) без \\ исполняется"
 
 
-async def test_update_all_touches_only_the_nodes_that_lag_behind(client):
+async def test_update_all_touches_only_the_nodes_that_lag_behind(client, monkeypatch):
     """Обход карточек по одной при десятке нод - занятие, которое просто не
     доделывают, и часть нод остается на старом скрипте. Кнопка «обновить все»
     обязана при этом не трогать ни свежие ноды, ни те, где агента нет."""
@@ -444,6 +444,9 @@ async def test_update_all_touches_only_the_nodes_that_lag_behind(client):
     from app import agent as agent_mod
     from app import settings_store
     from tests.conftest import ADMIN_PASSWORD
+
+    # Проверяем выбор нод, независимо от наличия подписи текущего dev-шаблона.
+    monkeypatch.setattr(agent_mod, "signed_and_current", lambda: True)
 
     app = client._transport.app
     now = datetime.now(timezone.utc).isoformat()
@@ -499,3 +502,23 @@ async def test_outdated_is_not_a_node_name(client):
         "/api/agent/outdated", headers={"Authorization": f"Bearer {tok}"}
     )
     assert r.status_code == 200 and "count" in r.json()
+
+
+async def test_bulk_update_rejects_an_unsigned_template(client, monkeypatch):
+    from app import settings_store
+
+    monkeypatch.setattr(agent, "manifest", lambda: {"release": 1, "script_sha256": "0" * 64})
+    assert not agent.signed_and_current()
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        await settings_store.set_agent_all(session, {"7": {"token": "fake-token"}})
+    login = await client.post(
+        "/api/auth/login", json={"username": "admin", "password": ADMIN_PASSWORD},
+    )
+    result = await client.post(
+        "/api/agent/update-outdated",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert result.status_code == 409
+    async with factory() as session:
+        assert "update" not in (await settings_store.get_agent_all(session))["7"]
