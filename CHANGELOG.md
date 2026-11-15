@@ -5,6 +5,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.9] - 2026-11-15
+
+### Fixed
+
+- Agent 13 reports failed panel polls with the curl error code, HTTP status and duration while keeping tokens, addresses and response contents out of diagnostic messages.
+- Incomplete responses, including interrupted HTTP 200 responses, are rejected. Temporary failures keep enrollment and the scheduled retry working.
+- Add an optional, pinned Headscale 0.29.7 build with the upstream IPv4 reverse DNS fix. Octet-aligned address pools use fewer reverse routes to avoid the systemd-resolved domain limit while preserving PTR coverage. Deploying the panel does not switch the Headscale image automatically.
+
 ## [0.25.6] - 2026-11-09
 
 ### Security and reliability
