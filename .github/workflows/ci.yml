@@ -33,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Build frontend image
+        run: docker build --tag noderoost-frontend:ci ./frontend
       - uses: actions/setup-node@v4
         with:
           node-version: "26"
