@@ -19,7 +19,7 @@ docker build --progress=plain -t noderoost-headscale:dns-20261115 deploy/headsca
 docker run --rm noderoost-headscale:dns-20261115 version -o json
 ```
 
-The build checks the upstream revision, applies the patch, runs the complete
+The Go 1.27.4 builder checks the upstream revision, applies the patch, runs the complete
 `hscontrol/util` test package, and compiles a static binary with VCS metadata.
 Go derives the version from the v0.29.7 tag and marks the patched tree dirty,
 so the binary identifies itself separately from the unmodified release.

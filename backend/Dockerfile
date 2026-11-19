@@ -1,6 +1,12 @@
 # база пинуется по дайджесту: плавающий тег переносит сборку на другой образ
 # незаметно для нас — и то, что проверено, перестаёт быть тем, что выкачено
-FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+FROM python:3.14.10-slim-trixie@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+
+# DSA-6613-1: require Debian's security fix for the runtime zlib package.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge 1:1.3.dfsg+really1.3.1-1+deb13u1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
 

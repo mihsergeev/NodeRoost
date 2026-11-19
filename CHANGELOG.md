@@ -5,6 +5,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.10] - 2026-11-19
+
+### Security
+
+- Pin FastAPI 0.163.2 and OpenTelemetry API 1.45.2. Update the backend's Debian zlib package to include DSA-6613-1.
+- Use Nginx 1.31.9 for the panel and landing page, with Alpine OpenSSL 3.5.9-r1 and zlib 1.4-r0. Update the optional standalone TLS proxy to Caddy 2.11.9.
+- Use PostgreSQL 18.7 with patched Alpine OpenSSL. Compose builds the database image from its pinned base.
+- Build the optional Headscale 0.29.7 image with Go 1.27.4 and retain the IPv4 reverse DNS patch.
+- Default new enrollments to Tailscale 1.104.7. Custom enrollment version settings and already installed clients remain unchanged.
+- Fix upgrades from a checked-out release tag. Prepare images before saving the target version in the installation settings.
+
 ## [0.25.9] - 2026-11-15
 
 ### Fixed

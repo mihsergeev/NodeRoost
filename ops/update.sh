@@ -17,19 +17,30 @@ APP="$(pwd)"
 
 # Локальные правки в рабочем дереве молча затирать нельзя — они могут быть
 # осмысленными (свой Caddyfile, патч). Останавливаемся и говорим прямо.
-if [ -d .git ] && ! git diff --quiet HEAD 2>/dev/null; then
+if [ -e .git ] && ! git diff --quiet HEAD 2>/dev/null; then
     echo "В $APP есть незакоммиченные изменения — обновление остановлено."
     echo "Посмотрите 'git status', сохраните или отмените их и запустите снова."
     exit 1
 fi
 
 echo ">> забираю свежий код…"
-[ -d .git ] && git pull --ff-only
+if [ -e .git ]; then
+    if git symbolic-ref -q HEAD >/dev/null; then
+        git pull --ff-only
+    else
+        # The installer checks out a release tag, leaving HEAD detached.
+        git fetch --tags origin
+        TAG="$(git tag --sort=-version:refname | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ && !found { print; found=1 }')"
+        [ -n "$TAG" ] || { echo "Не найден тег стабильного релиза."; exit 1; }
+        git merge --ff-only "refs/tags/$TAG"
+    fi
+fi
 
 NEW="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env.example | head -1)"
 CUR="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env | head -1)"
 if [ -n "$NEW" ] && [ "$NEW" != "$CUR" ]; then
-    sed -i "s|^NODEROOST_VERSION=.*|NODEROOST_VERSION=$NEW|" .env
+    # Prepare the target images before changing the saved release in .env.
+    export NODEROOST_VERSION="$NEW"
     echo ">> версия: $CUR → $NEW"
 else
     echo ">> версия та же ($CUR) — обновляю на месте"
@@ -38,7 +49,10 @@ fi
 # Готовые образы есть только у релизов. Если их нет (свой форк, промежуточный
 # коммит) — собираем локально, чтобы обновление не упиралось в реестр.
 echo ">> тяну образы…"
-if ! docker compose pull --quiet </dev/null 2>/dev/null; then
+if docker compose pull --quiet </dev/null 2>/dev/null; then
+    # The database image is built locally from a pinned base and security packages.
+    docker compose build db </dev/null
+else
     echo "   образов в реестре нет — собираю на месте"
     docker compose build </dev/null
 fi
@@ -48,6 +62,14 @@ fi
 # править конфиг headscale не сможет - и скажет об этом только в логе.
 echo ">> проверяю владельца каталогов данных…"
 ops/data-owner.sh
+
+if [ -n "$NEW" ] && [ "$NEW" != "$CUR" ]; then
+    if grep -q '^NODEROOST_VERSION=' .env; then
+        sed -i "s|^NODEROOST_VERSION=.*|NODEROOST_VERSION=$NEW|" .env
+    else
+        printf '\nNODEROOST_VERSION=%s\n' "$NEW" >> .env
+    fi
+fi
 
 echo ">> поднимаю стек…"
 docker compose up -d </dev/null

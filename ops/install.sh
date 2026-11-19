@@ -231,7 +231,7 @@ ops/data-owner.sh >/dev/null || die "could not set the owner of ./data"
 say "Starting the containers"
 COMPOSE=(docker compose --env-file .env)
 if [ "$BUILD" = 1 ]; then
-    "${COMPOSE[@]}" build backend frontend </dev/null
+    "${COMPOSE[@]}" build db backend frontend </dev/null
 fi
 # Бэкенд без ключа headscale не стартует — поднимаем остальное, ключ создаём ниже.
 "${COMPOSE[@]}" up -d db headscale frontend caddy </dev/null

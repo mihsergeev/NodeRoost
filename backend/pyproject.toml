@@ -4,11 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noderoost-backend"
-version = "0.25.9"
+version = "0.25.10"
 description = "NodeRoost — backend for the self-hosted headscale management panel"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.163.2",
+    # Keep FastAPI's transitive API above the trace-context security fixes.
+    "opentelemetry-api>=1.45.2",
     "uvicorn[standard]>=0.30",
     "pydantic-settings>=2.4",
     "sqlalchemy[asyncio]>=2.0",

@@ -4,7 +4,7 @@
 # должны зависеть от лендинга, а лендинг — переживать их пересборку. Разворачивать
 # в /app/landing, сеть caddy та же, что у остальных.
 #
-#   sudo docker compose -f /app/landing/compose.yml up -d
+#   sudo docker compose -f /app/landing/compose.yml up -d --build
 #
 # DNS: апекс идёт через Cloudflare-прокси (оранжевое облако) — и это работает.
 # Проверено вживую: CF пропускает ACME-проверку HTTP-01 до origin, Caddy выпустил
@@ -13,9 +13,8 @@
 # смотреть, не включился ли в CF редирект, съедающий /.well-known/acme-challenge.
 services:
   landing:
-    # дайджест, а не плавающий тег: иначе пересборка лендинга незаметно
-    # переносит его на другой образ, и ломается уже не то, что проверяли
-    image: nginx:1.31-alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
+    # Dockerfile фиксирует Nginx и исправленные системные библиотеки.
+    build: .
     restart: unless-stopped
     logging:
       driver: json-file
