@@ -34,6 +34,11 @@ HB="${NODEROOST_HEARTBEAT:-$APP_ROOT/data/heartbeat}"
 STATE=/lib65/noderoost/watchdog.state
 MAX_AGE="${NODEROOST_HB_MAX_AGE:-600}"
 STRIKES="${NODEROOST_WD_STRIKES:-2}"          # проверок ПОДРЯД с проблемой до тревоги
+
+# Блокировка не дает второму запуску прочитать старое состояние во время отправки.
+mkdir -p "$(dirname "$STATE")" || exit 1
+exec 9>"$STATE.lock" || exit 1
+flock -n 9 || exit 0
 NOW=$(date +%s)
 
 val(){ grep -m1 "^$1=" "$HB" 2>/dev/null | cut -d= -f2-; }
@@ -45,6 +50,7 @@ send(){
 }
 
 problem=""
+kind=down
 if [ ! -f "$HB" ]; then
   problem="файл пульса отсутствует — панель не пишет heartbeat (не запущена?)"
 else
@@ -57,29 +63,54 @@ else
   if [ "$ts" -eq 0 ] || [ "$age" -gt "$MAX_AGE" ]; then
     problem="панель молчит ${age}с (>${MAX_AGE}с) — контейнер/БД мертвы или зависли"
   elif [ "$ok" = "0" ]; then
-    problem="панель жива, но канал алертов сломан (Telegram недоступен/токен невалиден)"
+    kind=channel
+    problem="панель жива, но проверка канала алертов не прошла"
   fi
 fi
 
 panel=$(val panel); [ -z "$panel" ] && panel="$(hostname)"
 tag="🚑 NodeRoost watchdog [$panel]"
 
-# Дебаунс: тревогу шлём после STRIKES проверок ПОДРЯД с проблемой — чтобы рестарт
-# панели при деплое / разовый блип не будили сторожа. Состояние: строка1 = слали
-# ли уже (ok|problem), строка2 = стрик.
-alerted=$(sed -n 1p "$STATE" 2>/dev/null); [ -z "$alerted" ] && alerted=ok
-strikes=$(sed -n 2p "$STATE" 2>/dev/null); case "$strikes" in ''|*[!0-9]*) strikes=0;; esac
+# Состояние хранит открытую тревогу и число последовательных проблем.
+# Старое значение problem остается совместимым с уже работающим watchdog.
+alerted=$(sed -n 1p "$STATE" 2>/dev/null)
+case "$alerted" in problem|channel) ;; *) alerted=ok;; esac
+strikes=$(sed -n 2p "$STATE" 2>/dev/null)
+case "$strikes" in ''|*[!0-9]*) strikes=0;; esac
+
+save_state(){
+  local pending
+  pending=$(mktemp "$STATE.XXXXXX") || return 1
+  if ! printf '%s\n%s\n' "$alerted" "$strikes" > "$pending" || ! mv -fT -- "$pending" "$STATE"; then
+    rm -f -- "$pending"
+    return 1
+  fi
+}
 
 if [ -n "$problem" ]; then
   strikes=$((strikes + 1))
-  if [ "$alerted" != "problem" ] && [ "$strikes" -ge "$STRIKES" ]; then
-    if send "$tag: $problem"; then alerted=problem; fi
+  if [ "$strikes" -ge "$STRIKES" ]; then
+    if [ "$kind" = channel ] && [ "$alerted" = ok ]; then
+      # Запрос мог дойти, даже если ответ потерян. Одной попытки за сбой
+      # канала достаточно. Сохраняем ее до обращения к отправителю.
+      alerted=channel
+      save_state || exit 1
+      send "$tag: $problem" || true
+      exit 0
+    elif [ "$kind" = down ] && [ "$alerted" != problem ]; then
+      # При недоступной панели сохраняем повторную отправку до подтверждения.
+      if send "$tag: $problem"; then alerted=problem; fi
+    fi
   fi
 else
   strikes=0
-  if [ "$alerted" = "problem" ]; then
+  if [ "$alerted" = channel ]; then
+    alerted=ok
+    save_state || exit 1
+    send "✅ NodeRoost watchdog [$panel]: канал алертов снова работает." || true
+    exit 0
+  elif [ "$alerted" = problem ]; then
     if send "✅ NodeRoost watchdog [$panel]: панель снова в норме."; then alerted=ok; fi
   fi
 fi
-mkdir -p "$(dirname "$STATE")"
-printf '%s\n%s\n' "$alerted" "$strikes" > "$STATE"
+save_state

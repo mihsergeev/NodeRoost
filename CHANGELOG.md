@@ -5,6 +5,14 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.12] - 2026-11-20
+
+### Fixed
+
+- Make one notification attempt for each continuous alert-channel outage and one when the channel recovers, even if delivery confirmation is unavailable.
+- Prevent overlapping watchdog runs from duplicating alerts by locking and atomically updating the watchdog state.
+- Keep retrying panel-down alerts until delivery is confirmed.
+
 ## [0.25.11] - 2026-11-19
 
 ### Security
