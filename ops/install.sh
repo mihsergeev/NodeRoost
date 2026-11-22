@@ -229,6 +229,9 @@ ops/data-owner.sh >/dev/null || die "could not set the owner of ./data"
 
 # ── 4. Запуск ─────────────────────────────────────────────────────────────
 say "Starting the containers"
+# Локальные образы (db и при BUILD=1 панель) без provenance-аттестации: тогда
+# update.sh, пересобирая их из кэша, получает тот же образ и не перезапускает Postgres.
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 COMPOSE=(docker compose --env-file .env)
 if [ "$BUILD" = 1 ]; then
     "${COMPOSE[@]}" build db backend frontend </dev/null

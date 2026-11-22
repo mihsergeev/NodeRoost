@@ -23,6 +23,7 @@ if [ -e .git ] && ! git diff --quiet HEAD 2>/dev/null; then
     exit 1
 fi
 
+SELF_SUM="$(cksum < ops/update.sh)"
 echo ">> забираю свежий код…"
 if [ -e .git ]; then
     if git symbolic-ref -q HEAD >/dev/null; then
@@ -36,6 +37,14 @@ if [ -e .git ]; then
     fi
 fi
 
+# bash уже читает этот файл, и после обновления кода процесс продолжил бы старую
+# версию скрипта: исправления в самом update.sh вступали бы в силу только со
+# следующего обновления. Если скрипт изменился, продолжаем его новой версией.
+if [ -z "${NODEROOST_UPDATE_REEXEC:-}" ] && [ "$(cksum < ops/update.sh)" != "$SELF_SUM" ]; then
+    echo ">> скрипт обновления изменился — продолжаю новой версией"
+    NODEROOST_UPDATE_REEXEC=1 exec bash ops/update.sh "$@"
+fi
+
 NEW="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env.example | head -1)"
 CUR="$(sed -n 's/^NODEROOST_VERSION=\(.*\)/\1/p' .env | head -1)"
 if [ -n "$NEW" ] && [ "$NEW" != "$CUR" ]; then
@@ -45,6 +54,11 @@ if [ -n "$NEW" ] && [ "$NEW" != "$CUR" ]; then
 else
     echo ">> версия та же ($CUR) — обновляю на месте"
 fi
+
+# Без служебной provenance-аттестации повторная сборка из кэша дает тот же образ:
+# с ней ID менялся при каждом запуске, и compose без нужды перезапускал Postgres.
+# Локальные образы никуда не публикуются, аттестация им не нужна.
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
 # Готовые образы есть только у релизов. Если их нет (свой форк, промежуточный
 # коммит) — собираем локально, чтобы обновление не упиралось в реестр.

@@ -51,6 +51,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.ver.outputs.value }}
+            org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=BSD-3-Clause
           provenance: true
           sbom: true

@@ -86,7 +86,7 @@ export function LogsModal({
     ? [
         [t('Версия панели'), summary.panel_version || '—'],
         [t('control-сервер'), summary.headscale_url || '—'],
-        [t('headscale'), summary.headscale_ok ? t('доступен') : t('недоступен')],
+        ['headscale', summary.headscale_ok ? t('доступен') : t('недоступен')],
         ['MagicDNS', summary.magic_dns ? t('вкл') : t('выкл')],
         [t('Базовый домен'), summary.base_domain || '—'],
         [t('DNS-серверы'), summary.nameservers.join(', ') || '—'],

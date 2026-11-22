@@ -63,7 +63,6 @@ const EN: Record<string, string> = {
   'Теги': 'Tags',
   'Ключ истёк': 'Key expired',
   'без имени': 'unnamed',
-  'нет тегов': 'no tags',
   'Изменить ноду': 'Edit node',
   'Группа (например организация)': 'Group (e.g. organization)',
   'Подгруппа (например проект)': 'Subgroup (e.g. project)',

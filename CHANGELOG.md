@@ -5,6 +5,18 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.15] - 2026-11-22
+
+### Fixed
+
+- Continue an update with the new `ops/update.sh` when the update itself changes the script. Fixes to the update script now take effect in the same run instead of the next one.
+- Keep PostgreSQL running when its image has not changed. Local images are built without the default provenance attestation, so a cached rebuild produces the same image and Docker Compose no longer recreates the database on every update.
+
+### Changed
+
+- Label published images with `org.opencontainers.image.revision`, the commit they were built from.
+- Remove an unused interface string and show the Headscale product name as is in the logs summary.
+
 ## [0.25.14] - 2026-11-22
 
 ### Fixed
