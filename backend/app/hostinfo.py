@@ -68,19 +68,26 @@ def _parse(hi_raw: str | None, eps_raw: str | None) -> dict:
     }
 
 
-# Кэш последнего чтения: (путь, mtime, размер) -> разобранные строки. База
+# Кэш последнего чтения: отпечаток файлов базы -> разобранные строки. База
 # headscale читается на КАЖДЫЙ запрос списка нод, включая самый частый, а это
 # полный скан таблицы с разбором JSON в цикле событий: залоченная база давала
 # до двух секунд полного простоя панели.
-_cache: tuple[tuple[str, float, int], dict[str, dict]] | None = None
+_cache: tuple[tuple, dict[str, dict]] | None = None
 
 
-def _stamp(db_path: str) -> tuple[str, float, int]:
+def _file_stamp(path: str) -> tuple[int, int]:
     try:
-        st = os.stat(db_path)
+        st = os.stat(path)
     except OSError:
-        return (db_path, 0.0, 0)
-    return (db_path, st.st_mtime, st.st_size)
+        return (0, 0)
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _stamp(db_path: str) -> tuple:
+    # headscale держит базу в WAL и не закрывает соединение: новые и изменённые
+    # строки лежат в «-wal», а сам db.sqlite не меняется до контрольной точки.
+    # Без отпечатка «-wal» новая нода часами не получала ОС и флаг.
+    return (db_path, _file_stamp(db_path), _file_stamp(db_path + "-wal"))
 
 
 async def read_all_async(db_path: str) -> dict[str, dict]:

@@ -5,6 +5,12 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.13] - 2026-11-22
+
+### Fixed
+
+- Show the operating system and country flag of a newly added server right away. The panel's cache of Headscale node details now notices changes that Headscale has written only to its SQLite write-ahead log.
+
 ## [0.25.12] - 2026-11-20
 
 ### Fixed
