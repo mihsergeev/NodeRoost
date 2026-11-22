@@ -48,8 +48,12 @@ fi
 
 # Готовые образы есть только у релизов. Если их нет (свой форк, промежуточный
 # коммит) — собираем локально, чтобы обновление не упиралось в реестр.
+# Тянем только образы панели. Headscale может стоять из локальной сборки
+# (deploy/headscale, NODEROOST_HEADSCALE_IMAGE=local/...), которой в реестре нет:
+# общий pull на ней падал, и скрипт пересобирал backend и frontend на месте поверх
+# релизных образов. Недостающий образ headscale подтянет docker compose up.
 echo ">> тяну образы…"
-if docker compose pull --quiet </dev/null 2>/dev/null; then
+if docker compose pull --quiet backend frontend </dev/null 2>/dev/null; then
     # The database image is built locally from a pinned base and security packages.
     docker compose build db </dev/null
 else

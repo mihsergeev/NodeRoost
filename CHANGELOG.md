@@ -5,6 +5,13 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.14] - 2026-11-22
+
+### Fixed
+
+- Keep the published backend and frontend images when Headscale runs from a locally built image (`NODEROOST_HEADSCALE_IMAGE`). `ops/update.sh` now pulls only the panel images, so a Headscale image that is not in a registry no longer makes it rebuild the panel from source on the server. Docker Compose still pulls a missing Headscale image when it starts the stack.
+- An update runs the `ops/update.sh` that is already installed. With a locally built Headscale image, check out the release first (`git fetch --tags && git merge --ff-only v0.25.14`) and then run `sudo ops/update.sh`.
+
 ## [0.25.13] - 2026-11-22
 
 ### Fixed
