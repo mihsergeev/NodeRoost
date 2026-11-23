@@ -112,8 +112,9 @@ async def test_a_name_with_traversal_is_never_written_by_the_agent():
 
     setup = agent_mod.build_setup("https://hs.example/agent/tok")
     assert "имя сертификата отвергнуто" in setup
-    # пропускаем только то, что бывает DNS-именем: без слешей, без «..», без прочего
-    assert r"''|.*|*..*|*[!a-z0-9.-]*)" in setup
+    # пропускаем только то, что бывает DNS-именем: без слешей, без «..», без
+    # ведущего «-» (имя уходит в cert-hook.sh аргументом), без прочего
+    assert r"''|.*|-*|*..*|*[!a-z0-9.-]*)" in setup
 
 
 async def test_a_huge_csr_is_refused(client):

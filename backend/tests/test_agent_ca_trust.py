@@ -53,7 +53,7 @@ def _root(name: str, constraints) -> str:
 def _check_block(tmp_path) -> str:
     """Собрать apply.sh как на ноде и вырезать из него проверку ограничений."""
     setup = agent.build_setup("https://hs.example/agent/tok")
-    head, rest = setup.split('cat > "$DIR/apply.sh" <<EOF\n', 1)
+    head, rest = setup.split('cat > "$DIR/apply.sh.new" <<EOF\n', 1)
     body = rest.split("\nEOF\n", 1)[0]
     runner = tmp_path / "runner.sh"
     runner.write_text(

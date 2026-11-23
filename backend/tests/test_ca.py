@@ -143,6 +143,21 @@ async def test_old_root_with_an_allow_list_still_works(session):
         raise AssertionError("старый корень подписал имя вне своего списка")
 
 
+async def test_ip_like_names_are_not_signed_as_dns_names(session):
+    """Регрессия: «10.0.0.1» подписывался как DNS-имя - ограничение корня по IP
+    его не закрывает, а клиенты, сверяющие адрес с DNS-именем, приняли бы его."""
+    await ca.ensure_root(session)
+    for name in ("10.0.0.1", "192.168.1.10"):
+        assert not ca.signable(name)
+        try:
+            await ca.sign_csr(session, name, _csr(name))
+        except ValueError as e:
+            assert "IP-адрес" in str(e)
+        else:
+            raise AssertionError(f"подписал {name}")
+    assert ca.signable("nas.lab")
+
+
 async def test_leaf_never_outlives_the_root(session, monkeypatch):
     """Лист после истечения корня все равно не проверится, а панель показывала бы
     рабочий срок - срок листа обрезается по сроку корня."""

@@ -91,6 +91,10 @@ def signable(name: str, allowed: list[str] | None = None) -> bool:
     `allowed` — разрешающий список СТАРОГО корня (панель до перехода на запреты).
     Пусто/None у нового корня: разрешено всё, кроме публичных доменов.
     """
+    # «10.0.0.1» как DNS-имя: ограничение корня по IP его не закрывает (тип имени
+    # другой), а клиенты, сверяющие адрес с DNS-именем, приняли бы его за адрес.
+    if tld_of(name).isdigit():
+        return False
     if allowed:
         return any(name == s or name.endswith("." + s) for s in allowed)
     return tld_of(name) not in set(public_tlds())
@@ -273,6 +277,11 @@ async def sign_csr(session: AsyncSession, name: str, csr_der: bytes) -> str:
     # «выпущен» в панели и необъяснимую ошибку в браузере. Лучше сказать сразу.
     allowed = root_info(cert_pem).get("suffixes") or []
     if not signable(name, allowed):
+        if tld_of(name).isdigit():
+            raise ValueError(
+                f"«{name}» похоже на IP-адрес: сертификат на него как на DNS-имя не "
+                "выдается. Возьмите имя (например nas.lab)"
+            )
         if allowed:  # старый корень с разрешающим списком
             raise ValueError(
                 f"этому корню разрешены только домены {', '.join(allowed)}. "

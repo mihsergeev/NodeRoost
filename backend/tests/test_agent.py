@@ -187,10 +187,10 @@ def test_placeholders_of_the_update_are_not_filled_in_advance():
     Обновлённый скрипт оставался бы с незаполненными местами, то есть сломанным.
     """
     setup = agent.build_setup("https://hs.example/agent/tok")
-    assert r"s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" in setup
+    assert r"""printf 's|%sPUBKEY%s|%s|\\n' "\$P" "\$P" "\$AGENT_PUB_B64""" in setup
     # адрес подставляется СВОЙ: в скрипте установки это ещё переменная, её
     # раскрывает heredoc на самой ноде — из присланного файла адрес не берётся
-    assert r"s|\${P}STATE_URL\${P}|\$URL_ESC|" in setup
+    assert r"""printf 's|%sSTATE_URL%s|%s|\\n' "\$P" "\$P" "\$URL_ESC""" in setup
     assert "@@PUBKEY@@" not in setup and "@@RELEASE@@" not in setup
 
 
@@ -474,7 +474,7 @@ def test_nothing_in_apply_runs_while_setup_writes_it():
     текст apply.sh вместо кавычек."""
     import re
 
-    body = agent.TEMPLATE.split('cat > "$DIR/apply.sh" <<EOF\n', 1)[1]
+    body = agent.TEMPLATE.split('cat > "$DIR/apply.sh.new" <<EOF\n', 1)[1]
     body = body.split("\nEOF\n", 1)[0]
     assert "`" not in body, "обратные кавычки в heredoc исполняются"
     assert not re.findall(r"(?<!\\)\$\(", body), "подстановка $(...) без \\ исполняется"

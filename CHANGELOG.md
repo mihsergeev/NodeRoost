@@ -5,6 +5,21 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.18] - 2026-11-23
+
+### Fixed
+
+- Agent release 14. During a self-update the agent no longer passes the state address with its token to `sed` as an argument, where any local user could read it from the process list; the substitutions go through a file in the agent's private temporary directory, and that directory is removed after the update. If the temporary directory cannot be created, the update is postponed instead of writing files to `/`.
+- The agent writes `apply.sh` to a new file and swaps it in, so an interrupted write no longer leaves a truncated script that the timer keeps running.
+- The agent rejects certificate names that start with `-`; such a name would have reached `cert-hook.sh` as an option.
+- A setup script no longer embeds the signing key when the panel image has no readable release number. A node with release 0 would have accepted any signed release, including the oldest one.
+- Certificates are not issued for names that look like IP addresses (`10.0.0.1`).
+
+### Changed
+
+- The agent's self-update is now covered by tests that run the generated script: signature, substituted values, token visibility and cleanup.
+- To get the fixed agent, nodes need the update: "Update the agent" on the node card or "Update agents (N)" in the node list.
+
 ## [0.25.17] - 2026-11-23
 
 ### Fixed

@@ -54,7 +54,10 @@ command -v curl >/dev/null 2>&1 || {
   apt-get update -qq && apt-get install -y curl >/dev/null
 }
 
-cat > "$DIR/apply.sh" <<EOF
+# Пишем рядом и подменяем одним mv: оборванная запись (кончилось место, процесс
+# убит) оставляла обрезанный apply.sh, который таймер запускал каждую минуту, а
+# починить его сам агент уже не мог.
+cat > "$DIR/apply.sh.new" <<EOF
 #!/bin/sh
 # Версия САМОГО скрипта. Панель присылает в состоянии свою (script=…): не сошлись
 # — значит на ноде агент от прошлого релиза, и новые возможности (например
@@ -140,7 +143,12 @@ NOW=\$(date +%s)
 if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGENT_RELEASE" ]    && { [ "\$(cat "$DIR/.update-rel" 2>/dev/null || echo 0)" != "\$WANT_REL" ] || [ \$((NOW - LAST)) -gt 3600 ]; }; then
   set +e
   echo "\$NOW" > "\$STAMP"; echo "\$WANT_REL" > "$DIR/.update-rel"
-  UPD=\$(mktemp -d)
+  # Свой каталог 0700: в нем окажется setup.sh с адресом состояния, а в адресе
+  # токен. Не создался - обновление откладываем: иначе файлы легли бы в корень.
+  UPD=\$(mktemp -d 2>/dev/null) && [ -d "\$UPD" ] || UPD=""
+  if [ -z "\$UPD" ]; then
+    echo "NodeRoost: обновление агента отложено - не создать временный каталог" >&2
+  else
   printf '%s' "\$AGENT_PUB_B64" | base64 -d > "\$UPD/agent.pub" 2>/dev/null
   agent_curl -fsS --max-time 30 --max-filesize 65536 -o "\$UPD/manifest.json" "\$API/manifest" 2>/dev/null
   agent_curl -fsS --max-time 30 --max-filesize 65536 -o "\$UPD/manifest.sig" "\$API/manifest.sig" 2>/dev/null
@@ -163,11 +171,17 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
       # Адрес экранируем: символ | закрыл бы выражение sed, а & подставил бы
       # найденное - вместо рабочего скрипта на ноду лёг бы испорченный.
       URL_ESC=\$(printf '%s' "\$SELF_URL" | sed -e 's/[|&]/\\\\&/g')
-      sed -e "s|\${P}STATE_URL\${P}|\$URL_ESC|" \\
-          -e "s|\${P}SCRIPT_V\${P}|\$(printf %s "\$SUM" | cut -c1-8)|" \\
-          -e "s|\${P}PUBKEY\${P}|\$AGENT_PUB_B64|" \\
-          -e "s|\${P}RELEASE\${P}|\$REL|" \\
-          "\$UPD/setup.tmpl" > "\$UPD/setup.sh"
+      # Программа для sed - файлом в своем каталоге, а не аргументами: адрес
+      # состояния с токеном в аргументах виден любому пользователю ноды через
+      # ps, а с токеном заказывают сертификат на внутреннее имя этой ноды.
+      # printf встроен в оболочку, его аргументы в списке процессов не видны.
+      {
+        printf 's|%sSTATE_URL%s|%s|\\n' "\$P" "\$P" "\$URL_ESC"
+        printf 's|%sSCRIPT_V%s|%s|\\n' "\$P" "\$P" "\$(printf %s "\$SUM" | cut -c1-8)"
+        printf 's|%sPUBKEY%s|%s|\\n' "\$P" "\$P" "\$AGENT_PUB_B64"
+        printf 's|%sRELEASE%s|%s|\\n' "\$P" "\$P" "\$REL"
+      } > "\$UPD/subst.sed"
+      sed -f "\$UPD/subst.sed" "\$UPD/setup.tmpl" > "\$UPD/setup.sh"
       echo "NodeRoost: агент обновляется до релиза \$REL (был \$AGENT_RELEASE), подпись проверена" >&2
       rm -rf "\$TMPD"
       # exec, а не «запустить и выйти»: установщик перезаписывает ЭТОТ файл, а
@@ -175,10 +189,13 @@ if [ -n "\$WANT_REL" ] && [ -n "\$AGENT_PUB_B64" ] && [ "\$WANT_REL" -gt "\$AGEN
       # чтения указывает в другой текст. Пока менялись только номер версии и
       # релиза, длина совпадала и это проходило случайно; любая правка шаблона
       # ломала бы обновление сразу на всех нодах. exec заменяет процесс.
-      exec sh "\$UPD/setup.sh"
+      # Каталог обновления (в setup.sh лежит адрес состояния с токеном)
+      # удаляем, когда установщик отработает.
+      exec sh -c 'sh "\$0/setup.sh"; rc=\$?; rm -rf "\$0"; exit \$rc' "\$UPD"
     fi
     echo "NodeRoost: обновление отклонено — манифест не сошёлся (релиз \$REL, sha \$SUM)" >&2
     rm -rf "\$UPD"
+  fi
   fi
   set -e
 fi
@@ -390,8 +407,10 @@ if [ -n "\$CERTS" ]; then
       # обязаны. Без проверки «имя» вида ../../ssl/certs/ca-certificates заставило
       # бы агента под root переписать системное хранилище корней — то есть отдать
       # машину целиком. Пускаем только то, что бывает DNS-именем.
+      # Ведущий «-» тоже отсекаем: имя уходит в cert-hook.sh аргументом и
+      # выглядело бы для него опцией.
       case "\$NAME" in
-        ''|.*|*..*|*[!a-z0-9.-]*)
+        ''|.*|-*|*..*|*[!a-z0-9.-]*)
           echo "NodeRoost: имя сертификата отвергнуто: \$NAME" >&2
           continue;;
       esac
@@ -477,7 +496,8 @@ rm -f "\$TMP"
 HASH=\$(sha256sum "$DIR/state" 2>/dev/null | cut -d' ' -f1)
 [ -n "\$HASH" ] && agent_curl -fsS --max-time 10 -X POST "\$API/applied?h=\$HASH&s=\$SCRIPT_V&r=\$AGENT_RELEASE" >/dev/null 2>&1 || true
 EOF
-chmod 700 "$DIR/apply.sh"
+chmod 700 "$DIR/apply.sh.new"
+mv -f "$DIR/apply.sh.new" "$DIR/apply.sh"
 
 cat > /etc/systemd/system/noderoost-agent.service <<EOF
 [Unit]
@@ -615,7 +635,11 @@ def signed_and_current() -> bool:
 
 
 def build_setup(state_url: str) -> str:
-    pub = pubkey_b64()
+    # Ключ без номера релиза (манифест потерян или битый) не вшиваем: нода с
+    # AGENT_RELEASE=0 приняла бы любой подписанный релиз выше нуля, то есть
+    # захваченная панель могла бы откатить ее на самый старый. Без ключа нода
+    # просто не обновляется, и установка об этом говорит.
+    pub = pubkey_b64() if release() > 0 else ""
     script = (
         TEMPLATE.replace("@@STATE_URL@@", state_url)
         .replace("@@SCRIPT_V@@", SCRIPT_VERSION)
@@ -628,7 +652,8 @@ def build_setup(state_url: str) -> str:
         # нечем. Молчать об этом нельзя: в панели кнопка обновления закрыта
         # отдельной проверкой, а установка выглядела полностью успешной.
         script += (
-            '\necho "NodeRoost: ВНИМАНИЕ - в образе панели нет ключа подписи агента." >&2\n'
+            '\necho "NodeRoost: ВНИМАНИЕ - в образе панели нет ключа подписи агента'
+            ' или подписанного релиза." >&2\n'
             'echo "  Агент работает, но обновить его будет нечем: проверять подпись нечем." >&2\n'
             'echo "  Выпустите релиз агента с подписью и переустановите агента здесь." >&2\n'
         )

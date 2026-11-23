@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(not shutil.which("sh"), reason="нужен POSIX
 @pytest.fixture
 def poll_script(tmp_path):
     setup = agent.build_setup("https://panel.example.test/agent/fake-poll-token")
-    body = setup.split('cat > "$DIR/apply.sh" <<EOF\n', 1)[1].split("\nEOF\n", 1)[0]
+    body = setup.split('cat > "$DIR/apply.sh.new" <<EOF\n', 1)[1].split("\nEOF\n", 1)[0]
     builder = tmp_path / "build.sh"
     builder.write_text(
         'DIR="$1"\n'
