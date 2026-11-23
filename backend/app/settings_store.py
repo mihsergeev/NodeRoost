@@ -252,6 +252,17 @@ async def claim_pending_meta(
                 if old_id:
                     continue
                 note = {field: note[field] for field in ("description", "group", "subgroup") if field in note}
+            if old_id:
+                # Снимок сделан при нажатии «Переподключить», а пока нода ждала,
+                # ее запись под старым id могли поправить защитные механизмы:
+                # снятие шлюза (drop_gateway) и перевод ссылок на новый id шлюза.
+                # Поля с правами берем только из текущей записи - иначе отозванный
+                # выход воскресал, а принудительный вел на мертвый id.
+                current = meta.get(old_id) if isinstance(meta.get(old_id), dict) else {}
+                note = {**note, **current}
+                for field in ("exit_gateway", "exit_via", "force_exit"):
+                    if field not in current:
+                        note.pop(field, None)
             merged = {**note, **(meta.get(nid) or {})}
             gateway_ip = ""
             if merged.get("exit_gateway"):

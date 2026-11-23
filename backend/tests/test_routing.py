@@ -125,11 +125,36 @@ def test_normalize_strips_everything_but_the_host(raw, expect):
     assert routing.normalize_dst(raw) == expect
 
 
-@pytest.mark.parametrize("raw", ["10.0.0.0/24", "192.168.1.0/255.255.255.0", "1.2.3.4"])
-def test_normalize_keeps_networks_intact(raw):
+@pytest.mark.parametrize(
+    "raw,expect",
+    [
+        ("10.0.0.0/24", "10.0.0.0/24"),
+        ("192.168.1.0/255.255.255.0", "192.168.1.0/24"),
+        ("1.2.3.4", "1.2.3.4"),
+        # биты хоста: tailscale set отверг бы такую сеть вместе со всем списком
+        ("10.0.0.5/24", "10.0.0.0/24"),
+        ("1.2.3.4/32", "1.2.3.4/32"),
+    ],
+)
+def test_normalize_keeps_networks_intact(raw, expect):
     """Подсеть разбирается ДО обрезки по слешу: иначе «10.0.0.0/24» стало бы
-    «10.0.0.0», то есть совсем другой целью."""
-    assert routing.normalize_dst(raw) == raw
+    «10.0.0.0», то есть совсем другой целью. Сеть приводится к канонической
+    форме - ту же сеть, без битов хоста и масок."""
+    assert routing.normalize_dst(raw) == expect
+
+
+async def test_host_bits_never_reach_the_route_list():
+    """Регрессия: «10.0.0.5/24» уходил в одобрения headscale и в
+    `tailscale set --advertise-routes`, который отвергает такой префикс вместе со
+    всем списком - на ноде-выходе переставали применяться все маршруты. Старые
+    сохраненные направления исправляются на выдаче, без миграции."""
+    ips, err = await routing.resolve_dst("10.0.0.5/24")
+    assert ips == ["10.0.0.0/24"] and not err
+    stored = {
+        "d1": {"via": "7", "src": ["3"], "ips": ["10.0.0.5/24", "10.0.0.0/24", "2a03::1", "192.168.1.0/255.255.255.0"]},
+    }
+    assert routing.routes_by_node(stored) == {"7": ["10.0.0.0/24", "192.168.1.0/24"]}
+    assert [r["dst"]["value"] for r in routing.acl_rules(stored)] == ["10.0.0.0/24", "192.168.1.0/24"]
 
 
 async def test_resolve_accepts_pasted_url(monkeypatch):
@@ -463,6 +488,33 @@ async def test_reconcile_keeps_manual_route_and_revokes_both_auto_exit_routes(se
     await settings_store.set_routing(session, {})
     await routing.reconcile_approvals(session, hs)
     assert node["approvedRoutes"] == [manual]
+    assert not (await settings_store.get_agent_all(session))["2"]["panel_approved"]
+
+
+async def test_reconcile_never_makes_a_marked_device_a_router(session):
+    """Регрессия: коллектор одобрял маршруты и exit из задания агента узлу любого
+    типа - устройство становилось роутером подсети или exit-нодой, другие узлы
+    видели его пиром. Узлу с ручным типом «устройство» панель не одобряет ничего,
+    а свои прежние одобрения снимает."""
+    from app import routing, settings_store
+
+    node = {"id": "2", "availableRoutes": ["10.0.0.0/24", "0.0.0.0/0", "::/0"],
+            "approvedRoutes": ["10.0.0.0/24"]}
+
+    class Control:
+        async def get_nodes(self):
+            return [node]
+
+        async def approve_routes(self, nid, routes):
+            node["approvedRoutes"] = routes
+            return node
+
+    await settings_store.set_node_meta(session, "2", kind="device")
+    await settings_store.set_agent_all(session, {"2": {
+        "exit": True, "routes": ["10.0.0.0/24"], "panel_approved": ["10.0.0.0/24"],
+    }})
+    await routing.reconcile_approvals(session, Control())
+    assert node["approvedRoutes"] == []
     assert not (await settings_store.get_agent_all(session))["2"]["panel_approved"]
 
 

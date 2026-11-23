@@ -41,6 +41,27 @@ def _parse_ts(raw: str | None) -> datetime | None:
         return None
 
 
+def canonical_ip(raw: str) -> str:
+    """IPv4-адрес или сеть в канонической форме, иначе пусто.
+
+    «10.0.0.5/24» - это сеть 10.0.0.0/24 с битами хоста: headscale такую строку
+    принимает и одобряет как есть, а `tailscale set --advertise-routes` ее
+    отвергает («has non-address bits set») - и вместе с ней ВЕСЬ список, так что
+    на ноде-выходе переставали применяться все маршруты, включая чужие
+    направления. Маска («/255.255.255.0») headscale в политике не понимает.
+    Поэтому сеть всегда приводится к виду «10.0.0.0/24», одиночный адрес
+    остается адресом. IPv6 тайлнет не использует - пусто.
+    """
+    s = str(raw or "").strip()
+    try:
+        net = ipaddress.ip_network(s, strict=False)
+    except ValueError:
+        return ""
+    if net.version != 4:
+        return ""
+    return str(net) if "/" in s else str(net.network_address)
+
+
 def normalize_dst(raw: str) -> str:
     """То, что вставил человек → то, что можно резолвить.
 
@@ -54,12 +75,15 @@ def normalize_dst(raw: str) -> str:
     s = (raw or "").strip()
     if not s:
         return ""
+    canonical = canonical_ip(s)
+    if canonical:
+        return canonical
     try:
         ipaddress.ip_network(s, strict=False)
     except ValueError:
         pass
     else:
-        return s
+        return s  # IPv6: отвергнет resolve_dst с понятной причиной
     if "://" in s:
         s = s.split("://", 1)[1]
     for sep in ("/", "?", "#"):
@@ -89,7 +113,7 @@ async def resolve_dst(dst: str) -> tuple[list[str], str]:
     else:
         if net.version != 4:
             return [], "IPv6 не используется"
-        return [host], ""
+        return [canonical_ip(host)], ""
     try:
         infos = await asyncio.to_thread(socket.getaddrinfo, host, None, socket.AF_INET)
     except Exception as exc:  # noqa: BLE001 — резолв не должен ронять запрос
@@ -178,16 +202,25 @@ def _dst_ips(d: dict) -> list[str]:
     A-запись (истёк домен, угнали, подделали ответ резолверу) на 100.64.0.x — и
     нода-выход начинала бы анонсировать маршрут к tailnet-адресу СОСЕДА, а панель
     сама бы его одобрила. Это перехват трафика внутри меша, поэтому фильтр стоит
-    на выдаче — общей для маршрутов агента, ACL-правил и одобрения."""
+    на выдаче — общей для маршрутов агента, ACL-правил и одобрения.
+
+    Адреса приводятся к канонической форме и здесь (canonical_ip): направление
+    могло быть сохранено до канонизации на вводе, а «10.0.0.5/24» в маршруте
+    ломает применение всех маршрутов ноды-выхода. IPv6 отбрасывается."""
     from app.aclgen import touches_mesh
 
-    return [
-        ip
-        for ip in (d.get("ips") or [])
-        if not too_broad(str(ip))
-        and not touches_mesh(str(ip))
-        and not is_machine_local(str(ip))
-    ]
+    out: list[str] = []
+    for raw in d.get("ips") or []:
+        ip = canonical_ip(str(raw))
+        if (
+            ip
+            and ip not in out
+            and not too_broad(ip)
+            and not touches_mesh(ip)
+            and not is_machine_local(ip)
+        ):
+            out.append(ip)
+    return out
 
 
 def routes_by_node(directions: dict) -> dict[str, list[str]]:
@@ -387,6 +420,10 @@ async def reconcile_approvals(session: AsyncSession, client) -> bool:
             requested = set(cfg.get("routes") or [])
             if cfg.get("exit"):
                 requested.update(EXIT_ROUTES)
+            # Узлу, помеченному устройством, панель маршрутов не одобряет, а свои
+            # прежние одобрения снимает: устройство не бывает роутером или выходом.
+            if str((meta.get(nid) or {}).get("kind") or "") == "device":
+                requested = set()
             want = approved_route_set(requested & set(node.get("availableRoutes") or []))
             # Направления одобряем заранее, до первого анонса агента.
             kind = effective_kind(node, meta)

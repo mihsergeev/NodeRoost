@@ -421,6 +421,51 @@ async def test_panel_takes_the_token_from_the_header(client, monkeypatch):
     assert (await client.get("/agent/-")).status_code == 404
 
 
+async def test_node_deleted_past_the_panel_loses_agent_and_certificates(client, monkeypatch):
+    """Регрессия: ноду, выгнанную мимо панели (`headscale nodes delete`), панель не
+    забывала. Агент получал состояние с 200 и продлевал сертификаты на внутренние
+    имена бессрочно. Теперь - 404, как ждет агент; недоступный headscale агентов
+    не гасит."""
+    from app import settings_store
+    from app.api import agent as api_agent
+    from app.hs_client import HeadscaleError
+
+    async def fake(session, token):
+        return ("7", {"token": token}) if token == "realtok" else None
+
+    async def noop(*a, **k):
+        return None
+
+    class Control:
+        mode = "present"
+
+        async def get_node(self, nid):
+            assert nid == "7"
+            if self.mode == "present":
+                return {"id": "7"}
+            if self.mode == "gone":
+                raise HeadscaleError("node not found", status_code=404)
+            raise HeadscaleError("headscale down", status_code=502)
+
+    hs = Control()
+    real = api_agent.get_settings()
+    monkeypatch.setattr(api_agent, "get_settings",
+                        lambda: real.model_copy(update={"headscale_api_key": "fixture"}))
+    monkeypatch.setattr(api_agent, "get_client", lambda _: hs)
+    monkeypatch.setattr(settings_store, "get_agent_by_token", fake)
+    monkeypatch.setattr(settings_store, "touch_agent_poll", noop)
+    hdr = {"X-NodeRoost-Agent": "realtok"}
+
+    assert (await client.get("/agent/-", headers=hdr)).status_code == 200
+    hs.mode = "down"
+    assert (await client.get("/agent/-", headers=hdr)).status_code == 200
+    hs.mode = "gone"
+    assert (await client.get("/agent/-", headers=hdr)).status_code == 404
+    csr = await client.post("/agent/-/csr?name=app.lab", headers=hdr, content=b"x")
+    assert csr.status_code == 404
+    assert (await client.get("/agent/-/cert?name=app.lab", headers=hdr)).status_code == 404
+
+
 def test_nothing_in_apply_runs_while_setup_writes_it():
     """Тело apply.sh уезжает в heredoc без кавычек: setup.sh сам подставляет в
     него адрес и каталог. Значит любая НЕэкранированная подстановка исполняется

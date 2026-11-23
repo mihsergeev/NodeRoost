@@ -146,6 +146,35 @@ async def test_admin_revocation_rolls_back_after_headscale_loses_response(client
     assert not any(r["src"] == ["100.64.0.71"] for r in hs.policy["acls"])
 
 
+async def test_a_marked_device_never_gets_routes_or_exit(client, monkeypatch):
+    """Регрессия (воспроизведено на стенде): узлу с ручным типом «устройство»
+    одобрялся маршрут в карточке и ставился exit заданием агенту - и другое
+    устройство ходило через него в подсеть и в интернет, видя его пиром. Сервер с
+    маршрутами нельзя было и перевести в устройства, оставив маршруты."""
+    from app.api import agent as api_agent
+
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    monkeypatch.setattr(api_agent, "get_client", lambda _: hs)
+    monkeypatch.setattr(api_agent, "require_hs", lambda _: None)
+
+    marked = await client.post("/api/nodes/71/meta", headers=headers, json={"kind": "device"})
+    assert marked.status_code == 200, marked.text
+    route = await client.post("/api/nodes/71/routes", headers=headers, json={"routes": ["10.9.0.0/24"]})
+    assert route.status_code == 400, route.text
+    assert not hs.nodes["71"].get("approvedRoutes")
+    for body in ({"routes": [], "exit_node": True}, {"routes": ["10.9.0.0/24"], "exit_node": False}):
+        put = await client.put("/api/agent/71", headers=headers, json=body)
+        assert put.status_code == 400, put.text
+    # снять маршруты устройству можно всегда
+    assert (await client.post("/api/nodes/71/routes", headers=headers, json={"routes": []})).status_code == 200
+
+    # сервер с одобренным маршрутом нельзя молча перевести в устройства
+    approved = await client.post("/api/nodes/70/routes", headers=headers, json={"routes": ["10.8.0.0/24"]})
+    assert approved.status_code == 200, approved.text
+    demoted = await client.post("/api/nodes/70/meta", headers=headers, json={"kind": "device"})
+    assert demoted.status_code == 400, demoted.text
+
+
 async def test_exit_client_revocation_rolls_back_then_clears_forced_agent(client, monkeypatch):
     hs, headers = await _policy_nodes(client, monkeypatch)
     gateway = await client.post("/api/nodes/70/meta", headers=headers, json={"exit_gateway": True})
@@ -739,6 +768,31 @@ async def test_reconnect_repoints_rules_and_routes(session):
 
     agents = await settings_store.get_agent_all(session)
     assert "7" not in agents and agents["42"]["routes"] == ["10.0.0.0/24"]
+
+
+async def test_reconnect_does_not_resurrect_a_revoked_exit(session):
+    """Регрессия: при переносе бралась копия меты на момент «Переподключить», и
+    снятие шлюза, пока устройство ждало регистрации, отменялось. Устройство
+    возвращалось с exit_via/force_exit на бывший шлюз: повторная галка молча
+    возвращала ему выход, а удаленный шлюз оставался принудительным выходом."""
+    from app import settings_store
+
+    await settings_store.set_node_meta(session, "9", kind="server", exit_gateway=True)
+    await settings_store.set_node_meta(
+        session, "5", description="ноутбук", exit_via=["9"], force_exit="9"
+    )
+    snapshot = (await settings_store.get_node_meta(session))["5"]
+    await settings_store.stash_node_meta(session, "laptop", snapshot, old_id="5", key_id="100")
+
+    # пока устройство переподключается, шлюз сняли
+    assert await settings_store.drop_gateway(session, "9") == ["5"]
+
+    await settings_store.claim_pending_meta(
+        session, [{"id": "42", "givenName": "laptop", "preAuthKey": {"id": "100"}}]
+    )
+    meta = await settings_store.get_node_meta(session)
+    assert "5" not in meta
+    assert meta["42"] == {"description": "ноутбук"}
 
 
 async def test_claim_pending_meta_reads_old_format(session):

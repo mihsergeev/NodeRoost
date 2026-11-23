@@ -90,11 +90,27 @@ def check_agent_release() -> None:
     print("агент: релиз", manifest.get("release"), "совпадает с шаблоном")
 
     # Подпись: публичный ключ в репозитории, так что проверить можно и в CI.
+    # Проверяем ровно тем ключом, который панель вшивает в узлы при установке
+    # (agent_dist/agent.pub), и сверяем его с ключом в agent-signing. Раньше
+    # подпись сверялась только с agent-signing/noderoost-agent.pub: правка одного
+    # agent_dist/agent.pub проходила CI, и все новые узлы получали чужой ключ -
+    # его владелец обновлял бы на них агента, то есть исполнял свой код.
     sig = os.path.join(dist, "manifest.sig")
-    pub = os.path.join(ROOT, "agent-signing", "noderoost-agent.pub")
-    if not (os.path.exists(sig) and os.path.exists(pub)):
-        problems.append("нет manifest.sig или noderoost-agent.pub - подпись не проверить")
+    pub = os.path.join(dist, "agent.pub")
+    reference = os.path.join(ROOT, "agent-signing", "noderoost-agent.pub")
+    if not (os.path.exists(sig) and os.path.exists(pub) and os.path.exists(reference)):
+        problems.append(
+            "нет manifest.sig, agent_dist/agent.pub или agent-signing/noderoost-agent.pub"
+            " - подпись не проверить"
+        )
         return
+    with open(pub, "rb") as fh, open(reference, "rb") as ref:
+        if fh.read() != ref.read():
+            problems.append(
+                "ключ, который вшивается в узлы (backend/app/agent_dist/agent.pub),"
+                " не совпадает с agent-signing/noderoost-agent.pub"
+            )
+            return
     try:
         from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives import hashes, serialization
@@ -109,7 +125,7 @@ def check_agent_release() -> None:
     try:
         key.verify(signature, raw, ec.ECDSA(hashes.SHA256()))
     except InvalidSignature:
-        problems.append("подпись манифеста агента не сходится с agent-signing/noderoost-agent.pub")
+        problems.append("подпись манифеста агента не сходится с ключом узлов agent_dist/agent.pub")
     else:
         print("агент: подпись манифеста сходится")
 

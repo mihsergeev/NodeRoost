@@ -5,6 +5,19 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.16] - 2026-11-23
+
+### Fixed
+
+- Never let a node marked as a device route a subnet or act as an exit node. Approving routes in the node card and setting routes or exit in the agent settings are refused for such a node, the background route sync skips it, and routes the panel approved for it earlier are revoked. Previously other nodes could reach a subnet or the internet through a device and see it as a peer, which broke device isolation. A server with approved routes or agent routes can no longer be switched to a device until they are removed.
+- Store routing destinations in canonical form. A subnet written with host bits (`10.0.0.5/24`) or a netmask is saved as `10.0.0.0/24`, and destinations saved earlier are normalized when routes are built. Previously such a prefix made `tailscale set` on the exit node reject the whole route list, so no route changes applied on that node.
+- Keep an exit revoked when a device reconnects. Permissions moved to the reconnected node now come from its current panel record, so removing a gateway while the device was reconnecting no longer brings back its exit or a forced exit through that gateway.
+- Answer the agent of a node deleted outside the panel (for example with `headscale nodes delete`) with 404 and stop issuing it certificates for internal names. While Headscale is unreachable, agents are served as before.
+
+### Changed
+
+- CI checks the agent release signature with the public key that is embedded into nodes (`backend/app/agent_dist/agent.pub`) and requires it to match `agent-signing/noderoost-agent.pub`.
+
 ## [0.25.15] - 2026-11-22
 
 ### Fixed

@@ -135,6 +135,26 @@ async def _require_node(node_id: str) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Нода не найдена")
 
 
+async def _node_gone(node_id: str) -> bool:
+    """Headscale подтвердил, что такой ноды больше нет.
+
+    Ноду выгоняют и мимо панели (`headscale nodes delete`), и тогда ее ссылки в
+    панели не чистятся: агент продолжал получать состояние с 200 и бессрочно
+    продлевать сертификаты на внутренние имена. Недоступный headscale - не повод
+    гасить агентов, поэтому «нет» здесь только по прямому ответу.
+    """
+    settings = get_settings()
+    if not settings.headscale_api_key:
+        return False
+    try:
+        node = await get_client(settings).get_node(node_id)
+    except HeadscaleError as exc:
+        return exc.status_code == status.HTTP_404_NOT_FOUND
+    except Exception:  # noqa: BLE001 - сеть, таймаут: отвечаем как раньше
+        return False
+    return not node
+
+
 def _outdated(all_cfg: dict) -> list[str]:
     """Ноды, где стоит агент от прошлого релиза.
 
@@ -217,6 +237,17 @@ async def put_agent(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 "Сначала снимите «Шлюз выхода в интернет» в карточке ноды.",
+            )
+        # Узел, помеченный устройством, не раздает ни подсети, ни выход: иначе
+        # коллектор одобрял ему маршруты, и устройство становилось роутером или
+        # exit-нодой для других узлов в обход изоляции и правила «шлюз - сервер».
+        if meta.get("kind") == "device" and (
+            any(r.strip() for r in body.routes) or body.exit_node
+        ):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Маршруты и выход в интернет раздает только сервер. "
+                "Задайте ноде тип «Сервер» или «Авто».",
             )
         all_cfg = await settings_store.get_agent_all(session)
         cfg = all_cfg.get(node_id, {})
@@ -400,6 +431,8 @@ async def agent_state(token: AgentToken, session: SessionDep) -> Response:
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     node_id, cfg = found
+    if await _node_gone(node_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     await settings_store.touch_agent_poll(session, token)
     body = agent.state_body(
         await _wanted_routes(session, node_id, cfg),
@@ -448,6 +481,8 @@ async def _node_may_ask(session, token: str, name: str) -> str:
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     node_id, _ = found
+    if await _node_gone(node_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown token")
     records = await settings_store.get_dns_records(session)
     if not any(
         r.get("cert") and r.get("name") == name and str(r.get("node_id") or "") == node_id

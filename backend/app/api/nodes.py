@@ -203,9 +203,20 @@ async def _restore_node_policy(session, client, settings, node_id, previous_tags
     await apply_policy(session, client, settings)
 
 
-async def _require_server_for_routes(session, node, meta, gateway):
+async def _require_server_for_routes(session, node, meta, gateway, agent_cfg=None):
     if effective_kind(node, meta) == "server":
         return
+    # Маршруты и выход в интернет раздает только сервер. Узел, который админ
+    # пометил устройством, с одобренными маршрутами или заданием агенту
+    # становился роутером подсети или exit-нодой: другие узлы ходили через него
+    # и видели его пиром, хотя устройство не бывает ни назначением, ни выходом.
+    cfg = agent_cfg or {}
+    if node.get("approvedRoutes") or cfg.get("routes") or cfg.get("exit"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Маршруты и выход в интернет раздает только сервер. "
+            "Сначала снимите маршруты ноды или задайте тип «Сервер».",
+        )
     if gateway:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -245,8 +256,11 @@ async def set_meta(
                 was_gateway = bool(stored.get("exit_gateway"))
                 gateway = was_gateway if body.exit_gateway is None else body.exit_gateway
                 if body.kind is not None or gateway:
+                    agent_cfg = dict((await settings_store.get_agent_all(session)).get(node_id) or {})
+                    if was_gateway and not gateway:
+                        agent_cfg.pop("exit", None)  # этот же запрос снимает exit у агента
                     await _require_server_for_routes(
-                        session, node, _kind_ctx(meta, node_id, body.kind), gateway
+                        session, node, _kind_ctx(meta, node_id, body.kind), gateway, agent_cfg
                     )
 
                 via = body.exit_via
@@ -555,7 +569,8 @@ async def set_tags(
             meta = await settings_store.get_node_meta(session)
             tag_field = "tags" if isinstance(current.get("tags"), list) else "forcedTags"
             await _require_server_for_routes(
-                session, {**current, tag_field: want}, meta, node_id in exitvia.gateways(meta)
+                session, {**current, tag_field: want}, meta, node_id in exitvia.gateways(meta),
+                (await settings_store.get_agent_all(session)).get(node_id),
             )
             try:
                 node = await _set_policy_tags(session, client, settings, node_id, previous, want)
