@@ -190,8 +190,7 @@ async def ensure_root(
     if cert and key:
         return cert
     key_pem, cert_pem = build_root(name, years)
-    await settings_store.set_raw(session, CA_KEY, key_pem)
-    await settings_store.set_raw(session, CA_CERT, cert_pem)
+    await settings_store.set_raw_many(session, {CA_KEY: key_pem, CA_CERT: cert_pem})
     log.info(
         "создан корневой сертификат панели (%s) на %s лет, запрещено доменов: %s",
         name, years, len(public_tlds()),
@@ -209,8 +208,9 @@ async def rotate(session: AsyncSession, years: int = ROOT_YEARS) -> str:
     обойти руками, поэтому решение всегда за администратором.
     """
     key_pem, cert_pem = build_root("NodeRoost internal CA", years)
-    await settings_store.set_raw(session, CA_KEY, key_pem)
-    await settings_store.set_raw(session, CA_CERT, cert_pem)
+    # ключ и сертификат - одним commit: иначе сбой между ними оставлял пару,
+    # которая не подходит друг к другу, и все новые сертификаты не проверялись
+    await settings_store.set_raw_many(session, {CA_KEY: key_pem, CA_CERT: cert_pem})
     log.warning("корневой сертификат панели перевыпущен на %s лет", years)
     return cert_pem
 
@@ -287,6 +287,19 @@ async def sign_csr(session: AsyncSession, name: str, csr_der: bytes) -> str:
     key_pem = await settings_store.get_raw(session, CA_KEY) or ""
     ca_key = serialization.load_pem_private_key(key_pem.encode(), password=None)
     ca_cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    spki = serialization.PublicFormat.SubjectPublicKeyInfo
+    if ca_key.public_key().public_bytes(serialization.Encoding.DER, spki) != (
+        ca_cert.public_key().public_bytes(serialization.Encoding.DER, spki)
+    ):
+        # Пара могла разойтись при сбое старой версии между двумя записями:
+        # подписанное таким ключом не проверяется корнем, и молча выдавать это
+        # нельзя.
+        raise ValueError("ключ корня не подходит к его сертификату - выпустите корень заново")
+    # Лист не переживает корень: после истечения корня он все равно не
+    # проверится, а панель показывала бы рабочий срок.
+    not_after = min(_now() + timedelta(days=LEAF_DAYS), ca_cert.not_valid_after_utc)
+    if not_after <= _now():
+        raise ValueError("срок корневого сертификата истек - выпустите корень заново")
 
     csr = x509.load_der_x509_csr(csr_der)
     if not csr.is_signature_valid:
@@ -301,7 +314,7 @@ async def sign_csr(session: AsyncSession, name: str, csr_der: bytes) -> str:
         .public_key(csr.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(_now() - timedelta(minutes=5))
-        .not_valid_after(_now() + timedelta(days=LEAF_DAYS))
+        .not_valid_after(not_after)
         .add_extension(
             x509.SubjectAlternativeName([x509.DNSName(name)]), critical=False
         )

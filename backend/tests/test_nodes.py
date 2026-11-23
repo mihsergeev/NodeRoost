@@ -204,6 +204,53 @@ async def test_exit_client_revocation_rolls_back_then_clears_forced_agent(client
         assert "use_exit" not in (await settings_store.get_agent_all(session))["71"]
 
 
+async def test_no_exit_through_itself_and_no_forced_exit_on_a_gateway(client, monkeypatch):
+    """Регрессия: API разрешал ноде принудительный выход через саму себя и шлюзу -
+    через другой шлюз. Агент получал одновременно exit=true и use_exit, tailscale
+    отказывал, агент падал каждый цикл."""
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    hs.nodes["72"] = {"id": "72", "ipAddresses": ["100.64.0.72"], "tags": ["tag:servers"]}
+    for gw in ("70", "72"):
+        ok = await client.post(f"/api/nodes/{gw}/meta", headers=headers, json={"exit_gateway": True})
+        assert ok.status_code == 200, ok.text
+    itself = await client.post("/api/nodes/70/meta", headers=headers, json={"force_exit": "70"})
+    assert itself.status_code == 400, itself.text
+    through_other = await client.post("/api/nodes/70/meta", headers=headers, json={"force_exit": "72"})
+    assert through_other.status_code == 400, through_other.text
+
+    # сервер с принудительным выходом нельзя сделать шлюзом, не сняв выход
+    off = await client.post("/api/nodes/72/meta", headers=headers, json={"exit_gateway": False})
+    assert off.status_code == 200, off.text
+    forced = await client.post("/api/nodes/72/meta", headers=headers, json={"force_exit": "70"})
+    assert forced.status_code == 200, forced.text
+    again = await client.post("/api/nodes/72/meta", headers=headers, json={"exit_gateway": True})
+    assert again.status_code == 400, again.text
+
+
+async def test_gateway_takes_over_a_manual_exit_approval(client, monkeypatch):
+    """Регрессия: exit, одобренный вручную до галки шлюза, после снятия галки
+    оставался одобренным - коллектор отзывает только одобренное панелью."""
+    hs, headers = await _policy_nodes(client, monkeypatch)
+    # своя нода: база общая для тестов модуля, а 70 уже бывала шлюзом
+    hs.nodes["73"] = {"id": "73", "ipAddresses": ["100.64.0.73"], "tags": ["tag:servers"],
+                      "availableRoutes": ["0.0.0.0/0", "::/0"],
+                      "approvedRoutes": ["0.0.0.0/0", "::/0"]}
+    on = await client.post("/api/nodes/73/meta", headers=headers, json={"exit_gateway": True})
+    assert on.status_code == 200, on.text
+    factory = client._transport.app.state.session_factory
+    async with factory() as session:
+        cfg = (await settings_store.get_agent_all(session))["73"]
+    assert set(cfg["panel_approved"]) >= {"0.0.0.0/0", "::/0"}
+
+    off = await client.post("/api/nodes/73/meta", headers=headers, json={"exit_gateway": False})
+    assert off.status_code == 200, off.text
+    from app import routing
+
+    async with factory() as session:
+        await routing.reconcile_approvals(session, hs)
+    assert not set(hs.nodes["73"]["approvedRoutes"]) & {"0.0.0.0/0", "::/0"}
+
+
 async def test_roles_restore_previous_tags_and_policy_after_final_push_fails(client, monkeypatch):
     hs, headers = await _policy_nodes(client, monkeypatch)
     url = "/api/nodes/70/tags"

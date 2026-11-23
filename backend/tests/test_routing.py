@@ -74,6 +74,72 @@ async def test_refresh_keeps_addresses_when_dns_fails(session, monkeypatch):
     assert "resolution" in saved["error"]
 
 
+async def test_refresh_does_not_quietly_switch_a_site_to_an_internal_address(session, monkeypatch):
+    """Регрессия: сайт с публичными адресами вдруг резолвится во внутренний
+    (истекший или угнанный домен, подделанный ответ) - фоновое обновление
+    открывало источникам доступ к хосту в сети ноды-выхода. Теперь прежние адреса
+    остаются, а смену принимает только кнопка «Обновить»."""
+
+    async def internal(dst):
+        return ["10.0.0.5"], ""
+
+    monkeypatch.setattr(routing, "resolve_dst", internal)
+    await settings_store.set_routing(
+        session, {"a": {"src": "1", "dst": "site.example", "via": "21", "ips": ["93.184.216.34"]}}
+    )
+    assert await routing.refresh(session) == []
+    saved = (await settings_store.get_routing(session))["a"]
+    assert saved["ips"] == ["93.184.216.34"] and "внутренний" in saved["error"]
+    assert await routing.refresh(session, force=True) == ["a"]
+    assert (await settings_store.get_routing(session))["a"]["ips"] == ["10.0.0.5"]
+
+
+async def test_refresh_drops_addresses_of_a_domain_gone_for_a_week(session, monkeypatch):
+    """Регрессия: адреса домена, который перестал резолвиться, держались
+    бессрочно - а прежний облачный адрес мог достаться чужому."""
+
+    async def gone(dst):
+        return [], "Name or service not known"
+
+    monkeypatch.setattr(routing, "resolve_dst", gone)
+    long_ago = (datetime.now(timezone.utc) - routing.STALE_AFTER - timedelta(hours=1)).isoformat()
+    await settings_store.set_routing(session, {
+        "fresh": {"src": "1", "dst": "a.example", "via": "21", "ips": ["1.1.1.1"]},
+        "old": {"src": "1", "dst": "b.example", "via": "21", "ips": ["2.2.2.2"], "failing_since": long_ago},
+    })
+    assert await routing.refresh(session) == ["old"]
+    saved = await settings_store.get_routing(session)
+    assert saved["fresh"]["ips"] == ["1.1.1.1"] and saved["fresh"]["failing_since"]
+    assert saved["old"]["ips"] == [] and "сняты" in saved["old"]["error"]
+
+
+async def test_one_failing_node_does_not_stop_route_sync(session):
+    """Регрессия: отказ headscale по одной ноде обрывал синхронизацию одобрений
+    для всех следующих нод - бесконечно, при стабильной причине."""
+    from app.hs_client import HeadscaleError
+
+    nodes = [
+        {"id": "1", "availableRoutes": ["10.1.0.0/24"], "approvedRoutes": []},
+        {"id": "2", "availableRoutes": ["10.2.0.0/24"], "approvedRoutes": []},
+    ]
+
+    class Control:
+        async def get_nodes(self):
+            return nodes
+
+        async def approve_routes(self, nid, routes):
+            if nid == "1":
+                raise HeadscaleError("нода удалена между запросами", status_code=404)
+            nodes[1]["approvedRoutes"] = routes
+            return nodes[1]
+
+    await settings_store.set_agent_all(session, {
+        "1": {"routes": ["10.1.0.0/24"]}, "2": {"routes": ["10.2.0.0/24"]},
+    })
+    await routing.reconcile_approvals(session, Control())
+    assert nodes[1]["approvedRoutes"] == ["10.2.0.0/24"]
+
+
 async def test_refresh_skips_fresh_entries(session, monkeypatch):
     calls = []
 

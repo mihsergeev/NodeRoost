@@ -30,6 +30,16 @@ from app.nodekind import EXIT_ROUTES, effective_kind
 # меньше, но дёргать резолвер каждую минуту ради записи, которая меняется раз в
 # полгода, ни к чему.
 REFRESH_AFTER = timedelta(hours=1)
+# Сколько держать прежние адреса домена, который перестал резолвиться.
+STALE_AFTER = timedelta(days=7)
+
+
+def _is_private(ip: str) -> bool:
+    """Внутренний адрес (RFC 1918 и подобные) - не адрес публичного сайта."""
+    try:
+        return ipaddress.ip_network(str(ip), strict=False).is_private
+    except ValueError:
+        return False
 
 
 def _parse_ts(raw: str | None) -> datetime | None:
@@ -304,8 +314,40 @@ async def refresh(session: AsyncSession, *, force: bool = False) -> list[str]:
         ips, err = await resolve_dst(d.get("dst", ""))
         d["resolved_at"] = now.isoformat()
         # Резолв упал — держим ПРЕЖНИЕ адреса: временная недоступность DNS не
-        # повод рвать рабочий маршрут. Ошибку показываем в UI.
+        # повод рвать рабочий маршрут. Ошибку показываем в UI. Но не вечно:
+        # домен, который не резолвится неделю, скорее всего истек, а его прежний
+        # облачный адрес может достаться чужому - доступ к нему никто не продлевал.
         if not ips and err:
+            since = _parse_ts(d.get("failing_since"))
+            if since is None:
+                d["failing_since"] = now.isoformat()
+                dirty = True
+            elif now - since > STALE_AFTER:
+                if d.get("ips"):
+                    d["ips"] = []
+                    changed.append(did)
+                    dirty = True
+                err = f"{err}; адреса сняты: домен не резолвится больше {STALE_AFTER.days} дней"
+            if d.get("error") != err:
+                d["error"] = err
+                dirty = True
+            continue
+        if d.get("failing_since"):
+            d["failing_since"] = ""
+            dirty = True
+        # Сайт с публичными адресами вдруг указал на внутренний (10.x, 172.16.x,
+        # 192.168.x): так выглядит истекший, угнанный домен или подделанный ответ
+        # резолвера, и фоновое обновление открыло бы источникам доступ к любому
+        # хосту в сети ноды-выхода. Принимаем такую смену только по кнопке
+        # «Обновить» (force), когда админ видит, что делает.
+        old = [str(ip) for ip in (d.get("ips") or [])]
+        if not force and old and not any(_is_private(ip) for ip in old) and any(
+            _is_private(ip) for ip in ips
+        ):
+            err = (
+                f"домен стал указывать на внутренний адрес ({', '.join(ips)}) - "
+                "прежние адреса оставлены; если так и задумано, нажмите «Обновить»"
+            )
             if d.get("error") != err:
                 d["error"] = err
                 dirty = True
@@ -338,7 +380,7 @@ async def refresh(session: AsyncSession, *, force: bool = False) -> list[str]:
                     continue  # другой запуск уже сохранил более свежий ответ
                 if src.get("resolved_at") != now.isoformat():
                     continue
-                for field in ("ips", "resolved_at", "error"):
+                for field in ("ips", "resolved_at", "error", "failing_since"):
                     if field in src and dst.get(field) != src[field]:
                         dst[field] = src[field]
                         merged.add(did)
@@ -404,9 +446,17 @@ async def set_approved_routes(client, node_id: str, routes: list[str]) -> dict:
 
 
 async def reconcile_approvals(session: AsyncSession, client) -> bool:
-    """Синхронизировать одобрения, сохраняя маршруты, одобренные вручную."""
-    from app import policy_apply
+    """Синхронизировать одобрения, сохраняя маршруты, одобренные вручную.
 
+    Отказ headscale по одной ноде не останавливает остальные: раньше цикл
+    обрывался на первой сбойной ноде, и при стабильной причине (нода удалена
+    между запросами, headscale не подтверждает набор) остальные ноды не получали
+    новых одобрений и не теряли устаревших - бесконечно, в каждом цикле.
+    """
+    from app import policy_apply
+    from app.hs_client import HeadscaleError
+
+    log = logging.getLogger("noderoost.routing")
     async with policy_apply.write_lock(), settings_store.write_lock():
         agents = await settings_store.get_agent_all(session)
         derived = routes_by_node(await settings_store.get_routing(session))
@@ -441,7 +491,12 @@ async def reconcile_approvals(session: AsyncSession, client) -> bool:
                 agents[nid] = cfg
                 await settings_store.set_agent_all(session, agents)
             if target != approved:
-                updated = await set_approved_routes(client, nid, sorted(target))
+                try:
+                    updated = await set_approved_routes(client, nid, sorted(target))
+                except HeadscaleError:
+                    # учет panel_approved не трогаем: повтор в следующем цикле
+                    log.warning("одобрения маршрутов ноды %s не применены", nid, exc_info=True)
+                    continue
                 kind_changed |= effective_kind(updated, meta) != kind
             if stale:
                 cfg["panel_approved"] = sorted((mine | added) - stale)

@@ -5,6 +5,17 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.17] - 2026-11-23
+
+### Fixed
+
+- Keep syncing route approvals for the other nodes when Headscale rejects one node. Previously a single failing node stopped the sync for every node after it, in every cycle.
+- Refuse a forced exit through the node itself and a forced exit on an exit gateway. The agent could not apply such a state and failed on every run.
+- Revoke the exit approval when the exit gateway is turned off, even if the exit was approved manually before the gateway was turned on. Turning on the gateway now hands that approval over to the panel.
+- Do not switch a routing destination from public addresses to an internal one (10.x, 172.16.x, 192.168.x) during the background refresh. The previous addresses stay and the destination shows an error; the Refresh button accepts the change.
+- Drop the stored addresses of a routing destination whose domain has not resolved for 7 days instead of keeping them forever.
+- Write the CA key and certificate in one transaction, refuse to sign with a key that does not match the root, and never issue a certificate that outlives the root.
+
 ## [0.25.16] - 2026-11-23
 
 ### Fixed

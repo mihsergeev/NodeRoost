@@ -688,6 +688,22 @@ async def set_raw(session: AsyncSession, key: str, value: str) -> None:
     await _set_raw(session, key, value)
 
 
+async def set_raw_many(session: AsyncSession, values: dict[str, str]) -> None:
+    """Записать несколько ключей одним commit: все или ничего.
+
+    Нужно там, где ключи имеют смысл только вместе (ключ и сертификат корня CA):
+    сбой между двумя отдельными commit оставлял новый ключ при старом
+    сертификате, и все новые сертификаты переставали проходить проверку.
+    """
+    if session.info.get(_ATOMIC_UPDATE):
+        for key, value in values.items():
+            await _set_raw(session, key, value)
+        return
+    async with atomic_update(session):
+        for key, value in values.items():
+            await _set_raw(session, key, value)
+
+
 async def get_alert_config(session: AsyncSession, settings: Settings) -> dict:
     """Эффективная конфигурация алертов: значение из БД, иначе — из env.
 

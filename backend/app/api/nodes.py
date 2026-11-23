@@ -278,6 +278,23 @@ async def set_meta(
                             status.HTTP_400_BAD_REQUEST,
                             "Выход возможен только через сервер, помеченный «Шлюз выхода в интернет».",
                         )
+                # Нода не выходит через саму себя, а шлюз - через другой шлюз:
+                # tailscale не дает одновременно раздавать выход и пользоваться им,
+                # агент падал каждый цикл, а шлюз переставал нормально работать.
+                final_force = str(stored.get("force_exit") or "") if force is None else str(force or "")
+                final_via = (
+                    [str(v) for v in (stored.get("exit_via") or [])] if via is None else [str(v) for v in via]
+                )
+                if final_force == str(node_id) or str(node_id) in final_via:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST, "Нода не может выходить в интернет через саму себя."
+                    )
+                if gateway and final_force:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Шлюз выхода сам не выходит через другой шлюз. "
+                        "Сначала снимите принудительный выход у этой ноды.",
+                    )
 
                 await settings_store.set_node_meta(
                     session, node_id, body.description, body.kind, body.admin,
@@ -305,6 +322,8 @@ async def set_meta(
                 if gateway:
                     wanted = list(dict.fromkeys([*previous_tags, tag]))
                     await _set_agent_exit(session, node_id, True)
+                    if not was_gateway:
+                        await _adopt_exit_approval(session, node_id, node)
                 elif tag in previous_tags:
                     wanted = exitvia.keep_tagged([t for t in previous_tags if t != tag])
                     await _set_agent_exit(session, node_id, False)
@@ -383,6 +402,27 @@ async def set_exit_clients(
     await audit.record(session, username, "node_exit_clients", node_id, str(len(body.devices)))
     hinfo = await hostinfo.read_all_async(settings.headscale_db_path)
     return _map_node(node, meta, hinfo)
+
+
+async def _adopt_exit_approval(session, node_id: str, node: dict) -> None:
+    """Шлюз включен на ноде, чей exit уже одобрен вручную: одобрение переходит
+    к панели.
+
+    Иначе снятие галки шлюза его не снимало: коллектор отзывает только то, что
+    одобрила сама панель, и нода оставалась рабочей exit-нодой для правил
+    «в интернет», хотя в панели больше не была шлюзом.
+    """
+    approved = set(node.get("approvedRoutes") or [])
+    if not approved & set(EXIT_ROUTES):
+        return
+    agents = await settings_store.get_agent_all(session)
+    cfg = agents.get(node_id) or {}
+    owned = set(cfg.get("panel_approved") or [])
+    if set(EXIT_ROUTES) <= owned:
+        return
+    cfg["panel_approved"] = sorted(owned | set(EXIT_ROUTES))
+    agents[node_id] = cfg
+    await settings_store.set_agent_all(session, agents)
 
 
 async def _set_agent_exit(session, node_id: str, on: bool) -> None:

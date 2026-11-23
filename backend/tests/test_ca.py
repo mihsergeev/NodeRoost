@@ -143,6 +143,51 @@ async def test_old_root_with_an_allow_list_still_works(session):
         raise AssertionError("старый корень подписал имя вне своего списка")
 
 
+async def test_leaf_never_outlives_the_root(session, monkeypatch):
+    """Лист после истечения корня все равно не проверится, а панель показывала бы
+    рабочий срок - срок листа обрезается по сроку корня."""
+    await ca.ensure_root(session, years=1)
+    monkeypatch.setattr(ca, "LEAF_DAYS", 3650)
+    leaf = x509.load_pem_x509_certificate(
+        (await ca.sign_csr(session, "nas.mesh", _csr("nas.mesh"))).encode()
+    )
+    root = x509.load_pem_x509_certificate((await ca.root_cert(session)).encode())
+    assert leaf.not_valid_after_utc <= root.not_valid_after_utc
+
+
+async def test_mismatched_root_pair_is_reported_not_used(session):
+    """Регрессия: ключ и сертификат корня писались двумя commit, и сбой между
+    ними оставлял пару, которая не подходит друг к другу - листы молча не
+    проверялись. Теперь запись одна, а несовпадение называется прямо."""
+    await ca.ensure_root(session)
+    stranger, _ = ca.build_root("чужой")
+    await settings_store.set_raw(session, ca.CA_KEY, stranger)
+    try:
+        await ca.sign_csr(session, "nas.mesh", _csr("nas.mesh"))
+    except ValueError as e:
+        assert "не подходит" in str(e)
+    else:
+        raise AssertionError("подписал ключом, который не подходит к корню")
+
+
+async def test_root_pair_is_written_all_or_nothing(session, monkeypatch):
+    real = settings_store._set_raw
+
+    async def fail_on_cert(s, key, value):
+        if key == ca.CA_CERT:
+            raise RuntimeError("сбой между записями")
+        await real(s, key, value)
+
+    monkeypatch.setattr(settings_store, "_set_raw", fail_on_cert)
+    try:
+        await ca.rotate(session)
+    except RuntimeError:
+        pass
+    monkeypatch.setattr(settings_store, "_set_raw", real)
+    assert await settings_store.get_raw(session, ca.CA_KEY) is None
+    assert await settings_store.get_raw(session, ca.CA_CERT) is None
+
+
 def _legacy_root(allowed):
     """Корень старого образца: РАЗРЕШАЮЩИЙ список доменов."""
     import datetime
