@@ -510,6 +510,10 @@ export type CaInfo = {
   suffixes: string[]
   // сколько публичных доменов верхнего уровня корню запрещено
   blocked: number
+  // сколько публичных доменов текущего списка корень не запрещает (пора перевыпустить)
+  stale: number
+  // корень только для TLS-серверов (EKU serverAuth, с 0.25.19)
+  tls_only: boolean
   // команды установки сертификата на машину
   install_sh: string
   install_ps1: string

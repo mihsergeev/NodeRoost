@@ -5,6 +5,15 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.19] - 2026-11-23
+
+### Changed
+
+- New CA roots are for TLS servers only (extended key usage `serverAuth`). Name constraints do not cover certificates without DNS names, so a leaked root key could previously sign code or mail that connected Windows and macOS machines would trust. Existing roots are unchanged; the DNS page now shows a root's purpose, and issuing a new root brings the restriction.
+- The join and CA install scripts for macOS trust the root for TLS only (`security add-trusted-cert -p ssl -p basic`), including roots issued earlier.
+- The agent checks the panel root against a frozen copy of the public TLD list (`agent_tlds.txt`) instead of the current one. Updating `public_tlds.txt` no longer makes new nodes refuse a root issued earlier. The generated agent script is unchanged, so no agent update is needed.
+- The DNS page warns when the public TLD list gained domains the current root does not exclude; the panel still refuses to sign them. `ops/build-tlds.py` keeps domains that IANA has retired.
+
 ## [0.25.18] - 2026-11-23
 
 ### Fixed

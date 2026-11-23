@@ -1,10 +1,17 @@
 """Свой центр сертификации панели: что он подписывает и чему верит браузер."""
 
+import datetime
+import os
+import shutil
+import subprocess
+
+import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
-from app import ca, certs, settings_store
+from app import agent, ca, certs, settings_store
 from app.config import Settings
 from tests.test_certs import _csr
 
@@ -236,3 +243,106 @@ def _legacy_root(allowed):
         ).decode(),
         cert.public_bytes(serialization.Encoding.PEM).decode(),
     )
+
+
+def _openssl_verify(tmp_path, root_pem: str, leaf_pem: str, purpose: str) -> bool:
+    (tmp_path / "root.pem").write_text(root_pem, encoding="utf-8")
+    (tmp_path / "leaf.pem").write_text(leaf_pem, encoding="utf-8")
+    run = subprocess.run(
+        ["openssl", "verify", "-purpose", purpose, "-CAfile",
+         str(tmp_path / "root.pem"), str(tmp_path / "leaf.pem")],
+        capture_output=True, text=True,
+    )
+    return run.returncode == 0
+
+
+def _leaf(key_pem: str, root_pem: str, usage) -> str:
+    """Лист, который мог бы выписать тот, у кого утек ключ корня: без DNS-имен,
+    поэтому ограничения имен его не касаются."""
+    ca_key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+    root = x509.load_pem_x509_certificate(root_pem.encode())
+    key = ec.generate_private_key(ec.SECP256R1())
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Totally Legit Vendor")]))
+        .issuer_name(root.subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([usage]), critical=False)
+        .sign(ca_key, hashes.SHA256())
+        .public_bytes(serialization.Encoding.PEM)
+        .decode()
+    )
+
+
+@pytest.mark.skipif(not shutil.which("openssl"), reason="нужен openssl - есть в CI")
+async def test_root_is_for_tls_servers_only(session, tmp_path):
+    """Утекший ключ корня не должен подписывать код и почту: ограничения имен
+    таких сертификатов не касаются, а Windows и macOS поверили бы им."""
+    await ca.ensure_root(session)
+    root_pem = await ca.root_cert(session)
+    root = x509.load_pem_x509_certificate(root_pem.encode())
+    eku = root.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    assert list(eku) == [x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]
+    assert ca.root_info(root_pem)["tls_only"] is True
+
+    # штатный лист сервиса по-прежнему проверяется как TLS-сервер
+    leaf = await ca.sign_csr(session, "nas.mesh", _csr("nas.mesh"))
+    assert _openssl_verify(tmp_path, root_pem, leaf, "sslserver")
+
+    key_pem = await settings_store.get_raw(session, ca.CA_KEY)
+    mail = _leaf(key_pem, root_pem, x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+    assert not _openssl_verify(tmp_path, root_pem, mail, "smimesign")
+    code = _leaf(key_pem, root_pem, x509.oid.ExtendedKeyUsageOID.CODE_SIGNING)
+    assert not _openssl_verify(tmp_path, root_pem, code, "codesign")
+
+
+def _tld_file(name: str) -> list[str]:
+    path = os.path.join(os.path.dirname(ca.__file__), "data", name)
+    with open(path, encoding="utf-8") as f:
+        return [ln.strip().lower() for ln in f if ln.strip() and not ln.startswith("#")]
+
+
+def test_agent_checks_roots_against_a_frozen_list():
+    """Агент проверяет корень по замороженному списку, а не по текущему: иначе
+    первое же обновление public_tlds.txt отрезало бы уже выданные корни от новых
+    узлов («корень не ограничен именами» каждую минуту)."""
+    frozen = _tld_file("agent_tlds.txt")
+    assert len(frozen) == 1438  # снимок 0.11.0, его не обновляют
+    assert f'PUBLIC_TLDS="{" ".join(frozen)}"' in agent.TEMPLATE
+    # новые корни запрещают все домены текущего списка - значит и все из
+    # замороженного, иначе нода откажется их ставить
+    assert set(frozen) <= set(_tld_file("public_tlds.txt"))
+
+
+def test_root_behind_the_public_list_is_reported(monkeypatch):
+    """Список публичных доменов обновился после выпуска корня: корень их не
+    запрещает, и администратор должен это увидеть."""
+    _, cert_pem = ca.build_root("NodeRoost internal CA")
+    assert ca.root_info(cert_pem)["stale"] == 0
+    monkeypatch.setattr(ca, "_tlds_cache", ca.public_tlds() + ["newgtld"])
+    info = ca.root_info(cert_pem)
+    assert info["stale"] == 1
+    assert info["blocked"] == len(ca.public_tlds()) - 1
+    # подписывать новый публичный домен панель отказывается сразу
+    assert not ca.signable("shop.newgtld")
+
+
+def test_root_without_eku_is_shown_as_any_purpose():
+    """Корни до 0.25.19 без EKU: панель не выдает их за ограниченные."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "NodeRoost internal CA")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    old = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name)
+        .public_key(key.public_key()).serial_number(1)
+        .not_valid_before(now).not_valid_after(now + datetime.timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .sign(key, hashes.SHA256()).public_bytes(serialization.Encoding.PEM).decode()
+    )
+    info = ca.root_info(old)
+    assert info["tls_only"] is False and info["stale"] == 0

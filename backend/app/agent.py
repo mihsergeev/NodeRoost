@@ -552,7 +552,10 @@ else
 fi
 """
 # Подписывается вместе со скриптом. Панель не может ослабить проверку CA.
-with open(os.path.join(os.path.dirname(__file__), "data", "public_tlds.txt"),
+# Список замороженный (agent_tlds.txt), а не текущий public_tlds.txt: корень
+# запрещает те домены, что были в списке при его выпуске, и обновление списка
+# не должно отрезать уже выданные корни от новых узлов.
+with open(os.path.join(os.path.dirname(__file__), "data", "agent_tlds.txt"),
           encoding="utf-8") as _tlds:
     TEMPLATE = TEMPLATE.replace(
         "@@PUBLIC_TLDS@@", " ".join(line.strip().lower() for line in _tlds

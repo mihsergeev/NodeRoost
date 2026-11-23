@@ -140,6 +140,14 @@ def build_root(name: str, years: int = ROOT_YEARS) -> tuple[str, str]:
         .add_extension(
             x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
         )
+        # Только TLS-серверы. Ограничения имен не касаются сертификатов без
+        # DNS-имен: без EKU утекший ключ корня подписал бы код или почту с любым
+        # субъектом, и Windows и macOS поверили бы им. EKU в корне сужает
+        # назначение всей цепочки.
+        .add_extension(
+            x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),
+            critical=False,
+        )
     )
     excluded = [x509.DNSName(t) for t in public_tlds()] + [
         # Тип имени, не упомянутый в ограничениях, RFC 5280 считает
@@ -243,15 +251,22 @@ def root_info(cert_pem: str) -> dict:
     cert = x509.load_pem_x509_certificate(cert_pem.encode())
     fp = cert.fingerprint(hashes.SHA256()).hex().upper()
     allowed: list[str] = []
-    blocked = 0
+    excluded: set[str] = set()
     try:
         nc = cert.extensions.get_extension_for_class(x509.NameConstraints).value
         allowed = [str(d.value) for d in (nc.permitted_subtrees or [])]
-        blocked = sum(
-            1 for d in (nc.excluded_subtrees or []) if isinstance(d, x509.DNSName)
-        )
+        excluded = {
+            str(d.value).lower()
+            for d in (nc.excluded_subtrees or [])
+            if isinstance(d, x509.DNSName)
+        }
     except x509.ExtensionNotFound:
         pass  # корень без ограничений вовсе — подпишет что угодно
+    try:
+        usage = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+        tls_only = list(usage) == [x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]
+    except x509.ExtensionNotFound:
+        tls_only = False  # корень до 0.25.19: годится для любого назначения
     return {
         "subject": cert.subject.rfc4514_string(),
         "not_after": cert.not_valid_after_utc.date().isoformat(),
@@ -259,7 +274,13 @@ def root_info(cert_pem: str) -> dict:
         # старый корень: список РАЗРЕШЁННЫХ доменов (пусто у нового)
         "suffixes": allowed,
         # новый корень: сколько публичных доменов ему запрещено
-        "blocked": blocked,
+        "blocked": len(excluded),
+        # публичные домены из текущего списка, которых корень не запрещает:
+        # список обновился после выпуска корня. Подписывать их панель и так
+        # откажется, но корень на устройствах им не мешает - пора перевыпустить.
+        "stale": sum(1 for t in public_tlds() if t not in excluded) if excluded else 0,
+        # EKU только serverAuth: корнем нельзя подписать код или почту
+        "tls_only": tls_only,
     }
 
 

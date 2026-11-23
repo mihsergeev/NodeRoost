@@ -570,12 +570,18 @@ const EN: Record<string, string> = {
     'any internal name except {n} public domains',
   'только {zones} (CA старого образца)': 'only {zones} (CA of the older kind)',
   'что угодно (ограничений нет)': 'anything (no constraints)',
+  'Назначение': 'Purpose',
+  'только TLS-серверы': 'TLS servers only',
+  'любое: корень выпущен до 0.25.19, подпись кода и почты ему не запрещена':
+    'any: the root predates 0.25.19 and is not barred from signing code or mail',
+  'Список публичных доменов обновился после выпуска корня: {n} из них корень не запрещает. Панель их не подписывает, но чтобы закрыть их и на устройствах, выпустите корень заново.':
+    'The list of public domains changed after this root was issued: it does not exclude {n} of them. The panel will not sign those, but to close them on devices as well, issue a new root.',
   'Похоже, {want} — имя в настоящем интернет-домене. CA такие не подписывает: иначе он мог бы подделать чужой сайт для ваших же машин. Возьмите внутреннее имя, например loki.lab.':
     '{want} looks like a name in a real internet domain. The root does not sign those: it could otherwise impersonate someone else’s site to your own machines. Use an internal name instead, say loki.lab.',
   'Этому CA разрешены только домены {have} — для {want} сертификат выдан не будет. Выпустите его заново: новый подписывает любые внутренние имена, и добавлять домены больше не придётся.':
     'This root is limited to {have}, so nothing will be issued for {want}. Issue a new root: the new kind signs any internal name, and domains never have to be added again.',
-  'Домены придумываете вы: acme, lab, mesh — что угодно, чего нет в интернете. CA подписывает такие имена сам, поэтому новый проект работает сразу и перевыпускать ничего не нужно. Выпускать заново стоит разве что ради другого срока: прежний сертификат перестанет действовать, ноды подхватят новый за минуту, а на ноутбуках и телефонах его придётся поставить ещё раз.':
-    'The domains are yours to invent: acme, lab, mesh — anything that does not exist on the internet. The root signs such names on its own, so a new project works immediately and nothing needs reissuing. Issuing a new root is only worth it for a different lifetime: the old one stops working, nodes pick the new one up within a minute, and on laptops and phones it has to be installed again.',
+  'Домены придумываете вы: acme, lab, mesh — что угодно, чего нет в интернете. CA подписывает такие имена сам, поэтому новый проект работает сразу и перевыпускать ничего не нужно. Выпускать заново стоит ради другого срока или если корень выпущен до 0.25.19 (см. «Назначение»): прежний сертификат перестанет действовать, ноды подхватят новый за минуту, а на ноутбуках и телефонах его придётся поставить ещё раз.':
+    'The domains are yours to invent: acme, lab, mesh — anything that does not exist on the internet. The root signs such names on its own, so a new project works immediately and nothing needs reissuing. Issuing a new root is worth it for a different lifetime or when the root predates 0.25.19 (see Purpose): the old one stops working, nodes pick the new one up within a minute, and on laptops and phones it has to be installed again.',
   'Свернуть': 'Collapse',
   'Срок, лет': 'Valid for, years',
   'Выпустить CA заново? Прежний сертификат перестанет действовать.':

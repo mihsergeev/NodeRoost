@@ -399,7 +399,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
   # прежний сертификат панели убираем — иначе в связке копятся мёртвые
   security delete-certificate -c "NodeRoost internal CA" \\
     /Library/Keychains/System.keychain 2>/dev/null || true
-  security add-trusted-cert -d -r trustRoot \\
+  # -p ssl -p basic: доверие только для TLS, не для подписи кода и почты
+  security add-trusted-cert -d -r trustRoot -p ssl -p basic \\
     -k /Library/Keychains/System.keychain "$NRTMP/noderoost-ca.crt" \\
     && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 elif [ -d /usr/local/share/ca-certificates ]; then
@@ -447,7 +448,8 @@ cat > "$NRTMP/noderoost-ca.crt" <<'NRCAEOF'
 # прежний корень панели убираем — иначе в связке копятся мёртвые
 sudo security delete-certificate -c "NodeRoost internal CA" \\
   /Library/Keychains/System.keychain 2>/dev/null || true
-sudo security add-trusted-cert -d -r trustRoot \\
+# -p ssl -p basic: доверие только для TLS, не для подписи кода и почты
+sudo security add-trusted-cert -d -r trustRoot -p ssl -p basic \\
   -k /Library/Keychains/System.keychain "$NRTMP/noderoost-ca.crt" \\
   && echo "NodeRoost: сертификат CA панели добавлен в доверенные."
 rm -f "$NRTMP/noderoost-ca.crt"
