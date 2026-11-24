@@ -5,6 +5,15 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.20] - 2026-11-24
+
+### Security
+
+- The backend image is rebuilt on the current `python:3.14.10-slim-trixie` (Debian 13.8): glibc `2.41-12+deb13u5` and OpenSSL 3.5.9 instead of 3.5.7.
+- The frontend image moves to `nginx:1.31.10-alpine`, which no longer ships `libxml2`.
+- The PostgreSQL image installs `libxml2` 2.13.9-r3 alongside the pinned OpenSSL packages.
+- Mako 1.4.3 (an Alembic dependency) replaces 1.3.12.
+
 ## [0.25.19] - 2026-11-23
 
 ### Changed

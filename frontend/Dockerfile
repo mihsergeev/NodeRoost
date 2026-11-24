@@ -9,7 +9,7 @@ COPY public ./public
 COPY src ./src
 RUN npm run build
 
-FROM nginx:1.31.9-alpine@sha256:90b6bd2aec278b16b98221d64deb1d6d35d164567f507ab0716e6053878315aa
+FROM nginx:1.31.10-alpine@sha256:aceb952b920393b7d0bc7b978927fc283370bea89fb082c6fef0ce18c60f96a9
 RUN apk add --no-cache libcrypto3=3.5.9-r1 libssl3=3.5.9-r1 zlib=1.4-r0
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf

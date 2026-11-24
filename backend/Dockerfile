@@ -1,6 +1,6 @@
 # база пинуется по дайджесту: плавающий тег переносит сборку на другой образ
 # незаметно для нас — и то, что проверено, перестаёт быть тем, что выкачено
-FROM python:3.14.10-slim-trixie@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+FROM python:3.14.10-slim-trixie@sha256:970b9cf6bb33bc54e34bff9263de57460841813dd5a3d83d3a4e183b21c54f8a
 
 # DSA-6613-1: require Debian's security fix for the runtime zlib package.
 RUN apt-get update \
