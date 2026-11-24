@@ -7,9 +7,10 @@ import {
   updateAgent,
   type AclSelector,
   type AgentCfg,
+  type DnsRecord,
   type Node,
 } from './api'
-import { groupGrants, portLabel, selLabel, toggleRule } from './aclui'
+import { dnsGrantTarget, groupGrants, portLabel, selLabel, toggleRule } from './aclui'
 import { GrantModal } from './GrantModal'
 import { Menu } from './Menu'
 import { NodeEditModal } from './NodeEditModal'
@@ -55,6 +56,9 @@ export function NodeDetail({
   const [routesOpen, setRoutesOpen] = useState(false)
   const [reconnectOpen, setReconnectOpen] = useState(false)
   const [addRole, setAddRole] = useState<'target' | 'source' | null>(null)
+  // доступ к цели имени из предупреждения DNS: окно «кто может подключаться» к
+  // той ноде, с этой нодой уже отмеченной
+  const [dnsGrant, setDnsGrant] = useState<Node | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   // Состояние агента показываем прямо здесь: раньше оно жило только в окне
@@ -75,17 +79,13 @@ export function NodeDetail({
 
   // Имена внутри сети, которые нода получит, а до цели не дойдет (нет правила).
   // Пересчитываем при смене правил: панель считает доступ по той же политике.
-  const [dnsLost, setDnsLost] = useState<{ name: string; target: string }[]>([])
+  const [dnsLost, setDnsLost] = useState<DnsRecord[]>([])
   useEffect(() => {
     let alive = true
     getDnsRecords()
       .then((r) => {
         if (!alive) return
-        setDnsLost(
-          r.records
-            .filter((x) => x.enabled && x.unreachable?.some((n) => n.id === node.id))
-            .map((x) => ({ name: x.name, target: x.node_name || x.ip })),
-        )
+        setDnsLost(r.records.filter((x) => x.enabled && x.unreachable?.some((n) => n.id === node.id)))
       })
       .catch(() => alive && setDnsLost([]))
     return () => {
@@ -491,12 +491,29 @@ export function NodeDetail({
                 ? !node.admin && <p className="muted small">{t('никуда (всё запрещено)')}</p>
                 : renderRows(outRows, 'source')}
               {dnsLost.length > 0 && (
-                <p className="small dns-lost">
-                  {t(
-                    'Имена внутри сети, до цели которых эта нода не дойдет: {names}. Если она берет DNS из меша, имя заменит ей внешний адрес на недоступный, и сервис пропадет. Разрешите доступ к цели или выключите ей DNS из меша.',
-                    { names: dnsLost.map((d) => `${d.name} → ${d.target}`).join(', ') },
-                  )}
-                </p>
+                <div className="dns-lost">
+                  <p className="small">
+                    {t(
+                      'Имена внутри сети, до цели которых эта нода не дойдет: {names}. Если она берет DNS из меша, имя заменит ей внешний адрес на недоступный, и сервис пропадет. Разрешите доступ к цели или выключите ей DNS из меша.',
+                      { names: dnsLost.map((d) => `${d.name} → ${d.node_name || d.ip}`).join(', ') },
+                    )}
+                  </p>
+                  {dnsLost.map((d) => {
+                    const target = dnsGrantTarget(d, nodes)
+                    return (
+                      target && (
+                        <button
+                          key={d.name}
+                          className="ghost small"
+                          onClick={() => setDnsGrant(target)}
+                          disabled={saving || rulesLoading}
+                        >
+                          {t('Разрешить доступ к «{name}»', { name: d.name })}
+                        </button>
+                      )
+                    )
+                  })}
+                </div>
               )}
             </div>
           </>
@@ -579,6 +596,22 @@ tailscale set --exit-node=`}</pre>
           }}
           onDone={onChanged}
           onUnauthorized={onUnauthorized}
+        />
+      )}
+      {dnsGrant && rules && (
+        <GrantModal
+          node={dnsGrant}
+          role="target"
+          nodes={nodes}
+          rules={rules}
+          initialPicked={[`node:${node.id}`]}
+          initialPort="443"
+          onUnauthorized={onUnauthorized}
+          onClose={() => setDnsGrant(null)}
+          onApply={(next) => {
+            setDnsGrant(null)
+            saveRules(next)
+          }}
         />
       )}
       {addRole && rules && (

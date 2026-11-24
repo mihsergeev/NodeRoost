@@ -5,6 +5,12 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.22] - 2026-11-24
+
+### Added
+
+- The internal-name warning gets an "Allow access" button. On the DNS page it opens the usual access dialog for the name's target with every node that cannot reach it already selected; in the node card, with that node selected. The port defaults to HTTPS (443) and can be changed; nothing is saved until the dialog is confirmed. The button appears only when the target is a regular server: rules to devices and admin devices are dropped by the policy anyway.
+
 ## [0.25.21] - 2026-11-24
 
 ### Added

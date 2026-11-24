@@ -12,7 +12,10 @@ import {
   type HsInfo,
   type Node,
 } from './api'
+import { dnsGrantTarget } from './aclui'
+import { GrantModal } from './GrantModal'
 import { useI18n } from './i18n'
+import { useAclRules } from './useAclRules'
 import { useHeadscaleRestart } from './useHeadscaleRestart'
 
 type Props = { onUnauthorized: () => void }
@@ -56,6 +59,10 @@ export function DnsPage({ onUnauthorized }: Props) {
   const [rotOpen, setRotOpen] = useState(false)
   const [years, setYears] = useState(20)
   const [caBusy, setCaBusy] = useState(false)
+  // Доступ к цели имени прямо из предупреждения: окно «кто может подключаться»
+  // к ноде-цели, где уже отмечены все, кто до нее не дойдет.
+  const acl = useAclRules(onUnauthorized)
+  const [grant, setGrant] = useState<{ target: Node; picked: string[] } | null>(null)
 
   // резолверы и MagicDNS — вторая половина раздела: настраивается один раз и
   // почти никогда не меняется, поэтому карточка закрыта на «Изменить»
@@ -168,6 +175,29 @@ export function DnsPage({ onUnauthorized }: Props) {
       'Не дойдут до цели, если берут DNS из меша (нет правила доступа): {nodes}. Выдайте им доступ в «Доступах» или выключите им DNS из меша — иначе имя заменит им внешний адрес на недоступный.',
       { nodes: rec.unreachable.map((n) => n.name).join(', ') },
     )
+  }
+
+  function openGrant(name: string) {
+    const rec = recs?.records.find((x) => x.name === name)
+    const target = rec && dnsGrantTarget(rec, nodes)
+    if (!rec || !target) return
+    setGrant({ target, picked: rec.unreachable.map((n) => `node:${n.id}`) })
+  }
+
+  function canGrant(name: string): boolean {
+    const rec = recs?.records.find((x) => x.name === name)
+    return !!rec && !!acl.rules && !!dnsGrantTarget(rec, nodes)
+  }
+
+  async function applyGrant(next: Parameters<typeof acl.save>[0]) {
+    setGrant(null)
+    await acl.save(next)
+    // предупреждение считает сервер: после новых правил спрашиваем его заново
+    try {
+      setRecs(await getDnsRecords())
+    } catch (err) {
+      handle(err)
+    }
   }
 
   async function save() {
@@ -398,7 +428,18 @@ export function DnsPage({ onUnauthorized }: Props) {
                   <span className="dns-rec-certline small">{certLine(r.name)}</span>
                 )}
                 {reachLine(r.name) && (
-                  <span className="dns-rec-reach small">{reachLine(r.name)}</span>
+                  <span className="dns-rec-reach small">
+                    {reachLine(r.name)}
+                    {canGrant(r.name) && (
+                      <button
+                        className="ghost small dns-rec-grant"
+                        disabled={busy || acl.saving}
+                        onClick={() => openGrant(r.name)}
+                      >
+                        {t('Разрешить доступ')}
+                      </button>
+                    )}
+                  </span>
                 )}
               </div>
             ))}
@@ -607,6 +648,7 @@ export function DnsPage({ onUnauthorized }: Props) {
         )}
 
         {error && <p className="form-error">{error}</p>}
+        {acl.error && <p className="form-error" role="alert">{acl.error}</p>}
         {saved && !pending && <p className="form-ok">{t('Сохранено')}</p>}
 
         <div className="dns-actions">
@@ -738,6 +780,19 @@ export function DnsPage({ onUnauthorized }: Props) {
             )}
           </p>
         </section>
+      )}
+      {grant && acl.rules && (
+        <GrantModal
+          node={grant.target}
+          role="target"
+          nodes={nodes}
+          rules={acl.rules}
+          initialPicked={grant.picked}
+          initialPort="443"
+          onUnauthorized={onUnauthorized}
+          onClose={() => setGrant(null)}
+          onApply={(next) => void applyGrant(next)}
+        />
       )}
     </>
   )

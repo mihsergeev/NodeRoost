@@ -291,6 +291,20 @@ input:focus {
   margin-top: 0.5rem;
 }
 
+.dns-lost p {
+  margin: 0;
+}
+
+.dns-lost button,
+.dns-rec-grant {
+  margin: 0.35rem 0.5rem 0 0;
+}
+
+.dns-rec-grant {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+
 .dns-rec-reach {
   grid-column: 1 / -1;
   color: var(--warn);

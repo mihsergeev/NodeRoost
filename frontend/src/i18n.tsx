@@ -282,6 +282,7 @@ const EN: Record<string, string> = {
   '+ Разрешить': '+ Allow',
   'Разрешить': 'Allow',
   'Убрать': 'Remove',
+  'Разрешить доступ': 'Allow access',
   'Разрешить доступ к «{name}»': 'Allow access to “{name}”',
   'Куда может ходить «{name}»': 'Where “{name}” can reach',
   'Кому разрешить': 'Allow whom',

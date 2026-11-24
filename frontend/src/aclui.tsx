@@ -1,4 +1,4 @@
-import type { AclRule, AclSelector, Node } from './api'
+import type { AclRule, AclSelector, DnsRecord, Node } from './api'
 
 type Tr = (s: string, p?: Record<string, string | number>) => string
 
@@ -149,4 +149,17 @@ export function groupGrants(rules: AclRule[], lens: 'who' | 'server'): Grant[] {
     const k = KIND_ORDER[a.entity.kind] - KIND_ORDER[b.entity.kind]
     return k !== 0 ? k : selKey(a.entity).localeCompare(selKey(b.entity))
   })
+}
+
+// Нода, к которой из предупреждения DNS можно выдать доступ: цель имени — либо
+// выбранная нода, либо ручной адрес, совпавший с адресом ноды (так же считает
+// панель). Только обычный сервер: к устройству и админ-устройству подключаться
+// нельзя, правило на них движок всё равно отбросит, и кнопка бы обманывала.
+export function dnsGrantTarget(rec: DnsRecord, nodes: Node[]): Node | undefined {
+  const target = rec.node_id
+    ? nodes.find((n) => n.id === rec.node_id)
+    : rec.ip
+      ? nodes.find((n) => n.ip_addresses.includes(rec.ip))
+      : undefined
+  return target && target.kind === 'server' && !target.admin ? target : undefined
 }

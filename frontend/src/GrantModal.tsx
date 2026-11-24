@@ -15,6 +15,8 @@ export function GrantModal({
   onClose,
   onApply,
   onUnauthorized,
+  initialPicked,
+  initialPort,
 }: {
   node: Node
   role: 'target' | 'source'
@@ -23,13 +25,18 @@ export function GrantModal({
   onClose: () => void
   onApply: (next: AclRule[]) => void
   onUnauthorized: () => void
+  // Заранее отмеченные стороны («node:<id>») и порт: так окно открывается из
+  // предупреждения DNS уже с теми, кто до цели не дойдет. Человек всё равно
+  // видит выбор и подтверждает его сам.
+  initialPicked?: string[]
+  initialPort?: string
 }) {
   const { t } = useI18n()
   const { close, resolve } = useHostResolution(onClose)
   useModalDismiss(close)
 
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [port, setPort] = useState('22')
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(initialPicked ?? []))
+  const [port, setPort] = useState(initialPort ?? '22')
   const [customPort, setCustomPort] = useState('')
   const [search, setSearch] = useState('')
   // назначение по IP/подсети/сайту (только для «куда ходит», role='source')
