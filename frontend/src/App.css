@@ -286,6 +286,17 @@ input:focus {
   padding-left: 1.9rem;
 }
 
+.dns-lost {
+  color: var(--warn);
+  margin-top: 0.5rem;
+}
+
+.dns-rec-reach {
+  grid-column: 1 / -1;
+  color: var(--warn);
+  padding-left: 1.9rem;
+}
+
 .dns-rec-head {
   padding: 0 0.65rem;
   font-size: 0.72rem;
@@ -468,7 +479,8 @@ input:focus {
   .dns-rec-row .dns-rec-cert input {
     grid-column: auto;
   }
-  .dns-rec-certline {
+  .dns-rec-certline,
+  .dns-rec-reach {
     padding-left: 0;
   }
 }

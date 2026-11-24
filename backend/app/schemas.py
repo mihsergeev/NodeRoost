@@ -776,6 +776,11 @@ class DnsRecordIn(RequestModel):
         return self
 
 
+class DnsNodeRef(BaseModel):
+    id: str = ""
+    name: str = ""
+
+
 class DnsRecordOut(BaseModel):
     name: str = ""
     node_id: str = ""
@@ -790,6 +795,9 @@ class DnsRecordOut(BaseModel):
     # на что имя ведёт внутри сети ПРЯМО СЕЙЧАС (у записи на ноду — её адреса)
     addresses: list[str] = []
     note: str = ""  # почему запись сейчас не раздаётся (нода удалена и т.п.)
+    # Ноды, которые берут DNS из меша, но правила до цели имени у них нет: имя
+    # подменит им внешний адрес на адрес в меше, и сервис для них пропадет
+    unreachable: list[DnsNodeRef] = []
 
 
 class DnsRecordsUpdateIn(RequestModel):

@@ -3,6 +3,7 @@ import {
   ApiError,
   expireNode,
   getAgent,
+  getDnsRecords,
   updateAgent,
   type AclSelector,
   type AgentCfg,
@@ -71,6 +72,26 @@ export function NodeDetail({
       alive = false
     }
   }, [node.id, routesOpen])
+
+  // Имена внутри сети, которые нода получит, а до цели не дойдет (нет правила).
+  // Пересчитываем при смене правил: панель считает доступ по той же политике.
+  const [dnsLost, setDnsLost] = useState<{ name: string; target: string }[]>([])
+  useEffect(() => {
+    let alive = true
+    getDnsRecords()
+      .then((r) => {
+        if (!alive) return
+        setDnsLost(
+          r.records
+            .filter((x) => x.enabled && x.unreachable?.some((n) => n.id === node.id))
+            .map((x) => ({ name: x.name, target: x.node_name || x.ip })),
+        )
+      })
+      .catch(() => alive && setDnsLost([]))
+    return () => {
+      alive = false
+    }
+  }, [node.id, rules])
 
   async function upgradeAgent() {
     setAgentBusy(true)
@@ -469,6 +490,14 @@ export function NodeDetail({
               {outRows.length === 0
                 ? !node.admin && <p className="muted small">{t('никуда (всё запрещено)')}</p>
                 : renderRows(outRows, 'source')}
+              {dnsLost.length > 0 && (
+                <p className="small dns-lost">
+                  {t(
+                    'Имена внутри сети, до цели которых эта нода не дойдет: {names}. Если она берет DNS из меша, имя заменит ей внешний адрес на недоступный, и сервис пропадет. Разрешите доступ к цели или выключите ей DNS из меша.',
+                    { names: dnsLost.map((d) => `${d.name} → ${d.target}`).join(', ') },
+                  )}
+                </p>
+              )}
             </div>
           </>
         )}

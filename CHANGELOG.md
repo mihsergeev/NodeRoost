@@ -5,6 +5,13 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the
 project follows [semantic versioning](https://semver.org/).
 
+## [0.25.21] - 2026-11-24
+
+### Added
+
+- The DNS page warns when a name leads to a mesh node that some nodes cannot reach. Headscale hands internal names to every node that uses mesh DNS, while access comes from rules: such a node gets the mesh address instead of the public one, and the service disappears for it (for example, a monitoring agent on a newly joined server stops reaching its panel). The warning lists those nodes; reachability is computed from the same policy that is sent to Headscale, including admin devices and routing directions.
+- The node card lists internal names whose target this node cannot reach.
+
 ## [0.25.20] - 2026-11-24
 
 ### Security

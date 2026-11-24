@@ -570,6 +570,10 @@ const EN: Record<string, string> = {
     'any internal name except {n} public domains',
   'только {zones} (CA старого образца)': 'only {zones} (CA of the older kind)',
   'что угодно (ограничений нет)': 'anything (no constraints)',
+  'Не дойдут до цели, если берут DNS из меша (нет правила доступа): {nodes}. Выдайте им доступ в «Доступах» или выключите им DNS из меша — иначе имя заменит им внешний адрес на недоступный.':
+    'Will not reach the target if they use mesh DNS (no access rule): {nodes}. Grant them access under Access or turn off mesh DNS for them — otherwise the name replaces its public address with one they cannot reach.',
+  'Имена внутри сети, до цели которых эта нода не дойдет: {names}. Если она берет DNS из меша, имя заменит ей внешний адрес на недоступный, и сервис пропадет. Разрешите доступ к цели или выключите ей DNS из меша.':
+    'Internal names whose target this node cannot reach: {names}. If it uses mesh DNS, the name replaces the public address with one it cannot reach, and the service disappears for it. Allow access to the target or turn off mesh DNS for it.',
   'Назначение': 'Purpose',
   'только TLS-серверы': 'TLS servers only',
   'любое: корень выпущен до 0.25.19, подпись кода и почты ему не запрещена':

@@ -498,6 +498,8 @@ export type DnsRecord = {
   cert_error: string
   addresses: string[]
   note: string
+  // ноды, которые получают имя (DNS из меша), но правила до цели у них нет
+  unreachable: { id: string; name: string }[]
 }
 
 // корневой сертификат панели: появляется с первым именем, которому выбрана своя CA

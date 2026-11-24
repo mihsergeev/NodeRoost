@@ -12,7 +12,7 @@ import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app import audit, ca, certs, dnsrecords, policy_apply, settings_store, tsmirror
+from app import audit, ca, certs, dnsreach, dnsrecords, policy_apply, settings_store, tsmirror
 from app.config import get_settings
 from app.deps import CurrentUser, SessionDep
 from app.hs_client import get_client
@@ -28,6 +28,7 @@ from app.schemas import (
     DnsInfo,
     CaInfo,
     CaSettingsIn,
+    DnsNodeRef,
     DnsRecordOut,
     DnsRecordsOut,
     DnsRecordsUpdateIn,
@@ -422,6 +423,13 @@ async def _records_out(
     settings = get_settings()
     cfg_root = await ca.root_cert(session)
     by_id = {str(n.get("id", "")): n for n in nodes}
+    # Кто получит имя, но не дойдет до цели (нет правила): ему имя подменит
+    # внешний адрес на адрес в меше, и сервис для него пропадет. Считаем по
+    # той же политике, что уходит в headscale; без нод - не считаем.
+    lost: dict[str, list[dict]] = {}
+    if nodes:
+        policy = await policy_apply.build_policy(session, get_client(settings), settings, nodes=nodes)
+        lost = dnsreach.unreachable(policy, stored, nodes, await settings_store.get_node_meta(session))
     out: list[DnsRecordOut] = []
     for rec in stored:
         node_id = str(rec.get("node_id") or "")
@@ -455,6 +463,7 @@ async def _records_out(
                 cert_error=(cert.error if cert else ""),
                 addresses=addrs,
                 note=note,
+                unreachable=[DnsNodeRef(**x) for x in lost.get(str(rec.get("name") or ""), [])],
             )
         )
     root = _ca_info(cfg_root, await ca.auto_install(session))

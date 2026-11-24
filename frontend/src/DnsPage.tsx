@@ -158,6 +158,18 @@ export function DnsPage({ onUnauthorized }: Props) {
     return t('сертификат заказан — нода заберёт его в течение минуты')
   }
 
+  // Кто получит имя, но не дойдет до цели: headscale раздает имена всем нодам,
+  // а доступ дают правила. Такой ноде имя подменит внешний адрес на адрес в меше,
+  // и сервис для нее пропадет. Тоже по серверу: несохраненную правку он не видел.
+  function reachLine(name: string): string {
+    const rec = recs?.records.find((x) => x.name === name)
+    if (!rec || !rec.enabled || !rec.unreachable?.length) return ''
+    return t(
+      'Не дойдут до цели, если берут DNS из меша (нет правила доступа): {nodes}. Выдайте им доступ в «Доступах» или выключите им DNS из меша — иначе имя заменит им внешний адрес на недоступный.',
+      { nodes: rec.unreachable.map((n) => n.name).join(', ') },
+    )
+  }
+
   async function save() {
     if (!recs || busy || srvBusy) return
     if (!window.confirm(t(
@@ -384,6 +396,9 @@ export function DnsPage({ onUnauthorized }: Props) {
                 </button>
                 {r.cert && certLine(r.name) && (
                   <span className="dns-rec-certline small">{certLine(r.name)}</span>
+                )}
+                {reachLine(r.name) && (
+                  <span className="dns-rec-reach small">{reachLine(r.name)}</span>
                 )}
               </div>
             ))}
